@@ -50,3 +50,17 @@ Le département GEII possède un parc de matériel (oscilloscopes, générateurs
 - [ ] Exports Excel/PDF opérationnels.
 - [ ] Sauvegardes documentées + scripts testés.
 - [ ] Manuels utilisateur et technique livrés.
+
+---
+
+## 🛠️ Démarrage rapide (mini-stack PHP)
+Un squelette minimal a été ajouté pour tester la connexion base ↔ page web (MySQL via phpMyAdmin).
+
+- `api/config.php` : renseigner `DB_DSN`, `DB_USER`, `DB_PASSWORD` (MySQL par défaut).
+- `api/equipment.php` : mini API REST (GET/POST/PUT/DELETE) protégée par token Bearer.
+- `index.html` : front léger HTML/JS qui consomme l’API.
+
+### Installer et lancer
+1. Créer la table `equipment` dans votre base MySQL (via phpMyAdmin ou script maison).
+2. Ajuster `api/config.php` ou exporter les variables d’environnement (y compris `API_TOKENS` pour définir la/les clés d’accès, séparées par des virgules).
+3. Servir les fichiers (ex : `php -S localhost:8000` puis ouvrir `http://localhost:8000/`).
