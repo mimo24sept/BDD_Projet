@@ -162,15 +162,20 @@
 
   <main>
     <section class="panel">
-      <h2 style="margin-top:0;">Connexion (Token)</h2>
-      <form id="token-form" class="inline">
+      <h2 style="margin-top:0;">Connexion (login / mot de passe)</h2>
+      <form id="login-form" class="inline">
         <div>
-          <label for="token">Bearer token *</label>
-          <input id="token" name="token" placeholder="ex: demo-token" required />
+          <label for="login">Login</label>
+          <input id="login" name="login" placeholder="ex: admin" required />
         </div>
-        <div style="display:flex; align-items:flex-end;">
-          <button type="submit">Enregistrer le token</button>
-          <span id="token-message" class="message" style="margin-left:12px;"></span>
+        <div>
+          <label for="password">Mot de passe</label>
+          <input type="password" id="password" name="password" placeholder="ex: admin" required />
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:8px;">
+          <button type="submit">Se connecter</button>
+          <button type="button" class="alt" id="logout-btn">Se déconnecter</button>
+          <span id="login-message" class="message"></span>
         </div>
       </form>
     </section>
@@ -233,41 +238,71 @@
 
   <script>
     const API_URL = './api/equipment.php';
+    const AUTH_URL = './api/auth.php';
     const listEl = document.getElementById('list');
     const listMessage = document.getElementById('list-message');
     const form = document.getElementById('equipment-form');
     const formMessage = document.getElementById('form-message');
-    const tokenForm = document.getElementById('token-form');
-    const tokenInput = document.getElementById('token');
-    const tokenMessage = document.getElementById('token-message');
+    const loginForm = document.getElementById('login-form');
+    const logoutBtn = document.getElementById('logout-btn');
+    const loginMessage = document.getElementById('login-message');
 
-    let apiToken = localStorage.getItem('api_token') || '';
-    if (apiToken) tokenInput.value = apiToken;
+    let currentUser = null;
 
-    tokenForm.addEventListener('submit', (event) => {
+    loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      apiToken = tokenInput.value.trim();
-      localStorage.setItem('api_token', apiToken);
-      tokenMessage.textContent = apiToken ? 'Token enregistré.' : 'Token manquant.';
-      tokenMessage.className = apiToken ? 'message ok' : 'message err';
-      loadEquipment();
+      const payload = {
+        login: loginForm.login.value,
+        password: loginForm.password.value,
+      };
+      try {
+        const res = await fetch(`${AUTH_URL}?action=login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur de connexion');
+        currentUser = data;
+        loginMessage.textContent = `Connecté en tant que ${currentUser.login}`;
+        loginMessage.className = 'message ok';
+        await loadEquipment();
+      } catch (err) {
+        currentUser = null;
+        loginMessage.textContent = err.message;
+        loginMessage.className = 'message err';
+        listEl.innerHTML = '';
+      }
     });
 
-    function authHeaders() {
-      const headers = { 'Content-Type': 'application/json' };
-      if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`;
-      return headers;
-    }
+    logoutBtn.addEventListener('click', async () => {
+      await fetch(`${AUTH_URL}?action=logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      currentUser = null;
+      loginMessage.textContent = 'Déconnecté.';
+      loginMessage.className = 'message';
+      listEl.innerHTML = '';
+      listMessage.textContent = 'Connectez-vous pour voir les équipements.';
+    });
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (!currentUser) {
+        formMessage.textContent = 'Connectez-vous d’abord.';
+        formMessage.className = 'message err';
+        return;
+      }
       const formData = new FormData(form);
       const payload = Object.fromEntries(formData.entries());
 
       try {
         const res = await fetch(API_URL, {
           method: 'POST',
-          headers: authHeaders(),
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -283,10 +318,16 @@
     });
 
     async function loadEquipment() {
+      if (!currentUser) {
+        listEl.innerHTML = '';
+        listMessage.textContent = 'Connectez-vous pour voir les équipements.';
+        listMessage.className = 'message';
+        return;
+      }
       listMessage.textContent = 'Chargement...';
       listMessage.className = 'message';
       try {
-        const res = await fetch(API_URL, { headers: authHeaders() });
+        const res = await fetch(API_URL, { credentials: 'include' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erreur API');
         renderList(data);
@@ -338,7 +379,8 @@
       try {
         const res = await fetch(API_URL, {
           method: 'PUT',
-          headers: authHeaders(),
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ id: Number(id), status }),
         });
         const data = await res.json();
@@ -352,10 +394,16 @@
     }
 
     async function deleteEquipment(id) {
+      if (!currentUser) {
+        listMessage.textContent = 'Connectez-vous pour supprimer.';
+        listMessage.className = 'message err';
+        return;
+      }
       try {
         const res = await fetch(API_URL, {
           method: 'DELETE',
-          headers: authHeaders(),
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ id: Number(id) }),
         });
         if (!res.ok && res.status !== 204) {
@@ -387,7 +435,28 @@
         .replace(/'/g, '&#039;');
     }
 
-    loadEquipment();
+    async function checkSession() {
+      try {
+        const res = await fetch(AUTH_URL, { credentials: 'include' });
+        const data = await res.json();
+        currentUser = data || null;
+        if (currentUser) {
+          loginMessage.textContent = `Connecté en tant que ${currentUser.login}`;
+          loginMessage.className = 'message ok';
+          await loadEquipment();
+        } else {
+          loginMessage.textContent = 'Non connecté.';
+          loginMessage.className = 'message';
+          listMessage.textContent = 'Connectez-vous pour voir les équipements.';
+        }
+      } catch (err) {
+        currentUser = null;
+        loginMessage.textContent = 'Non connecté.';
+        listMessage.textContent = 'Connectez-vous pour voir les équipements.';
+      }
+    }
+
+    checkSession();
   </script>
 </body>
 </html>

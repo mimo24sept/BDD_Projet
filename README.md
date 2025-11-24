@@ -54,13 +54,17 @@ Le département GEII possède un parc de matériel (oscilloscopes, générateurs
 ---
 
 ## 🛠️ Démarrage rapide (mini-stack PHP)
-Un squelette minimal a été ajouté pour tester la connexion base ↔ page web (MySQL via phpMyAdmin).
+Squelette minimal pour dialoguer avec MySQL (phpMyAdmin) + session login/mot de passe.
 
-- `api/config.php` : renseigner `DB_DSN`, `DB_USER`, `DB_PASSWORD` (MySQL par défaut).
-- `api/equipment.php` : mini API REST (GET/POST/PUT/DELETE) protégée par token Bearer.
-- `index.html` : front léger HTML/JS qui consomme l’API.
+- `api/config.php` : renseigner `DB_DSN`, `DB_USER`, `DB_PASSWORD`.
+- `api/db.php` : connexion PDO.
+- `api/install.php` : création des tables `users` et `equipment` + utilisateur par défaut (`admin` / `admin` si la table est vide).
+- `api/auth.php` : login/logout (session PHP).
+- `api/equipment.php` : mini API REST (GET/POST/PUT/DELETE) protégée par la session.
+- `index.html` : front léger HTML/JS ; formulaire de connexion + CRUD matériel via `fetch`.
 
 ### Installer et lancer
-1. Créer la table `equipment` dans votre base MySQL (via phpMyAdmin ou script maison).
-2. Ajuster `api/config.php` ou exporter les variables d’environnement (y compris `API_TOKENS` pour définir la/les clés d’accès, séparées par des virgules).
-3. Servir les fichiers (ex : `php -S localhost:8000` puis ouvrir `http://localhost:8000/`).
+1. Ajuster `api/config.php` ou exporter les variables d’environnement (`DB_DSN`, `DB_USER`, `DB_PASSWORD`).
+2. Exécuter `api/install.php` une fois (par navigateur ou `php api/install.php`) pour créer les tables et l’utilisateur par défaut.
+3. Servir les fichiers (ex : `php -S localhost:8000` depuis `BDD_Projet`, puis ouvrir `http://localhost:8000/`).
+4. Se connecter avec le login/mot de passe stocké en base (par défaut `admin` / `admin` après `install.php`), puis utiliser le CRUD.

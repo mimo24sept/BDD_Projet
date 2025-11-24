@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require __DIR__ . '/db.php';
-$config = require __DIR__ . '/config.php';
+session_start();
 
 try {
     $pdo = get_pdo();
@@ -23,10 +23,9 @@ try {
     exit;
 }
 
-$token = extract_bearer_token();
-if (!is_valid_token($token, $config['tokens'] ?? [])) {
+if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['error' => 'Accès refusé : token invalide ou manquant']);
+    echo json_encode(['error' => 'Accès refusé : veuillez vous connecter']);
     exit;
 }
 
@@ -179,31 +178,4 @@ function fetch_by_id(PDO $pdo, int $id): ?array
     $stmt->execute([':id' => $id]);
     $row = $stmt->fetch();
     return $row ?: null;
-}
-
-function extract_bearer_token(): ?string
-{
-    $header = '';
-    if (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $header = $headers['Authorization'];
-        }
-    }
-    if (!$header && isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $header = $_SERVER['HTTP_AUTHORIZATION'];
-    }
-
-    if (preg_match('/Bearer\\s+(.*)/i', $header, $matches)) {
-        return trim($matches[1]);
-    }
-    return null;
-}
-
-function is_valid_token(?string $token, array $allowedTokens): bool
-{
-    if (!$token) {
-        return false;
-    }
-    return in_array($token, $allowedTokens, true);
 }
