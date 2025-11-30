@@ -1,40 +1,25 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Parc materiels - Emprunts et reservations</title>
+  <title>Connexion - Parc materiels</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./assets/styles.css" />
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <div class="brand-mark">GE</div>
-      <div>
-        <h1>Parc Materiels GEII</h1>
-        <p class="subtitle">Emprunter / Reserver / Suivre</p>
-      </div>
-    </div>
-    <div class="header-actions">
-      <a class="subtitle" href="./README.md">Guide rapide</a>
-    </div>
-  </header>
-
-  <section class="hero">
-    <div class="panel" style="display:grid;gap:12px;">
-      <div class="section-title">
+  <div class="auth-wall">
+    <div class="panel auth-card">
+      <div class="brand" style="margin-bottom:6px;">
+        <div class="brand-mark">GE</div>
         <div>
-          <div class="small-title">Connexion</div>
-          <div class="meta">Identifiants pour acceder aux emprunts</div>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button type="button" class="ghost" id="logout-btn">Se deconnecter</button>
+          <h1>Parc Materiels GEII</h1>
+          <p class="subtitle">Connexion requise pour acceder au catalogue</p>
         </div>
       </div>
-      <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end;">
+      <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
         <div class="input-group">
           <label for="login">Login</label>
           <input id="login" name="login" placeholder="ex: admin" required />
@@ -47,78 +32,7 @@
         <div id="login-msg" class="message"></div>
       </form>
     </div>
-  </section>
-
-  <main>
-    <div class="tabs">
-      <div class="tab active" data-tab="borrow">Emprunter un objet</div>
-      <div class="tab" data-tab="loans">Mes emprunts & stats</div>
-    </div>
-
-    <section class="panel" data-section="borrow">
-      <div class="section-title" style="margin-bottom:10px;">
-        <div>
-          <div class="small-title">Catalogue</div>
-          <h3 style="margin:2px 0 0;">Selectionne et filtre par tags</h3>
-        </div>
-      </div>
-      <div class="filters">
-        <div class="input-group">
-          <label for="search">Recherche</label>
-          <input id="search" placeholder="oscilloscope, laptop, FPGA..." />
-        </div>
-        <div class="input-group">
-          <label>Tags</label>
-          <div class="tag-bar" id="tag-bar"></div>
-        </div>
-      </div>
-      <div style="height:12px"></div>
-      <div id="catalog" class="catalog"></div>
-    </section>
-
-    <section class="panel" data-section="loans" hidden>
-      <div class="section-title">
-        <div>
-          <div class="small-title">Mes emprunts</div>
-          <h3 style="margin:2px 0 0;">Retours anticipes, suivi et stats</h3>
-        </div>
-      </div>
-      <div class="stats" style="margin:12px 0;">
-        <div class="stat-card">
-          <div class="stat-label">Emprunts cette annee</div>
-          <div class="stat-value" id="stat-total">0</div>
-          <div class="stat-trend">+12% vs N-1</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">En cours</div>
-          <div class="stat-value" id="stat-active">0</div>
-          <div class="stat-trend" style="color:var(--warning);">En suivre</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Rendus</div>
-          <div class="stat-value" id="stat-returned">0</div>
-          <div class="stat-trend">Sans retard</div>
-        </div>
-      </div>
-      <div class="loans-list" id="loans"></div>
-    </section>
-  </main>
-
-  <div class="modal-backdrop" id="modal">
-    <div class="modal">
-      <div class="top">
-        <h3 id="modal-title">Materiel</h3>
-        <button type="button" class="ghost" id="close-modal">Fermer</button>
-      </div>
-      <div id="modal-body"></div>
-      <div class="divider"></div>
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <div id="modal-msg" class="message"></div>
-        <button id="reserve-btn" type="button">Reserver</button>
-      </div>
-    </div>
   </div>
-
-  <script src="./assets/app.js" defer></script>
+  <script src="./assets/login.js" defer></script>
 </body>
 </html>

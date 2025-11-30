@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Dashboard / reservations stub. Replace array data by real SELECT queries when DB schema is ready.
 
 declare(strict_types=1);
@@ -62,3 +62,4 @@ echo json_encode([
     'loans' => $loans,
     'stats' => $stats,
 ]);
+
