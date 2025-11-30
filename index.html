@@ -1,462 +1,124 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Parc de matériels GEII</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --ink: #0f172a;
-      --sky: #0ea5e9;
-      --lime: #84cc16;
-      --sand: #f9fafb;
-      --card: #0b1220;
-      --accent: #f59e0b;
-      --danger: #ef4444;
-      --muted: #94a3b8;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: 'Space Grotesk', 'Segoe UI', 'Helvetica Neue', sans-serif;
-      background: radial-gradient(circle at 20% 20%, rgba(14,165,233,0.12), transparent 30%),
-                  radial-gradient(circle at 80% 0%, rgba(132,204,22,0.12), transparent 25%),
-                  #0a0f1c;
-      color: #e2e8f0;
-      min-height: 100vh;
-    }
-    header {
-      padding: 48px 24px 24px;
-      text-align: center;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-weight: 600;
-      letter-spacing: -0.5px;
-    }
-    .subtitle {
-      color: var(--muted);
-      margin: 0;
-    }
-    main {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 0 24px 64px;
-    }
-    .panel {
-      background: rgba(16, 24, 40, 0.85);
-      border: 1px solid rgba(226, 232, 240, 0.06);
-      border-radius: 18px;
-      padding: 20px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-      backdrop-filter: blur(4px);
-    }
-    .panel + .panel { margin-top: 18px; }
-    label {
-      display: block;
-      font-size: 14px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    input, select, textarea {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(226, 232, 240, 0.12);
-      background: #0f172a;
-      color: #e2e8f0;
-      font-family: inherit;
-      transition: border-color 0.2s, transform 0.1s;
-    }
-    input:focus, select:focus, textarea:focus {
-      outline: none;
-      border-color: var(--sky);
-      transform: translateY(-1px);
-    }
-    textarea { resize: vertical; min-height: 70px; }
-    .grid {
-      display: grid;
-      gap: 18px;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid rgba(226, 232, 240, 0.08);
-      border-radius: 16px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.3);
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .pill.status-ok { background: rgba(132,204,22,0.18); color: #d9f99d; }
-    .pill.status-warn { background: rgba(245,158,11,0.18); color: #fef3c7; }
-    .pill.status-bad { background: rgba(239,68,68,0.18); color: #fecdd3; }
-    .card h3 { margin: 0; }
-    .meta { color: var(--muted); font-size: 14px; }
-    .actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    button {
-      border: none;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: linear-gradient(120deg, var(--sky), #14b8a6);
-      color: #0b1220;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 0.1s ease, box-shadow 0.2s;
-      box-shadow: 0 10px 28px rgba(14,165,233,0.35);
-    }
-    button:active { transform: translateY(1px); }
-    button.alt {
-      background: rgba(148, 163, 184, 0.16);
-      color: #e2e8f0;
-      box-shadow: none;
-    }
-    button.danger {
-      background: rgba(239, 68, 68, 0.18);
-      color: #fecdd3;
-      box-shadow: none;
-    }
-    form {
-      display: grid;
-      gap: 12px;
-    }
-    .inline {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-    }
-    .message {
-      margin-top: 10px;
-      font-size: 14px;
-    }
-    .message.ok { color: #a3e635; }
-    .message.err { color: #fca5a5; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parc materiels - Emprunts et reservations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./assets/styles.css" />
 </head>
 <body>
   <header>
-    <h1>Parc de matériels GEII</h1>
-    <p class="subtitle">Inventaire, prêts et maintenance — connecté à votre base PostgreSQL.</p>
+    <div class="brand">
+      <div class="brand-mark">GE</div>
+      <div>
+        <h1>Parc Materiels GEII</h1>
+        <p class="subtitle">Emprunter / Reserver / Suivre</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a class="subtitle" href="./README.md">Guide rapide</a>
+    </div>
   </header>
 
-  <main>
-    <section class="panel">
-      <h2 style="margin-top:0;">Connexion (login / mot de passe)</h2>
-      <form id="login-form" class="inline">
+  <section class="hero">
+    <div class="panel" style="display:grid;gap:12px;">
+      <div class="section-title">
         <div>
+          <div class="small-title">Connexion</div>
+          <div class="meta">Identifiants pour acceder aux emprunts</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button type="button" class="ghost" id="logout-btn">Se deconnecter</button>
+        </div>
+      </div>
+      <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end;">
+        <div class="input-group">
           <label for="login">Login</label>
           <input id="login" name="login" placeholder="ex: admin" required />
         </div>
-        <div>
+        <div class="input-group">
           <label for="password">Mot de passe</label>
-          <input type="password" id="password" name="password" placeholder="ex: admin" required />
+          <input id="password" name="password" type="password" placeholder="****" required />
         </div>
-        <div style="display:flex; align-items:flex-end; gap:8px;">
-          <button type="submit">Se connecter</button>
-          <button type="button" class="alt" id="logout-btn">Se déconnecter</button>
-          <span id="login-message" class="message"></span>
-        </div>
+        <button type="submit">Connexion</button>
+        <div id="login-msg" class="message"></div>
       </form>
-    </section>
+    </div>
+  </section>
 
-    <section class="panel">
-      <h2 style="margin-top:0;">Nouvel équipement</h2>
-      <form id="equipment-form">
-        <div class="inline">
-          <div>
-            <label for="name">Nom *</label>
-            <input id="name" name="name" placeholder="Oscilloscope Tektronix" required />
-          </div>
-          <div>
-            <label for="category">Catégorie *</label>
-            <input id="category" name="category" placeholder="Mesure / Carte / Alim" required />
-          </div>
-        </div>
-        <div class="inline">
-          <div>
-            <label for="location">Localisation</label>
-            <input id="location" name="location" placeholder="Salle TP B203" />
-          </div>
-          <div>
-            <label for="status">Statut</label>
-            <select id="status" name="status">
-              <option value="disponible">Disponible</option>
-              <option value="reserve">Réservé</option>
-              <option value="pret">En prêt</option>
-              <option value="maintenance">Maintenance</option>
-            </select>
-          </div>
-        </div>
-        <div class="inline">
-          <div>
-            <label for="condition">État</label>
-            <input id="condition" name="condition" placeholder="Bon / Usure / À contrôler" />
-          </div>
-          <div>
-            <label for="last_service">Dernière maintenance</label>
-            <input type="date" id="last_service" name="last_service" />
-          </div>
-        </div>
+  <main>
+    <div class="tabs">
+      <div class="tab active" data-tab="borrow">Emprunter un objet</div>
+      <div class="tab" data-tab="loans">Mes emprunts & stats</div>
+    </div>
+
+    <section class="panel" data-section="borrow">
+      <div class="section-title" style="margin-bottom:10px;">
         <div>
-          <label for="notes">Notes</label>
-          <textarea id="notes" name="notes" placeholder="Accessoires, panne connue, numéro de série..."></textarea>
+          <div class="small-title">Catalogue</div>
+          <h3 style="margin:2px 0 0;">Selectionne et filtre par tags</h3>
         </div>
-        <div class="actions">
-          <button type="submit">Ajouter au parc</button>
-          <span id="form-message" class="message"></span>
+      </div>
+      <div class="filters">
+        <div class="input-group">
+          <label for="search">Recherche</label>
+          <input id="search" placeholder="oscilloscope, laptop, FPGA..." />
         </div>
-      </form>
+        <div class="input-group">
+          <label>Tags</label>
+          <div class="tag-bar" id="tag-bar"></div>
+        </div>
+      </div>
+      <div style="height:12px"></div>
+      <div id="catalog" class="catalog"></div>
     </section>
 
-    <section class="panel">
-      <h2 style="margin-top:0;">Équipements</h2>
-      <div id="list" class="grid"></div>
-      <p id="list-message" class="message"></p>
+    <section class="panel" data-section="loans" hidden>
+      <div class="section-title">
+        <div>
+          <div class="small-title">Mes emprunts</div>
+          <h3 style="margin:2px 0 0;">Retours anticipes, suivi et stats</h3>
+        </div>
+      </div>
+      <div class="stats" style="margin:12px 0;">
+        <div class="stat-card">
+          <div class="stat-label">Emprunts cette annee</div>
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-trend">+12% vs N-1</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">En cours</div>
+          <div class="stat-value" id="stat-active">0</div>
+          <div class="stat-trend" style="color:var(--warning);">En suivre</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Rendus</div>
+          <div class="stat-value" id="stat-returned">0</div>
+          <div class="stat-trend">Sans retard</div>
+        </div>
+      </div>
+      <div class="loans-list" id="loans"></div>
     </section>
   </main>
 
-  <script>
-    const API_URL = './api/equipment.php';
-    const AUTH_URL = './api/auth.php';
-    const listEl = document.getElementById('list');
-    const listMessage = document.getElementById('list-message');
-    const form = document.getElementById('equipment-form');
-    const formMessage = document.getElementById('form-message');
-    const loginForm = document.getElementById('login-form');
-    const logoutBtn = document.getElementById('logout-btn');
-    const loginMessage = document.getElementById('login-message');
+  <div class="modal-backdrop" id="modal">
+    <div class="modal">
+      <div class="top">
+        <h3 id="modal-title">Materiel</h3>
+        <button type="button" class="ghost" id="close-modal">Fermer</button>
+      </div>
+      <div id="modal-body"></div>
+      <div class="divider"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div id="modal-msg" class="message"></div>
+        <button id="reserve-btn" type="button">Reserver</button>
+      </div>
+    </div>
+  </div>
 
-    let currentUser = null;
-
-    loginForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const payload = {
-        login: loginForm.login.value,
-        password: loginForm.password.value,
-      };
-      try {
-        const res = await fetch(`${AUTH_URL}?action=login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur de connexion');
-        currentUser = data;
-        loginMessage.textContent = `Connecté en tant que ${currentUser.login}`;
-        loginMessage.className = 'message ok';
-        await loadEquipment();
-      } catch (err) {
-        currentUser = null;
-        loginMessage.textContent = err.message;
-        loginMessage.className = 'message err';
-        listEl.innerHTML = '';
-      }
-    });
-
-    logoutBtn.addEventListener('click', async () => {
-      await fetch(`${AUTH_URL}?action=logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      currentUser = null;
-      loginMessage.textContent = 'Déconnecté.';
-      loginMessage.className = 'message';
-      listEl.innerHTML = '';
-      listMessage.textContent = 'Connectez-vous pour voir les équipements.';
-    });
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      if (!currentUser) {
-        formMessage.textContent = 'Connectez-vous d’abord.';
-        formMessage.className = 'message err';
-        return;
-      }
-      const formData = new FormData(form);
-      const payload = Object.fromEntries(formData.entries());
-
-      try {
-        const res = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur API');
-        form.reset();
-        formMessage.textContent = 'Équipement ajouté.';
-        formMessage.className = 'message ok';
-        await loadEquipment();
-      } catch (err) {
-        formMessage.textContent = err.message;
-        formMessage.className = 'message err';
-      }
-    });
-
-    async function loadEquipment() {
-      if (!currentUser) {
-        listEl.innerHTML = '';
-        listMessage.textContent = 'Connectez-vous pour voir les équipements.';
-        listMessage.className = 'message';
-        return;
-      }
-      listMessage.textContent = 'Chargement...';
-      listMessage.className = 'message';
-      try {
-        const res = await fetch(API_URL, { credentials: 'include' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur API');
-        renderList(data);
-        listMessage.textContent = data.length ? '' : 'Aucun équipement enregistré.';
-      } catch (err) {
-        listMessage.textContent = err.message;
-        listMessage.className = 'message err';
-      }
-    }
-
-    function renderList(items) {
-      listEl.innerHTML = '';
-      items.forEach((item) => {
-        const card = document.createElement('article');
-        card.className = 'card';
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <h3>${escapeHtml(item.name)}</h3>
-              <div class="meta">${escapeHtml(item.category || 'Sans catégorie')}</div>
-            </div>
-            ${statusPill(item.status)}
-          </div>
-          <div class="meta">Localisation : ${escapeHtml(item.location || '—')}</div>
-          <div class="meta">État : ${escapeHtml(item.condition || '—')}</div>
-          <div class="meta">Dernière maintenance : ${item.last_service ? escapeHtml(item.last_service) : '—'}</div>
-          <div class="meta">Notes : ${escapeHtml(item.notes || '—')}</div>
-          <div class="actions">
-            <button class="alt" data-action="set-status" data-status="disponible" data-id="${item.id}">Disponible</button>
-            <button class="alt" data-action="set-status" data-status="pret" data-id="${item.id}">En prêt</button>
-            <button class="alt" data-action="set-status" data-status="maintenance" data-id="${item.id}">Maintenance</button>
-            <button class="danger" data-action="delete" data-id="${item.id}">Supprimer</button>
-          </div>
-        `;
-        listEl.appendChild(card);
-      });
-      listEl.querySelectorAll('button[data-action="set-status"]').forEach((btn) => {
-        btn.addEventListener('click', () => updateStatus(btn.dataset.id, btn.dataset.status));
-      });
-      listEl.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          if (confirm('Supprimer cet équipement ?')) deleteEquipment(btn.dataset.id);
-        });
-      });
-    }
-
-    async function updateStatus(id, status) {
-      listMessage.textContent = 'Mise à jour...';
-      try {
-        const res = await fetch(API_URL, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ id: Number(id), status }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur API');
-        await loadEquipment();
-        listMessage.textContent = '';
-      } catch (err) {
-        listMessage.textContent = err.message;
-        listMessage.className = 'message err';
-      }
-    }
-
-    async function deleteEquipment(id) {
-      if (!currentUser) {
-        listMessage.textContent = 'Connectez-vous pour supprimer.';
-        listMessage.className = 'message err';
-        return;
-      }
-      try {
-        const res = await fetch(API_URL, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ id: Number(id) }),
-        });
-        if (!res.ok && res.status !== 204) {
-          const data = await res.json();
-          throw new Error(data.error || 'Erreur API');
-        }
-        await loadEquipment();
-      } catch (err) {
-        listMessage.textContent = err.message;
-        listMessage.className = 'message err';
-      }
-    }
-
-    function statusPill(status = '') {
-      const normalized = status.toLowerCase();
-      let cls = 'status-ok';
-      let label = status || 'disponible';
-      if (['maintenance', 'incident'].includes(normalized)) cls = 'status-bad';
-      if (['pret', 'reserve'].includes(normalized)) cls = 'status-warn';
-      return `<span class="pill ${cls}">${escapeHtml(label)}</span>`;
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-
-    async function checkSession() {
-      try {
-        const res = await fetch(AUTH_URL, { credentials: 'include' });
-        const data = await res.json();
-        currentUser = data || null;
-        if (currentUser) {
-          loginMessage.textContent = `Connecté en tant que ${currentUser.login}`;
-          loginMessage.className = 'message ok';
-          await loadEquipment();
-        } else {
-          loginMessage.textContent = 'Non connecté.';
-          loginMessage.className = 'message';
-          listMessage.textContent = 'Connectez-vous pour voir les équipements.';
-        }
-      } catch (err) {
-        currentUser = null;
-        loginMessage.textContent = 'Non connecté.';
-        listMessage.textContent = 'Connectez-vous pour voir les équipements.';
-      }
-    }
-
-    checkSession();
-  </script>
+  <script src="./assets/app.js" defer></script>
 </body>
 </html>
