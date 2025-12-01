@@ -13,9 +13,9 @@
     inventory: [],
     loans: [],
     activeTab: 'borrow',
-    demo: false,
     filters: { search: '', tag: null },
     modalItem: null,
+    stats: null,
   };
 
   const logoutBtn = document.querySelector('#logout-btn');
@@ -40,22 +40,9 @@
   let dateStartInput = null;
   let dateEndInput = null;
 
-  const mockInventory = [
-    { id: 1, name: 'Oscilloscope Tektronix MDO3024', category: 'Mesure', tags: ['oscilloscope', 'mesure', 'labo'], status: 'disponible', location: 'Salle B203', picture: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80', description: 'Oscilloscope 200 MHz quatre voies, interfaces USB/LAN.' },
-    { id: 2, name: 'Carte FPGA Artix-7', category: 'Electronique', tags: ['fpga', 'programmation'], status: 'reserve', location: 'FabLab', picture: 'https://images.unsplash.com/photo-1582719478250-9ff3e11e8b72?auto=format&fit=crop&w=1200&q=80', description: 'Carte de dev basee sur FPGA Artix-7 avec HDMI et DDR3.' },
-    { id: 3, name: 'Station de soudure JBC', category: 'Atelier', tags: ['soudure', 'atelier'], status: 'maintenance', location: 'Atelier 2', picture: 'https://images.unsplash.com/photo-1582719478181-2e30d6f7c9c5?auto=format&fit=crop&w=1200&q=80', description: 'Station soudure precision avec regulation numerique.' },
-    { id: 4, name: 'Imprimante 3D Prusa', category: 'Proto', tags: ['3d', 'prototype'], status: 'disponible', location: 'Lab Proto', picture: 'https://images.unsplash.com/photo-1502877828070-33c90c1df2f1?auto=format&fit=crop&w=1200&q=80', description: 'Prusa MK3S, plateau chauffant, volume 250x210x210.' },
-  ];
-
-  const mockLoans = [
-    { id: 101, name: 'Oscilloscope Tektronix MDO3024', due: '2025-12-10', start: '2025-12-01', status: 'en cours', progress: 45 },
-    { id: 102, name: 'Carte FPGA Artix-7', due: '2025-12-15', start: '2025-12-05', status: 'reserve', progress: 10 },
-  ];
-
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       await apiLogout();
-      localStorage.removeItem('demoUser');
       state.user = null;
       window.location.href = 'index.html';
     });
@@ -94,8 +81,40 @@
         modalMsg.className = 'message err';
         return;
       }
-      modalMsg.textContent = 'Reservation enregistree (mock)';
-      modalMsg.className = 'message ok';
+      modalMsg.textContent = 'Reservation en cours...';
+      modalMsg.className = 'message';
+      try {
+        const payload = {
+          id: state.modalItem?.id,
+          start: dateStartInput.value,
+          end: dateEndInput.value,
+        };
+        const res = await fetch(`${API.equipment}?action=reserve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Réservation impossible');
+        // Reflect status locally.
+        if (data?.equipment) {
+          const idx = state.inventory.findIndex((i) => i.id === data.equipment.id);
+          if (idx !== -1) {
+            state.inventory[idx] = {
+              ...state.inventory[idx],
+              ...data.equipment,
+              status: 'reserve',
+            };
+            renderCatalog();
+          }
+        }
+        modalMsg.textContent = 'Reservation enregistrée';
+        modalMsg.className = 'message ok';
+      } catch (err) {
+        modalMsg.textContent = err?.message || 'Erreur de réservation';
+        modalMsg.className = 'message err';
+      }
     });
   }
 
@@ -104,10 +123,8 @@
       const res = await fetch(API.auth, { credentials: 'include' });
       const data = await res.json();
       state.user = data || null;
-      state.demo = false;
     } catch (e) {
       state.user = null;
-      state.demo = false;
     }
   }
 
@@ -116,21 +133,42 @@
       const res = await fetch(API.equipment, { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API equipement');
-      state.inventory = data.map((item) => ({
-        ...item,
-        tags: item.tags || ['general'],
-        picture: item.picture || placeholderImage(item.name),
-        description: item.notes || 'Description a venir.',
-      }));
+      state.inventory = data.map((item) => {
+        const tags = (item.tags && item.tags.length ? item.tags : [
+          item.category,
+          item.condition,
+          item.maintenance ? 'maintenance' : null,
+        ]).filter(Boolean);
+        const descriptionParts = [
+          item.notes,
+          item.condition ? `Etat: ${item.condition}` : '',
+          item.next_service ? `Maintenance prevue le ${item.next_service}` : '',
+        ].filter(Boolean);
+        return {
+          ...item,
+          tags,
+          picture: item.picture || placeholderImage(item.name),
+          description: descriptionParts.join(' — ') || 'Description a venir.',
+        };
+      });
       return;
     } catch (err) {
-      state.inventory = mockInventory;
-      state.demo = true;
+      state.inventory = [];
     }
   }
 
   async function apiFetchLoans() {
-    state.loans = mockLoans;
+    try {
+      const res = await fetch(API.dashboard, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'API emprunts');
+      state.loans = data.loans || [];
+      state.stats = data.stats || null;
+      return;
+    } catch (err) {
+      state.loans = [];
+      state.stats = null;
+    }
   }
 
   async function apiLogout() {
@@ -141,8 +179,7 @@
 
   function setAuthUI() {
     if (userChip) {
-      const prefix = state.demo ? 'Demo' : 'Connecte';
-      userChip.textContent = state.user ? `${prefix}: ${state.user.login || 'profil'}` : 'Non connecte';
+      userChip.textContent = state.user ? `Connecte: ${state.user.login || 'profil'}` : 'Non connecte';
     }
   }
 
@@ -241,12 +278,15 @@
   }
 
   function renderStats() {
-    const total = state.loans.length;
-    const active = state.loans.filter((l) => l.status === 'en cours').length;
-    const returned = Math.max(0, total - active);
-    statsEls.total.textContent = total.toString();
-    statsEls.active.textContent = active.toString();
-    statsEls.returned.textContent = returned.toString();
+    const fallback = {
+      total_year: state.loans.length,
+      active: state.loans.filter((l) => l.status === 'en cours').length,
+      returned: Math.max(0, state.loans.length - state.loans.filter((l) => l.status === 'en cours').length),
+    };
+    const stats = state.stats || fallback;
+    statsEls.total.textContent = String(stats.total_year ?? stats.total ?? 0);
+    statsEls.active.textContent = String(stats.active ?? 0);
+    statsEls.returned.textContent = String(stats.returned ?? 0);
   }
 
   function openModal(item) {
@@ -333,13 +373,6 @@
 
   (async function start() {
     await apiSession();
-    if (!state.user) {
-      const demoUser = localStorage.getItem('demoUser');
-      if (demoUser) {
-        state.user = { login: demoUser };
-        state.demo = true;
-      }
-    }
     if (!state.user) {
       window.location.href = 'index.html';
       return;

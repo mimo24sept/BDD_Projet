@@ -19,7 +19,7 @@ try {
     $pdo = get_pdo();
 } catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Database connection failed', 'details' => $e->getMessage()]);
+    echo json_encode(['error' => 'Connexion à la base impossible', 'details' => $e->getMessage()]);
     exit;
 }
 
@@ -56,18 +56,25 @@ function login(PDO $pdo): void
         return;
     }
 
-    $stmt = $pdo->prepare('SELECT id, login, password_hash FROM users WHERE login = :login LIMIT 1');
-    $stmt->execute([':login' => $login]);
+    $stmt = $pdo->prepare(
+        'SELECT u.IDuser, u.Couriel, u.MDP, u.NOMuser, u.IDrole, r.Role
+         FROM `User` u
+         LEFT JOIN `Roles` r ON r.IDrole = u.IDrole
+         WHERE LOWER(u.Couriel) = LOWER(:loginMail) OR LOWER(u.NOMuser) = LOWER(:loginName)
+         LIMIT 1'
+    );
+    $stmt->execute([':loginMail' => $login, ':loginName' => $login]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$user || !password_verify($password, $user['password_hash'])) {
+    if (!$user || !is_valid_password($password, (string) $user['MDP'])) {
         http_response_code(401);
         echo json_encode(['error' => 'Identifiants invalides']);
         return;
     }
 
-    $_SESSION['user_id'] = (int) $user['id'];
-    $_SESSION['login'] = $user['login'];
+    $_SESSION['user_id'] = (int) $user['IDuser'];
+    $_SESSION['login'] = $user['NOMuser'] ?: $user['Couriel'];
+    $_SESSION['role'] = $user['Role'] ?? 'Utilisateur';
 
     echo json_encode(current_user());
 }
@@ -84,8 +91,22 @@ function current_user(): ?array
     if (!isset($_SESSION['user_id'])) {
         return null;
     }
+
     return [
         'id' => (int) $_SESSION['user_id'],
         'login' => $_SESSION['login'] ?? '',
+        'role' => $_SESSION['role'] ?? 'Utilisateur',
     ];
+}
+
+function is_valid_password(string $input, string $stored): bool
+{
+    // Accept either hashed (password_hash) or clear-text values stored in the SQL dump.
+    if ($stored === '') {
+        return false;
+    }
+    if (password_verify($input, $stored)) {
+        return true;
+    }
+    return hash_equals($stored, $input);
 }

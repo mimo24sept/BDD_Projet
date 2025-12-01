@@ -16,11 +16,8 @@ loginForm.addEventListener('submit', async (e) => {
     await apiLogin({ login, password });
     window.location.href = 'menu.html';
   } catch (err) {
-    // Fallback demo mode: allow UI preview without API/PHP.
-    localStorage.setItem('demoUser', login || 'demo');
-    loginMsg.textContent = 'Mode demo actif (API non disponible)';
-    loginMsg.className = 'message ok';
-    window.location.href = 'menu.html';
+    loginMsg.textContent = err?.message || 'Connexion impossible';
+    loginMsg.className = 'message err';
   }
 });
 
@@ -37,7 +34,10 @@ async function apiLogin(payload) {
   } catch (parseErr) {
     throw new Error('Reponse non valide (PHP non lance ?)');
   }
-  if (!res.ok) throw new Error(data?.error || 'Erreur de connexion');
-  localStorage.setItem('demoUser', '');
+  if (!res.ok) {
+    const err = new Error(data?.error || 'Erreur de connexion');
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }

@@ -23,84 +23,94 @@ try {
     exit;
 }
 
+$method = $_SERVER['REQUEST_METHOD'];
+$action = $_GET['action'] ?? '';
+
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Accès refusé : veuillez vous connecter']);
     exit;
 }
 
-$method = $_SERVER['REQUEST_METHOD'];
-
-switch ($method) {
-    case 'GET':
-        list_equipment($pdo);
-        break;
-    case 'POST':
-        create_equipment($pdo);
-        break;
-    case 'PUT':
-        update_equipment($pdo);
-        break;
-    case 'DELETE':
-        delete_equipment($pdo);
-        break;
-    default:
-        http_response_code(405);
-        echo json_encode(['error' => 'Method not allowed']);
+if ($method === 'GET') {
+    list_equipment($pdo);
+    exit;
 }
+
+if ($method === 'POST' && $action === 'reserve') {
+    reserve_equipment($pdo, (int) $_SESSION['user_id']);
+    exit;
+}
+
+http_response_code(405);
+echo json_encode(['error' => 'Method not allowed']);
 
 function list_equipment(PDO $pdo): void
 {
     $stmt = $pdo->query(
-        'SELECT id, name, category, location, status, condition, notes, last_service
-         FROM equipment
-         ORDER BY id DESC'
+        'SELECT
+            m.IDmateriel AS id,
+            m.NOMmateriel AS name,
+            m.Emplacement AS location,
+            m.Statut AS statut,
+            cat.Categorie AS category,
+            inv.Numserie AS numserie,
+            inv.Etat AS etat,
+            inv.Remarque AS remarque,
+            maint.Dateprevu AS maintenance_date,
+            maint.Type AS maintenance_type
+        FROM `Matériels` m
+        LEFT JOIN `Catégorie` cat ON cat.IDcategorie = m.IDcategorie
+        LEFT JOIN `Inventaire` inv ON inv.IDmateriel = m.IDmateriel
+        LEFT JOIN (
+            SELECT IDmateriel, MIN(Dateprevu) AS Dateprevu, GROUP_CONCAT(DISTINCT Type SEPARATOR ", ") AS Type
+            FROM maintenance
+            GROUP BY IDmateriel
+        ) maint ON maint.IDmateriel = m.IDmateriel
+        ORDER BY m.IDmateriel DESC'
     );
-    $rows = $stmt->fetchAll();
-    echo json_encode($rows);
-}
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-function create_equipment(PDO $pdo): void
-{
-    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
-    $name = trim($data['name'] ?? '');
-    $category = trim($data['category'] ?? '');
-    $location = trim($data['location'] ?? '');
-    $status = trim($data['status'] ?? 'disponible');
-    $condition = trim($data['condition'] ?? '');
-    $notes = trim($data['notes'] ?? '');
-    $lastService = $data['last_service'] ?? null;
+    $items = [];
+    foreach ($rows as $row) {
+        $id = (int) ($row['id'] ?? 0);
+        if (!isset($items[$id])) {
+            $items[$id] = [
+                'id' => $id,
+                'name' => $row['name'] ?? '',
+                'category' => $row['category'] ?? 'Non classé',
+                'location' => $row['location'] ?? '',
+                'status' => map_status((int) ($row['statut'] ?? 0), $row['maintenance_date'] ?? null),
+                'condition' => $row['etat'] ?? '',
+                'notes' => $row['remarque'] ?? '',
+                'serial' => $row['numserie'] ?? '',
+                'tags' => [],
+                'maintenance' => $row['maintenance_type'] ?? '',
+                'next_service' => $row['maintenance_date'] ?? null,
+            ];
+        }
 
-    if ($name === '' || $category === '') {
-        http_response_code(400);
-        echo json_encode(['error' => 'Champs requis manquants (name, category)']);
-        return;
+        $items[$id]['tags'] = merge_tags(
+            $items[$id]['tags'],
+            [
+                $items[$id]['category'],
+                $items[$id]['condition'],
+                $items[$id]['maintenance'] ? 'maintenance' : null,
+            ]
+        );
     }
 
-    $stmt = $pdo->prepare(
-        'INSERT INTO equipment (name, category, location, status, condition, notes, last_service)
-         VALUES (:name, :category, :location, :status, :condition, :notes, :last_service)'
-    );
-    $stmt->execute([
-        ':name' => $name,
-        ':category' => $category,
-        ':location' => $location,
-        ':status' => $status,
-        ':condition' => $condition,
-        ':notes' => $notes,
-        ':last_service' => $lastService ?: null,
-    ]);
-
-    $id = (int) $pdo->lastInsertId();
-    $created = fetch_by_id($pdo, $id);
-    http_response_code(201);
-    echo json_encode($created);
+    echo json_encode(array_values($items));
 }
 
-function update_equipment(PDO $pdo): void
+function reserve_equipment(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
     $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $start = trim((string) ($data['start'] ?? ''));
+    if ($start === '') {
+        $start = date('Y-m-d');
+    }
 
     if ($id <= 0) {
         http_response_code(400);
@@ -108,74 +118,101 @@ function update_equipment(PDO $pdo): void
         return;
     }
 
-    $stmt = $pdo->prepare(
-        'UPDATE equipment
-         SET name = COALESCE(:name, name),
-             category = COALESCE(:category, category),
-             location = COALESCE(:location, location),
-             status = COALESCE(:status, status),
-             condition = COALESCE(:condition, condition),
-             notes = COALESCE(:notes, notes),
-             last_service = COALESCE(:last_service, last_service)
-         WHERE id = :id'
-    );
-    $stmt->execute([
-        ':id' => $id,
-        ':name' => $data['name'] ?? null,
-        ':category' => $data['category'] ?? null,
-        ':location' => $data['location'] ?? null,
-        ':status' => $data['status'] ?? null,
-        ':condition' => $data['condition'] ?? null,
-        ':notes' => $data['notes'] ?? null,
-        ':last_service' => $data['last_service'] ?? null,
-    ]);
+    $pdo->beginTransaction();
+    try {
+        $update = $pdo->prepare('UPDATE `Matériels` SET Statut = 0 WHERE IDmateriel = :id');
+        $update->execute([':id' => $id]);
 
-    if ($stmt->rowCount() === 0) {
-        http_response_code(404);
-        echo json_encode(['error' => 'Equipement introuvable']);
+        $insert = $pdo->prepare(
+            'INSERT INTO `réservation` (IDmateriel, IDuser, Debut, Statut)
+             VALUES (:id, :uid, :debut, :statut)'
+        );
+        $insert->execute([
+            ':id' => $id,
+            ':uid' => $userId,
+            ':debut' => $start,
+            ':statut' => 'Confirmé',
+        ]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Réservation impossible', 'details' => $e->getMessage()]);
         return;
     }
 
-    $updated = fetch_by_id($pdo, $id);
-    if (!$updated) {
-        http_response_code(404);
-        echo json_encode(['error' => 'Equipement introuvable']);
-        return;
-    }
-
-    echo json_encode($updated);
+    $updated = fetch_equipment_by_id($pdo, $id);
+    echo json_encode(['status' => 'ok', 'equipment' => $updated]);
 }
 
-function delete_equipment(PDO $pdo): void
-{
-    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
-    $id = isset($data['id']) ? (int) $data['id'] : 0;
-
-    if ($id <= 0) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Identifiant manquant ou invalide']);
-        return;
-    }
-
-    $stmt = $pdo->prepare('DELETE FROM equipment WHERE id = :id');
-    $stmt->execute([':id' => $id]);
-
-    if ($stmt->rowCount() === 0) {
-        http_response_code(404);
-        echo json_encode(['error' => 'Equipement introuvable']);
-        return;
-    }
-
-    http_response_code(204);
-}
-
-function fetch_by_id(PDO $pdo, int $id): ?array
+function fetch_equipment_by_id(PDO $pdo, int $id): ?array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, name, category, location, status, condition, notes, last_service
-         FROM equipment WHERE id = :id'
+        'SELECT
+            m.IDmateriel AS id,
+            m.NOMmateriel AS name,
+            m.Emplacement AS location,
+            m.Statut AS statut,
+            cat.Categorie AS category,
+            inv.Numserie AS numserie,
+            inv.Etat AS etat,
+            inv.Remarque AS remarque,
+            maint.Dateprevu AS maintenance_date,
+            maint.Type AS maintenance_type
+        FROM `Matériels` m
+        LEFT JOIN `Catégorie` cat ON cat.IDcategorie = m.IDcategorie
+        LEFT JOIN `Inventaire` inv ON inv.IDmateriel = m.IDmateriel
+        LEFT JOIN (
+            SELECT IDmateriel, MIN(Dateprevu) AS Dateprevu, GROUP_CONCAT(DISTINCT Type SEPARATOR ", ") AS Type
+            FROM maintenance
+            GROUP BY IDmateriel
+        ) maint ON maint.IDmateriel = m.IDmateriel
+        WHERE m.IDmateriel = :id
+        LIMIT 1'
     );
     $stmt->execute([':id' => $id]);
-    $row = $stmt->fetch();
-    return $row ?: null;
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return null;
+    }
+
+    $mapped = [
+        'id' => (int) ($row['id'] ?? 0),
+        'name' => $row['name'] ?? '',
+        'category' => $row['category'] ?? 'Non classé',
+        'location' => $row['location'] ?? '',
+        'status' => map_status((int) ($row['statut'] ?? 0), $row['maintenance_date'] ?? null),
+        'condition' => $row['etat'] ?? '',
+        'notes' => $row['remarque'] ?? '',
+        'serial' => $row['numserie'] ?? '',
+        'tags' => [],
+        'maintenance' => $row['maintenance_type'] ?? '',
+        'next_service' => $row['maintenance_date'] ?? null,
+    ];
+
+    $mapped['tags'] = merge_tags(
+        $mapped['tags'],
+        [
+            $mapped['category'],
+            $mapped['condition'],
+            $mapped['maintenance'] ? 'maintenance' : null,
+        ]
+    );
+
+    return $mapped;
+}
+
+function map_status(int $statut, ?string $maintenanceDate): string
+{
+    if ($maintenanceDate !== null && $maintenanceDate !== '') {
+        return 'maintenance';
+    }
+    return $statut === 1 ? 'disponible' : 'reserve';
+}
+
+function merge_tags(array $existing, array $candidates): array
+{
+    $cleaned = array_filter(array_map(static fn($t) => $t !== null ? strtolower((string) $t) : null, $candidates));
+    return array_values(array_unique(array_merge($existing, $cleaned)));
 }

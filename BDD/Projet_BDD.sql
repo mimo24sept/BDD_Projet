@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Hôte : localhost:3306
--- Généré le : lun. 24 nov. 2025 à 10:23
+-- Généré le : lun. 01 déc. 2025 à 07:51
 -- Version du serveur : 10.11.6-MariaDB-0+deb12u1
 -- Version de PHP : 8.2.7
 
@@ -39,7 +39,9 @@ CREATE TABLE `Catégorie` (
 INSERT INTO `Catégorie` (`IDcategorie`, `Categorie`) VALUES
 (1, 'Oscilloscope'),
 (2, 'Outil de mesure'),
-(3, 'Generateur');
+(3, 'Generateur'),
+(4, 'Imprimante 3D'),
+(5, 'Station de soudure');
 
 -- --------------------------------------------------------
 
@@ -50,7 +52,7 @@ INSERT INTO `Catégorie` (`IDcategorie`, `Categorie`) VALUES
 CREATE TABLE `Inventaire` (
   `IDinventaire` int(11) NOT NULL,
   `IDmateriel` int(11) NOT NULL,
-  `Num_serie` text NOT NULL,
+  `Numserie` text NOT NULL,
   `Etat` text NOT NULL,
   `Remarque` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -59,11 +61,13 @@ CREATE TABLE `Inventaire` (
 -- Déchargement des données de la table `Inventaire`
 --
 
-INSERT INTO `Inventaire` (`IDinventaire`, `IDmateriel`, `Num_serie`, `Etat`, `Remarque`) VALUES
+INSERT INTO `Inventaire` (`IDinventaire`, `IDmateriel`, `Numserie`, `Etat`, `Remarque`) VALUES
 (1, 1, 'DSOX1102A', 'Bon', ''),
 (2, 2, 'DSOX1102B', 'usé', ''),
 (3, 3, 'WF10XZO', 'a maintenir', ''),
-(4, 4, 'M17RBZ34', 'Bon', '');
+(4, 4, 'M17RBZ34', 'Bon', ''),
+(5, 5, 'PRUSA-MK4-01', 'Bon', 'Hotend neuf'),
+(6, 6, 'JBC-245', 'En maintenance', 'Changer la panne');
 
 -- --------------------------------------------------------
 
@@ -75,7 +79,7 @@ CREATE TABLE `maintenance` (
   `IDmaintenance` int(11) NOT NULL,
   `IDmateriel` int(11) NOT NULL,
   `Type` text NOT NULL,
-  `Date_prevu` date NOT NULL,
+  `Dateprevu` date NOT NULL,
   `Cout` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -83,8 +87,9 @@ CREATE TABLE `maintenance` (
 -- Déchargement des données de la table `maintenance`
 --
 
-INSERT INTO `maintenance` (`IDmaintenance`, `IDmateriel`, `Type`, `Date_prevu`, `Cout`) VALUES
-(1, 3, 'Corrective', '2025-12-02', 127);
+INSERT INTO `maintenance` (`IDmaintenance`, `IDmateriel`, `Type`, `Dateprevu`, `Cout`) VALUES
+(1, 3, 'Corrective', '2025-12-02', 127),
+(2, 6, 'Préventive', '2025-12-10', 80);
 
 -- --------------------------------------------------------
 
@@ -108,7 +113,9 @@ INSERT INTO `Matériels` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplaceme
 (1, 'Oscilloscope', 1, 'B-07', 1),
 (2, 'Oscilloscope', 1, 'B-07', 0),
 (3, 'GBF', 3, 'Club robot', 0),
-(4, 'Multimetre', 2, 'B-14', 1);
+(4, 'Multimetre', 2, 'B-14', 1),
+(5, 'Imprimante 3D', 4, 'FabLab', 1),
+(6, 'Station de soudure', 5, 'Atelier 2', 0);
 
 -- --------------------------------------------------------
 
@@ -125,6 +132,14 @@ CREATE TABLE `Pret` (
   `Etat_retour` text NOT NULL,
   `Remarque` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `Pret`
+--
+
+INSERT INTO `Pret` (`IDpret`, `IDmateriel`, `IDuser`, `Retour`, `Retour_effectif`, `Etat_retour`, `Remarque`) VALUES
+(1, 1, 2, '2025-12-10', '0000-00-00', 'Bon', 'Pret longue duree'),
+(2, 4, 1, '2025-11-20', '2025-11-18', 'Bon', 'Rendu en avance');
 
 -- --------------------------------------------------------
 
@@ -165,7 +180,8 @@ CREATE TABLE `réservation` (
 
 INSERT INTO `réservation` (`IDreservation`, `IDmateriel`, `IDuser`, `Debut`, `Statut`) VALUES
 (1, 2, 2, '2025-11-26', 'Confirmé'),
-(2, 1, 3, '2025-11-26', 'Refusé');
+(2, 1, 3, '2025-11-26', 'Refusé'),
+(3, 5, 2, '2025-12-15', 'Confirmé');
 
 -- --------------------------------------------------------
 
@@ -178,16 +194,17 @@ CREATE TABLE `User` (
   `Couriel` text NOT NULL,
   `MDP` text NOT NULL,
   `NOMuser` text NOT NULL,
-  `ID_role` int(11) NOT NULL,
-  `DATE_creation` date NOT NULL
+  `IDrole` int(11) NOT NULL,
+  `DATEcreation` date NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Déchargement des données de la table `User`
 --
 
-INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `ID_role`, `DATE_creation`) VALUES
+INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `IDrole`, `DATEcreation`) VALUES
 (1, 'test.test@gmail.com', '1234', 'testtruc', 1, '2025-11-24'),
+(2, 'admin@geii.fr', 'admin', 'Admin GEII', 2, '2025-11-25'),
 (3, 'Alexandre.nissen@gmail.com', 'xilpanda', 'Xilophobe', 2, '2025-11-24');
 
 --
@@ -250,31 +267,31 @@ ALTER TABLE `User`
 -- AUTO_INCREMENT pour la table `Catégorie`
 --
 ALTER TABLE `Catégorie`
-  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT pour la table `Inventaire`
 --
 ALTER TABLE `Inventaire`
-  MODIFY `IDinventaire` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `IDinventaire` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT pour la table `maintenance`
 --
 ALTER TABLE `maintenance`
-  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT pour la table `Matériels`
 --
 ALTER TABLE `Matériels`
-  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT pour la table `Pret`
 --
 ALTER TABLE `Pret`
-  MODIFY `IDpret` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `IDpret` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT pour la table `Roles`
@@ -286,7 +303,7 @@ ALTER TABLE `Roles`
 -- AUTO_INCREMENT pour la table `réservation`
 --
 ALTER TABLE `réservation`
-  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `User`
