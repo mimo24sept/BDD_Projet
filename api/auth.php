@@ -59,7 +59,7 @@ function login(PDO $pdo): void
     $stmt = $pdo->prepare(
         'SELECT u.IDuser, u.Couriel, u.MDP, u.NOMuser, u.IDrole, r.Role
          FROM `User` u
-         LEFT JOIN `Roles` r ON r.IDrole = u.IDrole
+         LEFT JOIN `Role` r ON r.IDrole = u.IDrole
          WHERE LOWER(u.Couriel) = LOWER(:loginMail) OR LOWER(u.NOMuser) = LOWER(:loginName)
          LIMIT 1'
     );

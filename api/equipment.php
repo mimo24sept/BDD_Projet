@@ -47,26 +47,19 @@ echo json_encode(['error' => 'Method not allowed']);
 
 function list_equipment(PDO $pdo): void
 {
+    $activeLoans = fetch_active_loans($pdo);
+
     $stmt = $pdo->query(
         'SELECT
             m.IDmateriel AS id,
             m.NOMmateriel AS name,
             m.Emplacement AS location,
-            m.Statut AS statut,
+            m.Dispo AS dispo,
             cat.Categorie AS category,
-            inv.Numserie AS numserie,
-            inv.Etat AS etat,
-            inv.Remarque AS remarque,
-            maint.Dateprevu AS maintenance_date,
-            maint.Type AS maintenance_type
-        FROM `Matériels` m
-        LEFT JOIN `Catégorie` cat ON cat.IDcategorie = m.IDcategorie
-        LEFT JOIN `Inventaire` inv ON inv.IDmateriel = m.IDmateriel
-        LEFT JOIN (
-            SELECT IDmateriel, MIN(Dateprevu) AS Dateprevu, GROUP_CONCAT(DISTINCT Type SEPARATOR ", ") AS Type
-            FROM maintenance
-            GROUP BY IDmateriel
-        ) maint ON maint.IDmateriel = m.IDmateriel
+            m.NUMserie AS numserie,
+            m.Etat AS etat
+        FROM `Materiel` m
+        LEFT JOIN `Categorie` cat ON cat.IDcategorie = m.IDcategorie
         ORDER BY m.IDmateriel DESC'
     );
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -75,18 +68,20 @@ function list_equipment(PDO $pdo): void
     foreach ($rows as $row) {
         $id = (int) ($row['id'] ?? 0);
         if (!isset($items[$id])) {
+            $hasActiveLoan = isset($activeLoans[$id]);
             $items[$id] = [
                 'id' => $id,
                 'name' => $row['name'] ?? '',
                 'category' => $row['category'] ?? 'Non classé',
                 'location' => $row['location'] ?? '',
-                'status' => map_status((int) ($row['statut'] ?? 0), $row['maintenance_date'] ?? null),
+                'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan),
                 'condition' => $row['etat'] ?? '',
-                'notes' => $row['remarque'] ?? '',
+                'notes' => '',
                 'serial' => $row['numserie'] ?? '',
                 'tags' => [],
-                'maintenance' => $row['maintenance_type'] ?? '',
-                'next_service' => $row['maintenance_date'] ?? null,
+                'maintenance' => '',
+                'next_service' => null,
+                'reservations' => $activeLoans[$id]['periods'] ?? [],
             ];
         }
 
@@ -95,9 +90,14 @@ function list_equipment(PDO $pdo): void
             [
                 $items[$id]['category'],
                 $items[$id]['condition'],
-                $items[$id]['maintenance'] ? 'maintenance' : null,
             ]
         );
+
+        if (isset($activeLoans[$id]['weeks'])) {
+            $items[$id]['reserved_weeks'] = $activeLoans[$id]['weeks'];
+        } else {
+            $items[$id]['reserved_weeks'] = [];
+        }
     }
 
     echo json_encode(array_values($items));
@@ -111,27 +111,60 @@ function reserve_equipment(PDO $pdo, int $userId): void
     if ($start === '') {
         $start = date('Y-m-d');
     }
+    $end = trim((string) ($data['end'] ?? ''));
+    if ($end === '') {
+        $end = $start;
+    }
 
     if ($id <= 0) {
         http_response_code(400);
         echo json_encode(['error' => 'Identifiant manquant ou invalide']);
         return;
     }
+    if (iso_week_key($start) === null || iso_week_key($end) === null) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Dates invalides']);
+        return;
+    }
+    // Normalize order if end < start.
+    if (strtotime($end) !== false && strtotime($start) !== false && strtotime($end) < strtotime($start)) {
+        [$start, $end] = [$end, $start];
+    }
+
+    // Check overlapping loan for the chosen period (only active loans without return).
+    $conflict = $pdo->prepare(
+        'SELECT 1
+         FROM `Emprunt` e
+         WHERE e.IDmateriel = :id
+           AND NOT EXISTS (
+             SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
+           )
+           AND e.DATEdebut <= :fin
+           AND e.DATEfin >= :debut
+         LIMIT 1'
+    );
+    $conflict->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
+    if ($conflict->fetchColumn()) {
+        http_response_code(409);
+        echo json_encode(['error' => 'Déjà réservé sur cette période']);
+        return;
+    }
 
     $pdo->beginTransaction();
     try {
-        $update = $pdo->prepare('UPDATE `Matériels` SET Statut = 0 WHERE IDmateriel = :id');
+        $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
         $update->execute([':id' => $id]);
 
         $insert = $pdo->prepare(
-            'INSERT INTO `réservation` (IDmateriel, IDuser, Debut, Statut)
-             VALUES (:id, :uid, :debut, :statut)'
+            'INSERT INTO `Emprunt` (IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt)
+             VALUES (:id, :uid, :debut, :fin, :etat)'
         );
         $insert->execute([
             ':id' => $id,
             ':uid' => $userId,
             ':debut' => $start,
-            ':statut' => 'Confirmé',
+            ':fin' => $end,
+            ':etat' => 'En cours',
         ]);
 
         $pdo->commit();
@@ -146,28 +179,52 @@ function reserve_equipment(PDO $pdo, int $userId): void
     echo json_encode(['status' => 'ok', 'equipment' => $updated]);
 }
 
+function fetch_active_loans(PDO $pdo): array
+{
+    $stmt = $pdo->query(
+        'SELECT e.IDmateriel, e.DATEdebut, e.DATEfin
+         FROM `Emprunt` e
+         WHERE NOT EXISTS (
+            SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
+         )'
+    );
+
+    $active = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $id = (int) $row['IDmateriel'];
+        $start = $row['DATEdebut'] ?? '';
+        $end = $row['DATEfin'] ?: $start;
+        $weeks = weeks_between($start, $end);
+
+        $active[$id] ??= ['weeks' => [], 'periods' => []];
+        foreach ($weeks as $week) {
+            if (!in_array($week, $active[$id]['weeks'], true)) {
+                $active[$id]['weeks'][] = $week;
+            }
+        }
+        $active[$id]['periods'][] = [
+            'start' => $start,
+            'end' => $end,
+        ];
+    }
+
+    return $active;
+}
+
 function fetch_equipment_by_id(PDO $pdo, int $id): ?array
 {
+    $activeLoans = fetch_active_loans($pdo);
     $stmt = $pdo->prepare(
         'SELECT
             m.IDmateriel AS id,
             m.NOMmateriel AS name,
             m.Emplacement AS location,
-            m.Statut AS statut,
+            m.Dispo AS dispo,
             cat.Categorie AS category,
-            inv.Numserie AS numserie,
-            inv.Etat AS etat,
-            inv.Remarque AS remarque,
-            maint.Dateprevu AS maintenance_date,
-            maint.Type AS maintenance_type
-        FROM `Matériels` m
-        LEFT JOIN `Catégorie` cat ON cat.IDcategorie = m.IDcategorie
-        LEFT JOIN `Inventaire` inv ON inv.IDmateriel = m.IDmateriel
-        LEFT JOIN (
-            SELECT IDmateriel, MIN(Dateprevu) AS Dateprevu, GROUP_CONCAT(DISTINCT Type SEPARATOR ", ") AS Type
-            FROM maintenance
-            GROUP BY IDmateriel
-        ) maint ON maint.IDmateriel = m.IDmateriel
+            m.NUMserie AS numserie,
+            m.Etat AS etat
+        FROM `Materiel` m
+        LEFT JOIN `Categorie` cat ON cat.IDcategorie = m.IDcategorie
         WHERE m.IDmateriel = :id
         LIMIT 1'
     );
@@ -177,18 +234,20 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         return null;
     }
 
+    $hasActiveLoan = isset($activeLoans[$id]);
     $mapped = [
         'id' => (int) ($row['id'] ?? 0),
         'name' => $row['name'] ?? '',
         'category' => $row['category'] ?? 'Non classé',
         'location' => $row['location'] ?? '',
-        'status' => map_status((int) ($row['statut'] ?? 0), $row['maintenance_date'] ?? null),
+        'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan),
         'condition' => $row['etat'] ?? '',
-        'notes' => $row['remarque'] ?? '',
+        'notes' => '',
         'serial' => $row['numserie'] ?? '',
         'tags' => [],
-        'maintenance' => $row['maintenance_type'] ?? '',
-        'next_service' => $row['maintenance_date'] ?? null,
+        'maintenance' => '',
+        'next_service' => null,
+        'reservations' => $activeLoans[$id]['periods'] ?? [],
     ];
 
     $mapped['tags'] = merge_tags(
@@ -196,23 +255,62 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         [
             $mapped['category'],
             $mapped['condition'],
-            $mapped['maintenance'] ? 'maintenance' : null,
         ]
     );
+
+    $mapped['reserved_weeks'] = $activeLoans[$id]['weeks'] ?? [];
 
     return $mapped;
 }
 
-function map_status(int $statut, ?string $maintenanceDate): string
+function map_status(string $dispo, bool $hasActiveLoan): string
 {
-    if ($maintenanceDate !== null && $maintenanceDate !== '') {
-        return 'maintenance';
+    if ($hasActiveLoan || strtolower($dispo) !== 'oui') {
+        return 'reserve';
     }
-    return $statut === 1 ? 'disponible' : 'reserve';
+    return 'disponible';
 }
 
 function merge_tags(array $existing, array $candidates): array
 {
     $cleaned = array_filter(array_map(static fn($t) => $t !== null ? strtolower((string) $t) : null, $candidates));
     return array_values(array_unique(array_merge($existing, $cleaned)));
+}
+
+function weeks_between(string $start, string $end): array
+{
+    if ($start === '') {
+        return [];
+    }
+    $weeks = [];
+    $startDate = DateTime::createFromFormat('Y-m-d', $start) ?: new DateTime($start);
+    $endDate = $end !== '' ? (DateTime::createFromFormat('Y-m-d', $end) ?: new DateTime($end)) : clone $startDate;
+    if (!$startDate || !$endDate) {
+        return [];
+    }
+    if ($endDate < $startDate) {
+        [$startDate, $endDate] = [$endDate, $startDate];
+    }
+
+    $cursor = clone $startDate;
+    while ($cursor <= $endDate) {
+        $week = iso_week_key($cursor->format('Y-m-d'));
+        if ($week !== null && !in_array($week, $weeks, true)) {
+            $weeks[] = $week;
+        }
+        $cursor->modify('+7 days');
+    }
+
+    return $weeks;
+}
+
+function iso_week_key(string $date): ?string
+{
+    $ts = strtotime($date);
+    if ($ts === false) {
+        return null;
+    }
+    $week = (int) date('W', $ts);
+    $year = (int) date('o', $ts);
+    return sprintf('%04d-W%02d', $year, $week);
 }

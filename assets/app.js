@@ -39,6 +39,8 @@
   const closeModalBtn = document.querySelector('#close-modal');
   let dateStartInput = null;
   let dateEndInput = null;
+  let blockedWeeks = [];
+  let reservationPeriods = [];
 
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
@@ -81,6 +83,11 @@
         modalMsg.className = 'message err';
         return;
       }
+      if (!isRangeFree(dateStartInput.value, dateEndInput.value)) {
+        modalMsg.textContent = 'Période déjà réservée (même semaine)';
+        modalMsg.className = 'message err';
+        return;
+      }
       modalMsg.textContent = 'Reservation en cours...';
       modalMsg.className = 'message';
       try {
@@ -111,6 +118,9 @@
         }
         modalMsg.textContent = 'Reservation enregistrée';
         modalMsg.className = 'message ok';
+        closeModal();
+        await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
+        render();
       } catch (err) {
         modalMsg.textContent = err?.message || 'Erreur de réservation';
         modalMsg.className = 'message err';
@@ -134,6 +144,12 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API equipement');
       state.inventory = data.map((item) => {
+        const reservations = (item.reservations || [])
+          .map((r) => ({
+            start: r.start,
+            end: r.end || r.start,
+          }))
+          .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
         const tags = (item.tags && item.tags.length ? item.tags : [
           item.category,
           item.condition,
@@ -147,6 +163,7 @@
         return {
           ...item,
           tags,
+          reservations,
           picture: item.picture || placeholderImage(item.name),
           description: descriptionParts.join(' — ') || 'Description a venir.',
         };
@@ -162,13 +179,27 @@
       const res = await fetch(API.dashboard, { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API emprunts');
-      state.loans = data.loans || [];
+      state.loans = (data.loans || []).filter((l) => l.status !== 'rendu');
       state.stats = data.stats || null;
       return;
     } catch (err) {
       state.loans = [];
       state.stats = null;
     }
+  }
+
+  async function apiReturnLoan(id) {
+    const res = await fetch(`${API.dashboard}?action=return`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Retour impossible');
+    }
+    await apiFetchLoans();
   }
 
   async function apiLogout() {
@@ -226,6 +257,10 @@
     });
 
     filtered.forEach((item) => {
+      const nextReservation = (item.reservations && item.reservations[0]) || null;
+      const reservationBadge = nextReservation
+        ? `<div class="meta">Prochaine résa : ${nextReservation.start} → ${nextReservation.end}</div>`
+        : '<div class="meta">Aucune réservation à venir</div>';
       const card = document.createElement('article');
       card.className = 'card';
       card.innerHTML = `
@@ -237,6 +272,7 @@
           </div>
           ${statusBadge(item.status)}
         </div>
+        ${reservationBadge}
         <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
         <button type="button" class="ghost" data-id="${item.id}">Voir et reserver</button>
       `;
@@ -251,9 +287,11 @@
 
   function renderLoans() {
     loansEl.innerHTML = '';
+    const isAdmin = (state.user?.role || '').toLowerCase().includes('admin');
     state.loans.forEach((loan) => {
       const severity = dueSeverity(loan.due);
       const barColor = severityColor(severity);
+      const canReturn = isAdmin && loan.type === 'pret' && loan.status !== 'rendu';
       const row = document.createElement('div');
       row.className = `loan-item loan-${severity}`;
       row.innerHTML = `
@@ -263,12 +301,32 @@
           <div class="loan-meta">Du ${loan.start} au ${loan.due}</div>
           <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
         </div>
-        <button type="button" class="ghost" data-id="${loan.id}">Rendre maintenant</button>
+        ${
+          canReturn
+            ? '<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>'
+            : '<button type="button" class="ghost" disabled>' +
+                (loan.status === 'rendu'
+                  ? 'Déjà rendu'
+                  : isAdmin ? 'Réservé' : 'Retour en bureau') +
+              '</button>'
+        }
       `;
-      row.querySelector('button').addEventListener('click', () => {
-        row.style.opacity = '0.5';
-        row.querySelector('button').disabled = true;
-      });
+      const returnBtn = row.querySelector('button');
+      if (canReturn) {
+        returnBtn.addEventListener('click', async () => {
+          returnBtn.disabled = true;
+          returnBtn.textContent = 'Retour...';
+          try {
+            await apiReturnLoan(loan.id);
+            loan.status = 'rendu';
+            renderLoans();
+            renderStats();
+          } catch (err) {
+            returnBtn.disabled = false;
+            returnBtn.textContent = 'Rendre maintenant';
+          }
+        });
+      }
       loansEl.appendChild(row);
     });
 
@@ -291,10 +349,20 @@
 
   function openModal(item) {
     state.modalItem = item;
+    blockedWeeks = Array.isArray(item.reserved_weeks) ? item.reserved_weeks : [];
+    reservationPeriods = Array.isArray(item.reservations) ? item.reservations : [];
     modalTitle.textContent = item.name;
+    const reservationsList = reservationPeriods.length
+      ? `<ul class="meta" style="padding-left:18px;margin:4px 0 8px 0;">${reservationPeriods
+          .map((r) => `<li>Réservé du ${escapeHtml(r.start)} au ${escapeHtml(r.end)}</li>`)
+          .join('')}</ul>`
+      : '<div class="meta">Aucune réservation existante</div>';
     modalBody.innerHTML = `
       <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
       <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
+      <div class="meta">Semaines réservées: ${blockedWeeks.length ? blockedWeeks.map(escapeHtml).join(', ') : 'aucune'}</div>
+      <div class="meta">Plages bloquées:</div>
+      ${reservationsList}
       <div class="calendar">
         <div>
           <label for="date-start">Debut</label>
@@ -308,8 +376,22 @@
     `;
     dateStartInput = modalBody.querySelector('#date-start');
     dateEndInput = modalBody.querySelector('#date-end');
+    const defaultStart = nextAvailableDate();
+    const defaultEnd = addDays(defaultStart, 7);
+    dateStartInput.value = defaultStart;
+    dateEndInput.value = defaultEnd;
     modalMsg.textContent = '';
+    [dateStartInput, dateEndInput].forEach((input) => {
+      input.addEventListener('change', () => {
+        if (!input.value) return;
+        updateAvailabilityMessage();
+      });
+    });
+    updateAvailabilityMessage();
     modalBackdrop.classList.add('show');
+    if (dateStartInput?.showPicker) {
+      dateStartInput.showPicker();
+    }
   }
 
   function closeModal() {
@@ -345,6 +427,72 @@
   function placeholderImage(seed) {
     const s = encodeURIComponent(seed.toLowerCase());
     return `https://source.unsplash.com/collection/190727/600x400?sig=${s}`;
+  }
+
+  function isoWeekKey(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = target.getUTCDay() || 7;
+    target.setUTCDate(target.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
+    return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+  }
+
+  function weeksBetween(start, end) {
+    const s = new Date(`${start}T00:00:00`);
+    const e = new Date(`${end || start}T00:00:00`);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [];
+    const weeks = [];
+    const step = s <= e ? 1 : -1;
+    const cursor = new Date(s);
+    while ((step === 1 && cursor <= e) || (step === -1 && cursor >= e)) {
+      const wk = isoWeekKey(cursor.toISOString().slice(0, 10));
+      if (wk && !weeks.includes(wk)) weeks.push(wk);
+      cursor.setDate(cursor.getDate() + 7 * step);
+    }
+    return weeks;
+  }
+
+  function isRangeFree(start, end) {
+    const weeks = weeksBetween(start, end);
+    if (!weeks.length) return false;
+    return weeks.every((w) => !blockedWeeks.includes(w));
+  }
+
+  function nextAvailableDate() {
+    let cursor = new Date();
+    for (let i = 0; i < 52; i += 1) {
+      const key = isoWeekKey(cursor.toISOString().slice(0, 10));
+      if (key && !blockedWeeks.includes(key)) {
+        return cursor.toISOString().slice(0, 10);
+      }
+      cursor.setDate(cursor.getDate() + 7);
+    }
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function addDays(dateStr, days) {
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function updateAvailabilityMessage() {
+    const start = dateStartInput?.value;
+    const end = dateEndInput?.value || start;
+    const free = isRangeFree(start, end);
+    reserveBtn.disabled = !free;
+    modalMsg.textContent = free ? '' : 'Période déjà réservée';
+    modalMsg.className = free ? 'message' : 'message err';
+    [dateStartInput, dateEndInput].forEach((input) => {
+      if (!input) return;
+      input.classList.toggle('blocked', !free);
+      input.min = nextAvailableDate();
+    });
   }
 
   function dueSeverity(due) {
