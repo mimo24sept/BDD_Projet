@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Hôte : localhost:3306
--- Généré le : lun. 01 déc. 2025 à 07:51
+-- Généré le : lun. 01 déc. 2025 à 08:53
 -- Version du serveur : 10.11.6-MariaDB-0+deb12u1
 -- Version de PHP : 8.2.7
 
@@ -24,24 +24,22 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
--- Structure de la table `Catégorie`
+-- Structure de la table `Categorie`
 --
 
-CREATE TABLE `Catégorie` (
+CREATE TABLE `Categorie` (
   `IDcategorie` int(11) NOT NULL,
   `Categorie` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Déchargement des données de la table `Catégorie`
+-- Déchargement des données de la table `Categorie`
 --
 
-INSERT INTO `Catégorie` (`IDcategorie`, `Categorie`) VALUES
+INSERT INTO `Categorie` (`IDcategorie`, `Categorie`) VALUES
 (1, 'Oscilloscope'),
 (2, 'Outil de mesure'),
-(3, 'Generateur'),
-(4, 'Imprimante 3D'),
-(5, 'Station de soudure');
+(3, 'Generateur');
 
 -- --------------------------------------------------------
 
@@ -65,17 +63,15 @@ INSERT INTO `Inventaire` (`IDinventaire`, `IDmateriel`, `Numserie`, `Etat`, `Rem
 (1, 1, 'DSOX1102A', 'Bon', ''),
 (2, 2, 'DSOX1102B', 'usé', ''),
 (3, 3, 'WF10XZO', 'a maintenir', ''),
-(4, 4, 'M17RBZ34', 'Bon', ''),
-(5, 5, 'PRUSA-MK4-01', 'Bon', 'Hotend neuf'),
-(6, 6, 'JBC-245', 'En maintenance', 'Changer la panne');
+(4, 4, 'M17RBZ34', 'Bon', '');
 
 -- --------------------------------------------------------
 
 --
--- Structure de la table `maintenance`
+-- Structure de la table `Maintenance`
 --
 
-CREATE TABLE `maintenance` (
+CREATE TABLE `Maintenance` (
   `IDmaintenance` int(11) NOT NULL,
   `IDmateriel` int(11) NOT NULL,
   `Type` text NOT NULL,
@@ -84,20 +80,19 @@ CREATE TABLE `maintenance` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Déchargement des données de la table `maintenance`
+-- Déchargement des données de la table `Maintenance`
 --
 
-INSERT INTO `maintenance` (`IDmaintenance`, `IDmateriel`, `Type`, `Dateprevu`, `Cout`) VALUES
-(1, 3, 'Corrective', '2025-12-02', 127),
-(2, 6, 'Préventive', '2025-12-10', 80);
+INSERT INTO `Maintenance` (`IDmaintenance`, `IDmateriel`, `Type`, `Dateprevu`, `Cout`) VALUES
+(1, 3, 'Corrective', '2025-12-02', 127);
 
 -- --------------------------------------------------------
 
 --
--- Structure de la table `Matériels`
+-- Structure de la table `Materiel`
 --
 
-CREATE TABLE `Matériels` (
+CREATE TABLE `Materiel` (
   `IDmateriel` int(11) NOT NULL,
   `NOMmateriel` text NOT NULL,
   `IDcategorie` int(11) NOT NULL,
@@ -106,16 +101,14 @@ CREATE TABLE `Matériels` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Déchargement des données de la table `Matériels`
+-- Déchargement des données de la table `Materiel`
 --
 
-INSERT INTO `Matériels` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplacement`, `Statut`) VALUES
+INSERT INTO `Materiel` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplacement`, `Statut`) VALUES
 (1, 'Oscilloscope', 1, 'B-07', 1),
 (2, 'Oscilloscope', 1, 'B-07', 0),
 (3, 'GBF', 3, 'Club robot', 0),
-(4, 'Multimetre', 2, 'B-14', 1),
-(5, 'Imprimante 3D', 4, 'FabLab', 1),
-(6, 'Station de soudure', 5, 'Atelier 2', 0);
+(4, 'Multimetre', 2, 'B-14', 1);
 
 -- --------------------------------------------------------
 
@@ -133,40 +126,13 @@ CREATE TABLE `Pret` (
   `Remarque` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Déchargement des données de la table `Pret`
---
-
-INSERT INTO `Pret` (`IDpret`, `IDmateriel`, `IDuser`, `Retour`, `Retour_effectif`, `Etat_retour`, `Remarque`) VALUES
-(1, 1, 2, '2025-12-10', '0000-00-00', 'Bon', 'Pret longue duree'),
-(2, 4, 1, '2025-11-20', '2025-11-18', 'Bon', 'Rendu en avance');
-
 -- --------------------------------------------------------
 
 --
--- Structure de la table `Roles`
+-- Structure de la table `Reservation`
 --
 
-CREATE TABLE `Roles` (
-  `IDrole` int(11) NOT NULL,
-  `Role` text NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Déchargement des données de la table `Roles`
---
-
-INSERT INTO `Roles` (`IDrole`, `Role`) VALUES
-(1, 'Utilisateur'),
-(2, 'Administrateur');
-
--- --------------------------------------------------------
-
---
--- Structure de la table `réservation`
---
-
-CREATE TABLE `réservation` (
+CREATE TABLE `Reservation` (
   `IDreservation` int(11) NOT NULL,
   `IDmateriel` int(11) NOT NULL,
   `IDuser` int(11) NOT NULL,
@@ -175,13 +141,31 @@ CREATE TABLE `réservation` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Déchargement des données de la table `réservation`
+-- Déchargement des données de la table `Reservation`
 --
 
-INSERT INTO `réservation` (`IDreservation`, `IDmateriel`, `IDuser`, `Debut`, `Statut`) VALUES
+INSERT INTO `Reservation` (`IDreservation`, `IDmateriel`, `IDuser`, `Debut`, `Statut`) VALUES
 (1, 2, 2, '2025-11-26', 'Confirmé'),
-(2, 1, 3, '2025-11-26', 'Refusé'),
-(3, 5, 2, '2025-12-15', 'Confirmé');
+(2, 1, 3, '2025-11-26', 'Refusé');
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `Role`
+--
+
+CREATE TABLE `Role` (
+  `IDrole` int(11) NOT NULL,
+  `Role` text NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `Role`
+--
+
+INSERT INTO `Role` (`IDrole`, `Role`) VALUES
+(1, 'Utilisateur'),
+(2, 'Administrateur');
 
 -- --------------------------------------------------------
 
@@ -204,7 +188,6 @@ CREATE TABLE `User` (
 
 INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `IDrole`, `DATEcreation`) VALUES
 (1, 'test.test@gmail.com', '1234', 'testtruc', 1, '2025-11-24'),
-(2, 'admin@geii.fr', 'admin', 'Admin GEII', 2, '2025-11-25'),
 (3, 'Alexandre.nissen@gmail.com', 'xilpanda', 'Xilophobe', 2, '2025-11-24');
 
 --
@@ -212,9 +195,9 @@ INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `IDrole`, `DATEcreati
 --
 
 --
--- Index pour la table `Catégorie`
+-- Index pour la table `Categorie`
 --
-ALTER TABLE `Catégorie`
+ALTER TABLE `Categorie`
   ADD PRIMARY KEY (`IDcategorie`);
 
 --
@@ -224,15 +207,15 @@ ALTER TABLE `Inventaire`
   ADD PRIMARY KEY (`IDinventaire`);
 
 --
--- Index pour la table `maintenance`
+-- Index pour la table `Maintenance`
 --
-ALTER TABLE `maintenance`
+ALTER TABLE `Maintenance`
   ADD PRIMARY KEY (`IDmaintenance`);
 
 --
--- Index pour la table `Matériels`
+-- Index pour la table `Materiel`
 --
-ALTER TABLE `Matériels`
+ALTER TABLE `Materiel`
   ADD PRIMARY KEY (`IDmateriel`);
 
 --
@@ -242,16 +225,16 @@ ALTER TABLE `Pret`
   ADD PRIMARY KEY (`IDpret`);
 
 --
--- Index pour la table `Roles`
+-- Index pour la table `Reservation`
 --
-ALTER TABLE `Roles`
-  ADD PRIMARY KEY (`IDrole`);
+ALTER TABLE `Reservation`
+  ADD PRIMARY KEY (`IDreservation`);
 
 --
--- Index pour la table `réservation`
+-- Index pour la table `Role`
 --
-ALTER TABLE `réservation`
-  ADD PRIMARY KEY (`IDreservation`);
+ALTER TABLE `Role`
+  ADD PRIMARY KEY (`IDrole`);
 
 --
 -- Index pour la table `User`
@@ -264,46 +247,46 @@ ALTER TABLE `User`
 --
 
 --
--- AUTO_INCREMENT pour la table `Catégorie`
+-- AUTO_INCREMENT pour la table `Categorie`
 --
-ALTER TABLE `Catégorie`
-  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+ALTER TABLE `Categorie`
+  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `Inventaire`
 --
 ALTER TABLE `Inventaire`
-  MODIFY `IDinventaire` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `IDinventaire` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
--- AUTO_INCREMENT pour la table `maintenance`
+-- AUTO_INCREMENT pour la table `Maintenance`
 --
-ALTER TABLE `maintenance`
-  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+ALTER TABLE `Maintenance`
+  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
--- AUTO_INCREMENT pour la table `Matériels`
+-- AUTO_INCREMENT pour la table `Materiel`
 --
-ALTER TABLE `Matériels`
-  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+ALTER TABLE `Materiel`
+  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT pour la table `Pret`
 --
 ALTER TABLE `Pret`
-  MODIFY `IDpret` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `IDpret` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT pour la table `Roles`
+-- AUTO_INCREMENT pour la table `Reservation`
 --
-ALTER TABLE `Roles`
+ALTER TABLE `Reservation`
+  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT pour la table `Role`
+--
+ALTER TABLE `Role`
   MODIFY `IDrole` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
--- AUTO_INCREMENT pour la table `réservation`
---
-ALTER TABLE `réservation`
-  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `User`
