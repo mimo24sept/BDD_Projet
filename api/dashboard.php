@@ -33,8 +33,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
 if ($method === 'POST' && $action === 'return') {
-    $role = (string) ($_SESSION['role'] ?? '');
-    if (stripos($role, 'admin') === false) {
+    if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Retour réservé aux administrateurs']);
         exit;
@@ -44,7 +43,9 @@ if ($method === 'POST' && $action === 'return') {
 }
 
 try {
-    $loans = fetch_loans($pdo, (int) $_SESSION['user_id']);
+    $scope = $_GET['scope'] ?? 'mine';
+    $targetUser = ($scope === 'all' && is_admin()) ? null : (int) $_SESSION['user_id'];
+    $loans = fetch_loans($pdo, $targetUser);
     $stats = build_stats($loans);
     echo json_encode(['loans' => $loans, 'stats' => $stats]);
 } catch (Throwable $e) {
@@ -52,20 +53,26 @@ try {
     echo json_encode(['error' => 'Lecture des données impossible', 'details' => $e->getMessage()]);
 }
 
-function fetch_loans(PDO $pdo, int $userId): array
+function fetch_loans(PDO $pdo, ?int $userId): array
 {
     $loans = [];
 
-    $emprunt = $pdo->prepare(
-        'SELECT e.IDemprunt, e.DATEdebut, e.DATEfin, e.ETATemprunt,
-                m.NOMmateriel, m.Emplacement, m.IDmateriel,
-                r.DATErendu
-         FROM `Emprunt` e
-         JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
-         LEFT JOIN `Rendu` r ON r.IDemprunt = e.IDemprunt
-         WHERE e.IDuser = :uid'
-    );
-    $emprunt->execute([':uid' => $userId]);
+    $where = $userId !== null ? 'WHERE e.IDuser = :uid' : '';
+    $sql = "SELECT e.IDemprunt, e.DATEdebut, e.DATEfin, e.ETATemprunt,
+                   m.NOMmateriel, m.Emplacement, m.IDmateriel,
+                   r.DATErendu,
+                   u.NOMuser
+            FROM `Emprunt` e
+            JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
+            LEFT JOIN `Rendu` r ON r.IDemprunt = e.IDemprunt
+            LEFT JOIN `User` u ON u.IDuser = e.IDuser
+            $where";
+    $emprunt = $pdo->prepare($sql);
+    if ($userId !== null) {
+        $emprunt->execute([':uid' => $userId]);
+    } else {
+        $emprunt->execute();
+    }
     foreach ($emprunt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $start = $row['DATEdebut'] ?? null;
         $due = $row['DATEfin'] ?? null;
@@ -79,6 +86,7 @@ function fetch_loans(PDO $pdo, int $userId): array
             'due' => $due,
             'status' => $status,
             'progress' => progress_percent($start ?: compute_start_date($due), $due),
+            'user' => $row['NOMuser'] ?? '',
         ];
     }
 
@@ -131,16 +139,28 @@ function return_pret(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
     $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $condition = strtolower(trim((string) ($data['condition'] ?? '')));
     if ($id <= 0) {
         http_response_code(400);
         echo json_encode(['error' => 'Identifiant invalide']);
         return;
     }
+    $allowed = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
+    if ($condition !== '' && !in_array($condition, $allowed, true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Etat invalide']);
+        return;
+    }
 
     $pdo->beginTransaction();
     try {
-        $select = $pdo->prepare('SELECT IDmateriel FROM `Emprunt` WHERE IDemprunt = :id AND IDuser = :uid LIMIT 1');
-        $select->execute([':id' => $id, ':uid' => $userId]);
+        $select = $pdo->prepare(
+            'SELECT IDmateriel FROM `Emprunt`
+             WHERE IDemprunt = :id
+               AND (:uid = IDuser OR :isAdmin = 1)
+             LIMIT 1'
+        );
+        $select->execute([':id' => $id, ':uid' => $userId, ':isAdmin' => is_admin() ? 1 : 0]);
         $row = $select->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
             $pdo->rollBack();
@@ -162,18 +182,18 @@ function return_pret(PDO $pdo, int $userId): void
         $updatePret = $pdo->prepare(
             'UPDATE `Emprunt`
              SET ETATemprunt = "Terminé"
-             WHERE IDemprunt = :id AND IDuser = :uid'
+             WHERE IDemprunt = :id'
         );
-        $updatePret->execute([':id' => $id, ':uid' => $userId]);
+        $updatePret->execute([':id' => $id]);
 
-        $updateMat = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Oui" WHERE IDmateriel = :mid');
-        $updateMat->execute([':mid' => $materielId]);
+        $updateMat = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Oui", Etat = :etat WHERE IDmateriel = :mid');
+        $updateMat->execute([':mid' => $materielId, ':etat' => $condition !== '' ? $condition : 'Bon']);
 
         $insertRendu = $pdo->prepare(
             'INSERT INTO `Rendu` (IDemprunt, DATErendu, ETATrendu)
-             VALUES (:id, CURDATE(), "Rendu")'
+             VALUES (:id, CURDATE(), :etat)'
         );
-        $insertRendu->execute([':id' => $id]);
+        $insertRendu->execute([':id' => $id, ':etat' => $condition !== '' ? $condition : 'Rendu']);
 
         $pdo->commit();
         echo json_encode(['status' => 'ok', 'returned_id' => $id]);
@@ -182,4 +202,10 @@ function return_pret(PDO $pdo, int $userId): void
         http_response_code(500);
         echo json_encode(['error' => 'Retour impossible', 'details' => $e->getMessage()]);
     }
+}
+
+function is_admin(): bool
+{
+    $role = (string) ($_SESSION['role'] ?? '');
+    return stripos($role, 'admin') !== false;
 }

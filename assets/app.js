@@ -12,6 +12,7 @@
     user: null,
     inventory: [],
     loans: [],
+    adminLoans: [],
     activeTab: 'borrow',
     filters: { search: '', tag: null },
     modalItem: null,
@@ -24,6 +25,7 @@
   const sections = document.querySelectorAll('[data-section]');
   const catalogEl = document.querySelector('#catalog');
   const loansEl = document.querySelector('#loans');
+  const adminLoansEl = document.querySelector('#admin-loans');
   const statsEls = {
     total: document.querySelector('#stat-total'),
     active: document.querySelector('#stat-active'),
@@ -37,6 +39,15 @@
   const reserveBtn = document.querySelector('#reserve-btn');
   const modalMsg = document.querySelector('#modal-msg');
   const closeModalBtn = document.querySelector('#close-modal');
+  const adminForm = document.querySelector('#admin-form');
+  const adminMsg = document.querySelector('#admin-msg');
+  const adminInputs = {
+    name: document.querySelector('#admin-name'),
+    category: document.querySelector('#admin-category'),
+    location: document.querySelector('#admin-location'),
+    serial: document.querySelector('#admin-serial'),
+    condition: document.querySelector('#admin-condition'),
+  };
   let dateStartInput = null;
   let dateEndInput = null;
   let blockedWeeks = [];
@@ -128,6 +139,42 @@
     });
   }
 
+  if (adminForm) {
+    adminForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!isAdmin()) return;
+      const payload = {
+        name: adminInputs.name?.value?.trim(),
+        category: adminInputs.category?.value?.trim(),
+        location: adminInputs.location?.value?.trim(),
+        serial: adminInputs.serial?.value?.trim(),
+        condition: adminInputs.condition?.value?.trim(),
+      };
+      adminMsg.textContent = 'Enregistrement...';
+      adminMsg.className = 'message';
+      try {
+        const created = await apiCreateEquipment(payload);
+        if (created) {
+          state.inventory.unshift({
+            ...created,
+            tags: created.tags || [],
+            reservations: created.reservations || [],
+            picture: created.picture || placeholderImage(created.name),
+            description: created.description || '',
+          });
+        }
+        adminMsg.textContent = 'Objet ajouté';
+        adminMsg.className = 'message ok';
+        adminForm.reset();
+        await Promise.all([apiFetchEquipment(), apiFetchAdminLoans()]);
+        render();
+      } catch (err) {
+        adminMsg.textContent = err?.message || 'Ajout impossible';
+        adminMsg.className = 'message err';
+      }
+    });
+  }
+
   async function apiSession() {
     try {
       const res = await fetch(API.auth, { credentials: 'include' });
@@ -188,12 +235,23 @@
     }
   }
 
-  async function apiReturnLoan(id) {
+  async function apiFetchAdminLoans() {
+    try {
+      const res = await fetch(`${API.dashboard}?scope=all`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'API emprunts admin');
+      state.adminLoans = data.loans || [];
+    } catch (err) {
+      state.adminLoans = [];
+    }
+  }
+
+  async function apiReturnLoan(id, condition = '') {
     const res = await fetch(`${API.dashboard}?action=return`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, condition }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -208,24 +266,84 @@
     } catch (e) {}
   }
 
+  async function apiCreateEquipment(payload) {
+    const res = await fetch(`${API.equipment}?action=create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error || 'Création impossible');
+      err.status = res.status;
+      throw err;
+    }
+    return data?.equipment;
+  }
+
   function setAuthUI() {
     if (userChip) {
       userChip.textContent = state.user ? `Connecte: ${state.user.login || 'profil'}` : 'Non connecte';
     }
   }
 
+  function isAdmin() {
+    return (state.user?.role || '').toLowerCase().includes('admin');
+  }
+
+  function applyRoleVisibility() {
+    const adminEnabled = isAdmin();
+    tabs.forEach((tab) => {
+      if (tab.dataset.role === 'admin') {
+        tab.style.display = adminEnabled ? '' : 'none';
+      } else if (tab.dataset.tab === 'loans') {
+        tab.style.display = adminEnabled ? 'none' : '';
+      }
+    });
+    sections.forEach((sec) => {
+      if (sec.dataset.role === 'admin') {
+        sec.hidden = !adminEnabled;
+      } else if (sec.dataset.section === 'loans' && adminEnabled) {
+        sec.hidden = true;
+      }
+    });
+    if (adminEnabled && state.activeTab === 'loans') {
+        state.activeTab = 'admin';
+    }
+    if (!adminEnabled && state.activeTab === 'admin') {
+      state.activeTab = 'borrow';
+    }
+  }
+
   function render() {
+    applyRoleVisibility();
     updateTabs();
     renderCatalog();
     renderLoans();
+    renderAdminLoans();
     renderStats();
     renderTags();
   }
 
   function updateTabs() {
-    tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.tab === state.activeTab));
+    tabs.forEach((tab) => {
+      if (tab.dataset.role === 'admin' && !isAdmin()) {
+        tab.classList.remove('active');
+        return;
+      }
+      if (tab.dataset.tab === 'loans' && isAdmin()) {
+        tab.classList.remove('active');
+        return;
+      }
+      tab.classList.toggle('active', tab.dataset.tab === state.activeTab);
+    });
     sections.forEach((sec) => {
-      sec.hidden = sec.dataset.section !== state.activeTab;
+      const isAdminSection = sec.dataset.role === 'admin';
+      const isLoansSection = sec.dataset.section === 'loans';
+      sec.hidden = sec.dataset.section !== state.activeTab
+        || (isAdminSection && !isAdmin())
+        || (isLoansSection && isAdmin());
     });
   }
 
@@ -292,6 +410,14 @@
       const severity = dueSeverity(loan.due);
       const barColor = severityColor(severity);
       const canReturn = isAdmin && loan.type === 'pret' && loan.status !== 'rendu';
+      const actionHtml = canReturn
+        ? '<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>'
+        : isAdmin
+          ? '<button type="button" class="ghost" disabled>' +
+              (loan.status === 'rendu' ? 'Déjà rendu' : 'Réservé') +
+            '</button>'
+          : '';
+
       const row = document.createElement('div');
       row.className = `loan-item loan-${severity}`;
       row.innerHTML = `
@@ -301,18 +427,10 @@
           <div class="loan-meta">Du ${loan.start} au ${loan.due}</div>
           <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
         </div>
-        ${
-          canReturn
-            ? '<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>'
-            : '<button type="button" class="ghost" disabled>' +
-                (loan.status === 'rendu'
-                  ? 'Déjà rendu'
-                  : isAdmin ? 'Réservé' : 'Retour en bureau') +
-              '</button>'
-        }
+        ${actionHtml}
       `;
-      const returnBtn = row.querySelector('button');
-      if (canReturn) {
+      const returnBtn = canReturn ? row.querySelector('button') : null;
+      if (canReturn && returnBtn) {
         returnBtn.addEventListener('click', async () => {
           returnBtn.disabled = true;
           returnBtn.textContent = 'Retour...';
@@ -332,6 +450,60 @@
 
     if (!state.loans.length) {
       loansEl.innerHTML = '<p class="meta">Aucun emprunt en cours.</p>';
+    }
+  }
+
+  function renderAdminLoans() {
+    if (!adminLoansEl) return;
+    adminLoansEl.innerHTML = '';
+    if (!isAdmin()) {
+      adminLoansEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+      return;
+    }
+    state.adminLoans
+      .filter((l) => l.status !== 'rendu')
+      .forEach((loan) => {
+        const severity = dueSeverity(loan.due);
+        const barColor = severityColor(severity);
+        const row = document.createElement('div');
+        row.className = `loan-item loan-${severity}`;
+        row.innerHTML = `
+          <div>
+            <div class="small-title">${escapeHtml(loan.status)} - ${escapeHtml(severityLabel(severity))}</div>
+            <div style="font-weight:800">${escapeHtml(loan.name)}</div>
+            <div class="loan-meta">Du ${loan.start} au ${loan.due} — ${escapeHtml(loan.user || 'Inconnu')}</div>
+            <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
+          </div>
+          <div class="admin-actions">
+            <select data-cond="${loan.id}">
+              <option value="">Etat au retour</option>
+              <option value="neuf">Neuf</option>
+              <option value="bon">Bon</option>
+              <option value="passable">Passable</option>
+              <option value="reparation nécessaire">Réparation nécessaire</option>
+            </select>
+            <button type="button" class="ghost" data-id="${loan.id}">Marquer rendu</button>
+          </div>
+        `;
+        const btn = row.querySelector('button');
+        const cond = row.querySelector('select');
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Retour...';
+          try {
+            await apiReturnLoan(loan.id, cond?.value || '');
+            await Promise.all([apiFetchAdminLoans(), apiFetchLoans()]);
+            render();
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Marquer rendu';
+          }
+        });
+        adminLoansEl.appendChild(row);
+      });
+
+    if (!state.adminLoans.filter((l) => l.status !== 'rendu').length) {
+      adminLoansEl.innerHTML = '<p class="meta">Aucune réservation en cours.</p>';
     }
   }
 
@@ -527,6 +699,9 @@
     }
     setAuthUI();
     await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
+    if (isAdmin()) {
+      await apiFetchAdminLoans();
+    }
     render();
   })();
 })();

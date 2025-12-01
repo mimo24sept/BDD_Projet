@@ -42,6 +42,16 @@ if ($method === 'POST' && $action === 'reserve') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'create') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    create_equipment($pdo);
+    exit;
+}
+
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
@@ -179,6 +189,58 @@ function reserve_equipment(PDO $pdo, int $userId): void
     echo json_encode(['status' => 'ok', 'equipment' => $updated]);
 }
 
+function create_equipment(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $name = trim((string) ($data['name'] ?? ''));
+    $categoryName = trim((string) ($data['category'] ?? ''));
+    $categoryId = (int) ($data['category_id'] ?? 0);
+    $location = trim((string) ($data['location'] ?? ''));
+    $serial = trim((string) ($data['serial'] ?? ''));
+    $condition = trim((string) ($data['condition'] ?? ''));
+
+    if ($name === '' || ($categoryId <= 0 && $categoryName === '') || $location === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Champs requis manquants (nom, categorie, emplacement)']);
+        return;
+    }
+
+    try {
+        $pdo->beginTransaction();
+        if ($categoryId <= 0) {
+            $cat = $pdo->prepare('SELECT IDcategorie FROM `Categorie` WHERE LOWER(`Categorie`) = LOWER(:cat) LIMIT 1');
+            $cat->execute([':cat' => $categoryName]);
+            $categoryId = (int) ($cat->fetchColumn() ?: 0);
+            if ($categoryId <= 0) {
+                $insCat = $pdo->prepare('INSERT INTO `Categorie` (Categorie) VALUES (:cat)');
+                $insCat->execute([':cat' => $categoryName ?: 'Non classe']);
+                $categoryId = (int) $pdo->lastInsertId();
+            }
+        }
+
+        $insert = $pdo->prepare(
+            'INSERT INTO `Materiel` (NOMmateriel, IDcategorie, Emplacement, Dispo, NUMserie, Etat)
+             VALUES (:name, :cat, :loc, "Oui", :serial, :etat)'
+        );
+        $insert->execute([
+            ':name' => $name,
+            ':cat' => $categoryId,
+            ':loc' => $location,
+            ':serial' => $serial,
+            ':etat' => $condition ?: 'Bon',
+        ]);
+        $newId = (int) $pdo->lastInsertId();
+        $pdo->commit();
+
+        $created = fetch_equipment_by_id($pdo, $newId);
+        echo json_encode(['status' => 'ok', 'equipment' => $created]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Insertion impossible', 'details' => $e->getMessage()]);
+    }
+}
+
 function fetch_active_loans(PDO $pdo): array
 {
     $stmt = $pdo->query(
@@ -313,4 +375,10 @@ function iso_week_key(string $date): ?string
     $week = (int) date('W', $ts);
     $year = (int) date('o', $ts);
     return sprintf('%04d-W%02d', $year, $week);
+}
+
+function is_admin(): bool
+{
+    $role = (string) ($_SESSION['role'] ?? '');
+    return stripos($role, 'admin') !== false;
 }
