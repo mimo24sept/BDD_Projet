@@ -15,6 +15,7 @@
     adminLoans: [],
     activeTab: 'borrow',
     filters: { search: '', tag: null },
+    maintenanceFilters: { search: '', tag: null },
     modalItem: null,
     stats: null,
   };
@@ -48,10 +49,18 @@
     serial: document.querySelector('#admin-serial'),
     condition: document.querySelector('#admin-condition'),
   };
+  const maintenanceCatalogEl = document.querySelector('#maintenance-catalog');
+  const maintenanceSearchInput = document.querySelector('#maintenance-search');
+  const maintenanceTagBar = document.querySelector('#maintenance-tag-bar');
   let dateStartInput = null;
   let dateEndInput = null;
   let blockedWeeks = [];
+  let blockedDates = [];
   let reservationPeriods = [];
+  let modalMode = 'reserve';
+  let calendarMonth = null;
+  let selectedStartDate = null;
+  let selectedEndDate = null;
 
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
@@ -74,6 +83,12 @@
       renderCatalog();
     });
   }
+  if (maintenanceSearchInput) {
+    maintenanceSearchInput.addEventListener('input', () => {
+      state.maintenanceFilters.search = maintenanceSearchInput.value.toLowerCase();
+      renderMaintenanceCatalog();
+    });
+  }
 
   if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
   if (modalBackdrop) {
@@ -84,56 +99,65 @@
 
   if (reserveBtn) {
     reserveBtn.addEventListener('click', async () => {
-      if (!state.user) {
+      const range = selectionRange();
+      if (modalMode === 'reserve' && !state.user) {
         modalMsg.textContent = 'Connectez-vous pour reserver';
         modalMsg.className = 'message err';
         return;
       }
-      if (!dateStartInput || !dateEndInput || !dateStartInput.value || !dateEndInput.value) {
-        modalMsg.textContent = 'Choisissez des dates';
+      if (modalMode === 'maintenance' && !isAdmin()) {
+        modalMsg.textContent = 'Réservé aux administrateurs';
         modalMsg.className = 'message err';
         return;
       }
-      if (!isRangeFree(dateStartInput.value, dateEndInput.value)) {
-        modalMsg.textContent = 'Période déjà réservée (même semaine)';
+      if (!range) {
+        modalMsg.textContent = 'Choisissez un debut et une fin';
         modalMsg.className = 'message err';
         return;
       }
-      modalMsg.textContent = 'Reservation en cours...';
+      if (!isRangeFree(range.start, range.end)) {
+        modalMsg.textContent = 'Periode deja reservee';
+        modalMsg.className = 'message err';
+        return;
+      }
+      modalMsg.textContent = modalMode === 'maintenance' ? 'Planification...' : 'Reservation en cours...';
       modalMsg.className = 'message';
       try {
         const payload = {
           id: state.modalItem?.id,
-          start: dateStartInput.value,
-          end: dateEndInput.value,
+          start: range.start,
+          end: range.end,
         };
-        const res = await fetch(`${API.equipment}?action=reserve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Réservation impossible');
-        // Reflect status locally.
-        if (data?.equipment) {
-          const idx = state.inventory.findIndex((i) => i.id === data.equipment.id);
-          if (idx !== -1) {
-            state.inventory[idx] = {
-              ...state.inventory[idx],
-              ...data.equipment,
-              status: 'reserve',
-            };
-            renderCatalog();
+        if (modalMode === 'maintenance') {
+          await apiSetMaintenance(payload);
+        } else {
+          const res = await fetch(`${API.equipment}?action=reserve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || 'Réservation impossible');
+          if (data?.equipment) {
+            const idx = state.inventory.findIndex((i) => i.id === data.equipment.id);
+            if (idx !== -1) {
+              state.inventory[idx] = {
+                ...state.inventory[idx],
+                ...data.equipment,
+                status: 'reserve',
+              };
+              renderCatalog();
+            }
           }
         }
-        modalMsg.textContent = 'Reservation enregistrée';
+        modalMsg.textContent = modalMode === 'maintenance' ? 'Maintenance planifiée' : 'Reservation enregistrée';
         modalMsg.className = 'message ok';
         closeModal();
-        await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
+        await Promise.all([apiFetchEquipment(), apiFetchLoans(), apiFetchAdminLoans()]);
         render();
       } catch (err) {
-        modalMsg.textContent = err?.message || 'Erreur de réservation';
+        modalMsg.textContent = err?.message || (modalMode === 'maintenance' ? 'Planification impossible' : 'Erreur de réservation');
         modalMsg.className = 'message err';
       }
     });
@@ -195,6 +219,7 @@
           .map((r) => ({
             start: r.start,
             end: r.end || r.start,
+            type: r.type || '',
           }))
           .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
         const tags = (item.tags && item.tags.length ? item.tags : [
@@ -282,6 +307,22 @@
     return data?.equipment;
   }
 
+  async function apiSetMaintenance(payload) {
+    const res = await fetch(`${API.equipment}?action=maintenance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error || 'Maintenance impossible');
+      err.status = res.status;
+      throw err;
+    }
+    return data?.equipment;
+  }
+
   function setAuthUI() {
     if (userChip) {
       userChip.textContent = state.user ? `Connecte: ${state.user.login || 'profil'}` : 'Non connecte';
@@ -295,23 +336,33 @@
   function applyRoleVisibility() {
     const adminEnabled = isAdmin();
     tabs.forEach((tab) => {
-      if (tab.dataset.role === 'admin') {
+      const isAdminTab = tab.dataset.role === 'admin';
+      const isUserLoansTab = tab.dataset.tab === 'loans';
+      const isBorrowTab = tab.dataset.tab === 'borrow';
+      if (isAdminTab) {
         tab.style.display = adminEnabled ? '' : 'none';
-      } else if (tab.dataset.tab === 'loans') {
+      } else if (isUserLoansTab || isBorrowTab) {
         tab.style.display = adminEnabled ? 'none' : '';
+      } else {
+        tab.style.display = '';
       }
     });
     sections.forEach((sec) => {
-      if (sec.dataset.role === 'admin') {
+      const isAdminSection = sec.dataset.role === 'admin';
+      const isUserLoans = sec.dataset.section === 'loans';
+      const isBorrow = sec.dataset.section === 'borrow';
+      if (isAdminSection) {
         sec.hidden = !adminEnabled;
-      } else if (sec.dataset.section === 'loans' && adminEnabled) {
+      } else if ((isUserLoans || isBorrow) && adminEnabled) {
         sec.hidden = true;
+      } else {
+        sec.hidden = false;
       }
     });
-    if (adminEnabled && state.activeTab === 'loans') {
-        state.activeTab = 'admin';
+    if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow')) {
+      state.activeTab = 'admin-add';
     }
-    if (!adminEnabled && state.activeTab === 'admin') {
+    if (!adminEnabled && state.activeTab.startsWith('admin')) {
       state.activeTab = 'borrow';
     }
   }
@@ -324,6 +375,8 @@
     renderAdminLoans();
     renderStats();
     renderTags();
+    renderMaintenanceCatalog();
+    renderMaintenanceTags();
   }
 
   function updateTabs() {
@@ -332,18 +385,15 @@
         tab.classList.remove('active');
         return;
       }
-      if (tab.dataset.tab === 'loans' && isAdmin()) {
-        tab.classList.remove('active');
-        return;
-      }
       tab.classList.toggle('active', tab.dataset.tab === state.activeTab);
     });
     sections.forEach((sec) => {
       const isAdminSection = sec.dataset.role === 'admin';
       const isLoansSection = sec.dataset.section === 'loans';
+      const isBorrowSection = sec.dataset.section === 'borrow';
       sec.hidden = sec.dataset.section !== state.activeTab
         || (isAdminSection && !isAdmin())
-        || (isLoansSection && isAdmin());
+        || ((isLoansSection || isBorrowSection) && isAdmin());
     });
   }
 
@@ -364,6 +414,70 @@
     });
   }
 
+  function renderMaintenanceCatalog() {
+    if (!maintenanceCatalogEl) return;
+    maintenanceCatalogEl.innerHTML = '';
+    if (!isAdmin()) {
+      maintenanceCatalogEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+      return;
+    }
+    const filtered = state.inventory.filter((item) => {
+      const matchText = `${item.name} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
+      const okSearch = matchText.includes(state.maintenanceFilters.search);
+      const okTag = !state.maintenanceFilters.tag || item.tags.includes(state.maintenanceFilters.tag);
+      return okSearch && okTag;
+    });
+
+    filtered.forEach((item) => {
+      const nextReservation = (item.reservations && item.reservations[0]) || null;
+      const nextLabel = (nextReservation?.type || '').toLowerCase() === 'maintenance'
+        ? 'Maintenance planifiée'
+        : 'Prochaine résa';
+      const reservationBadge = nextReservation
+        ? `<div class="meta">${nextLabel} : ${nextReservation.start} → ${nextReservation.end}</div>`
+        : '<div class="meta">Aucune réservation à venir</div>';
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.innerHTML = `
+        <img src="${item.picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>
+            <h3>${escapeHtml(item.name)}</h3>
+            <div class="meta">${escapeHtml(item.category)} - ${escapeHtml(item.location || 'Stock')}</div>
+          </div>
+          ${statusBadge(item.status)}
+        </div>
+        ${reservationBadge}
+        <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
+        <button type="button" class="ghost" data-id="${item.id}">Planifier maintenance</button>
+      `;
+      card.querySelector('button').addEventListener('click', () => openModal(item, 'maintenance'));
+      maintenanceCatalogEl.appendChild(card);
+    });
+
+    if (!filtered.length) {
+      maintenanceCatalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
+    }
+  }
+
+  function renderMaintenanceTags() {
+    if (!maintenanceTagBar) return;
+    const allTags = Array.from(new Set(state.inventory.flatMap((item) => item.tags)));
+    maintenanceTagBar.innerHTML = '';
+    allTags.forEach((tag) => {
+      const chip = document.createElement('button');
+      chip.className = 'tag-chip' + (state.maintenanceFilters.tag === tag ? ' active' : '');
+      chip.type = 'button';
+      chip.textContent = `#${tag}`;
+      chip.addEventListener('click', () => {
+        state.maintenanceFilters.tag = state.maintenanceFilters.tag === tag ? null : tag;
+        renderMaintenanceCatalog();
+        renderMaintenanceTags();
+      });
+      maintenanceTagBar.appendChild(chip);
+    });
+  }
+
   function renderCatalog() {
     if (!catalogEl) return;
     catalogEl.innerHTML = '';
@@ -376,8 +490,11 @@
 
     filtered.forEach((item) => {
       const nextReservation = (item.reservations && item.reservations[0]) || null;
+      const nextLabel = (nextReservation?.type || '').toLowerCase() === 'maintenance'
+        ? 'Maintenance planifiée'
+        : 'Prochaine résa';
       const reservationBadge = nextReservation
-        ? `<div class="meta">Prochaine résa : ${nextReservation.start} → ${nextReservation.end}</div>`
+        ? `<div class="meta">${nextLabel} : ${nextReservation.start} → ${nextReservation.end}</div>`
         : '<div class="meta">Aucune réservation à venir</div>';
       const card = document.createElement('article');
       card.className = 'card';
@@ -519,55 +636,55 @@
     statsEls.returned.textContent = String(stats.returned ?? 0);
   }
 
-  function openModal(item) {
+  function openModal(item, mode = 'reserve') {
+    modalMode = mode;
     state.modalItem = item;
     blockedWeeks = Array.isArray(item.reserved_weeks) ? item.reserved_weeks : [];
     reservationPeriods = Array.isArray(item.reservations) ? item.reservations : [];
+    blockedDates = buildBlockedDates(reservationPeriods);
+    selectedStartDate = null;
+    selectedEndDate = null;
+    calendarMonth = new Date();
     modalTitle.textContent = item.name;
-    const reservationsList = reservationPeriods.length
-      ? `<ul class="meta" style="padding-left:18px;margin:4px 0 8px 0;">${reservationPeriods
-          .map((r) => `<li>Réservé du ${escapeHtml(r.start)} au ${escapeHtml(r.end)}</li>`)
-          .join('')}</ul>`
-      : '<div class="meta">Aucune réservation existante</div>';
+    const picture = item.picture || placeholderImage(item.name);
     modalBody.innerHTML = `
-      <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
-      <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
-      <div class="meta">Semaines réservées: ${blockedWeeks.length ? blockedWeeks.map(escapeHtml).join(', ') : 'aucune'}</div>
-      <div class="meta">Plages bloquées:</div>
-      ${reservationsList}
-      <div class="calendar">
-        <div>
-          <label for="date-start">Debut</label>
-          <input type="date" id="date-start" />
+      <div class="modal-body-grid">
+        <div class="modal-hero">
+          <div class="hero-media">
+            <img src="${picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
+          </div>
+          <div class="hero-info">
+            <div class="badge ${item.status === 'maintenance' ? 'status-maint' : 'status-ok'}">${escapeHtml(item.status || 'Etat')}</div>
+            <div class="meta">Condition : <strong>${escapeHtml(item.condition || 'N/C')}</strong></div>
+            <div class="meta">Emplacement : <strong>${escapeHtml(item.location || 'Stock')}</strong></div>
+            <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
+            <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
+          </div>
         </div>
-        <div>
-          <label for="date-end">Retour</label>
-          <input type="date" id="date-end" />
+        <div class="modal-calendar">
+          <div class="calendar-nav">
+            <button type="button" class="ghost" id="cal-prev">&#8592;</button>
+            <div class="small-title" id="cal-title"></div>
+            <button type="button" class="ghost" id="cal-next">&#8594;</button>
+          </div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+          <p class="meta">Clique un debut puis une fin (max 14 jours). Les dates grisées sont indisponibles.</p>
         </div>
       </div>
     `;
-    dateStartInput = modalBody.querySelector('#date-start');
-    dateEndInput = modalBody.querySelector('#date-end');
-    const defaultStart = nextAvailableDate();
-    const defaultEnd = addDays(defaultStart, 7);
-    dateStartInput.value = defaultStart;
-    dateEndInput.value = defaultEnd;
+    renderCalendar();
     modalMsg.textContent = '';
-    [dateStartInput, dateEndInput].forEach((input) => {
-      input.addEventListener('change', () => {
-        if (!input.value) return;
-        updateAvailabilityMessage();
-      });
-    });
     updateAvailabilityMessage();
     modalBackdrop.classList.add('show');
-    if (dateStartInput?.showPicker) {
-      dateStartInput.showPicker();
-    }
+    reserveBtn.textContent = modalMode === 'maintenance' ? 'Planifier maintenance' : 'Reserver';
   }
 
   function closeModal() {
     state.modalItem = null;
+    modalMode = 'reserve';
+    selectedStartDate = null;
+    selectedEndDate = null;
+    calendarMonth = null;
     modalBackdrop.classList.remove('show');
   }
 
@@ -629,9 +746,144 @@
   }
 
   function isRangeFree(start, end) {
-    const weeks = weeksBetween(start, end);
-    if (!weeks.length) return false;
-    return weeks.every((w) => !blockedWeeks.includes(w));
+    if (!start || !end) return false;
+    const dates = datesBetween(start, end);
+    return dates.every((d) => !blockedDates.includes(d));
+  }
+
+  function buildBlockedDates(periods) {
+    const dates = new Set();
+    periods.forEach((p) => {
+      const list = datesBetween(p.start, p.end || p.start);
+      list.forEach((d) => dates.add(d));
+    });
+    return Array.from(dates);
+  }
+
+  function datesBetween(start, end) {
+    if (!start) return [];
+    const s = new Date(`${start}T00:00:00`);
+    const e = new Date(`${(end || start)}T00:00:00`);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [];
+    const dates = [];
+    const step = s <= e ? 1 : -1;
+    const cursor = new Date(s);
+    while ((step === 1 && cursor <= e) || (step === -1 && cursor >= e)) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + step);
+    }
+    return dates;
+  }
+
+  function renderCalendar() {
+    const grid = modalBody.querySelector('#calendar-grid');
+    const titleEl = modalBody.querySelector('#cal-title');
+    const prev = modalBody.querySelector('#cal-prev');
+    const next = modalBody.querySelector('#cal-next');
+    if (!grid || !titleEl) return;
+    if (!calendarMonth) calendarMonth = new Date();
+    const year = calendarMonth.getUTCFullYear();
+    const month = calendarMonth.getUTCMonth();
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
+    titleEl.textContent = `${monthNames[month]} ${year}`;
+    if (prev) {
+      prev.onclick = () => {
+        calendarMonth.setUTCMonth(calendarMonth.getUTCMonth() - 1);
+        renderCalendar();
+      };
+    }
+    if (next) {
+      next.onclick = () => {
+        calendarMonth.setUTCMonth(calendarMonth.getUTCMonth() + 1);
+        renderCalendar();
+      };
+    }
+    const first = new Date(Date.UTC(year, month, 1));
+    const startDay = (first.getUTCDay() || 7) - 1; // Monday=0
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const cells = [];
+    for (let i = 0; i < startDay; i += 1) {
+      cells.push(null);
+    }
+    for (let d = 1; d <= daysInMonth; d += 1) {
+      cells.push(new Date(Date.UTC(year, month, d)));
+    }
+    while (cells.length % 7 !== 0) {
+      cells.push(null);
+    }
+    grid.innerHTML = '';
+    cells.forEach((cell) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'day-cell';
+      if (!cell) {
+        btn.classList.add('empty');
+        btn.disabled = true;
+        grid.appendChild(btn);
+        return;
+      }
+      const dateStr = cell.toISOString().slice(0, 10);
+      const blocked = blockedDates.includes(dateStr);
+      const selected = isDateSelected(dateStr);
+      const inRange = isDateInSelection(dateStr);
+      btn.textContent = String(cell.getUTCDate());
+      if (blocked) btn.classList.add('blocked');
+      if (selected) btn.classList.add('selected');
+      if (inRange && !selected) btn.classList.add('in-range');
+      btn.onclick = () => handleDayClick(dateStr);
+      grid.appendChild(btn);
+    });
+  }
+
+  function handleDayClick(dateStr) {
+    if (blockedDates.includes(dateStr)) return;
+    if (!selectedStartDate || (selectedStartDate && selectedEndDate)) {
+      selectedStartDate = dateStr;
+      selectedEndDate = null;
+    } else if (!selectedEndDate) {
+      if (new Date(`${dateStr}T00:00:00`) < new Date(`${selectedStartDate}T00:00:00`)) {
+        selectedEndDate = selectedStartDate;
+        selectedStartDate = dateStr;
+      } else {
+        selectedEndDate = dateStr;
+      }
+      const range = selectionRange();
+      if (range && dateDiffDays(range.start, range.end) > 14) {
+        selectedStartDate = dateStr;
+        selectedEndDate = null;
+      } else if (range && !isRangeFree(range.start, range.end)) {
+        selectedStartDate = dateStr;
+        selectedEndDate = null;
+      }
+    }
+    renderCalendar();
+    updateAvailabilityMessage();
+  }
+
+  function isDateSelected(dateStr) {
+    return dateStr === selectedStartDate || dateStr === selectedEndDate;
+  }
+
+  function isDateInSelection(dateStr) {
+    const range = selectionRange();
+    if (!range) return false;
+    const list = datesBetween(range.start, range.end);
+    return list.includes(dateStr);
+  }
+
+  function selectionRange() {
+    if (!selectedStartDate) return null;
+    if (!selectedEndDate) return null;
+    const start = selectedStartDate;
+    const end = selectedEndDate;
+    return { start, end };
+  }
+
+  function dateDiffDays(a, b) {
+    const da = new Date(`${a}T00:00:00`);
+    const db = new Date(`${b}T00:00:00`);
+    if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return 0;
+    return Math.abs(Math.round((db - da) / (1000 * 60 * 60 * 24))) + 1;
   }
 
   function nextAvailableDate() {
@@ -646,6 +898,13 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  function weekStartFromDate(dateObj) {
+    const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 1 - day); // move to Monday
+    return d.toISOString().slice(0, 10);
+  }
+
   function addDays(dateStr, days) {
     const d = new Date(`${dateStr}T00:00:00`);
     if (Number.isNaN(d.getTime())) return dateStr;
@@ -654,17 +913,18 @@
   }
 
   function updateAvailabilityMessage() {
-    const start = dateStartInput?.value;
-    const end = dateEndInput?.value || start;
-    const free = isRangeFree(start, end);
+    const range = selectionRange();
+    if (!range) {
+      reserveBtn.disabled = true;
+      modalMsg.textContent = 'Choisissez un debut puis une fin.';
+      modalMsg.className = 'message';
+      return;
+    }
+    const free = isRangeFree(range.start, range.end);
     reserveBtn.disabled = !free;
-    modalMsg.textContent = free ? '' : 'Période déjà réservée';
-    modalMsg.className = free ? 'message' : 'message err';
-    [dateStartInput, dateEndInput].forEach((input) => {
-      if (!input) return;
-      input.classList.toggle('blocked', !free);
-      input.min = nextAvailableDate();
-    });
+    const label = free ? 'message ok' : 'message err';
+    modalMsg.textContent = free ? `Du ${range.start} au ${range.end}` : 'Periode deja reservee';
+    modalMsg.className = label;
   }
 
   function dueSeverity(due) {

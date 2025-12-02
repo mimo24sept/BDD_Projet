@@ -29,7 +29,9 @@
       <div class="tabs">
         <div class="tab active" data-tab="borrow">Emprunter un objet</div>
         <div class="tab" data-tab="loans">Mes emprunts & stats</div>
-        <div class="tab" data-tab="admin" data-role="admin">Ajouter du materiel</div>
+        <div class="tab" data-tab="admin-add" data-role="admin">Ajouter du materiel</div>
+        <div class="tab" data-tab="admin-returns" data-role="admin">Rendus & réservations</div>
+        <div class="tab" data-tab="admin-maintenance" data-role="admin">Maintenance</div>
       </div>
 
       <section class="panel" data-section="borrow">
@@ -80,7 +82,7 @@
         <div class="loans-list" id="loans"></div>
       </section>
 
-      <section class="panel" data-section="admin" data-role="admin" hidden>
+      <section class="panel" data-section="admin-add" data-role="admin" hidden>
         <div class="section-title">
           <div>
             <div class="small-title">Administration</div>
@@ -111,10 +113,37 @@
           <button type="submit">Ajouter</button>
           <div id="admin-msg" class="message"></div>
         </form>
-        <div style="margin-top:16px;">
-          <div class="small-title">Réservations en cours</div>
-          <div class="loans-list" id="admin-loans"></div>
+      </section>
+
+      <section class="panel" data-section="admin-returns" data-role="admin" hidden>
+        <div class="section-title">
+          <div>
+            <div class="small-title">Administration</div>
+            <h3 style="margin:2px 0 0;">Rendus de matériel</h3>
+          </div>
         </div>
+        <div class="loans-list" id="admin-loans"></div>
+      </section>
+
+      <section class="panel" data-section="admin-maintenance" data-role="admin" hidden>
+        <div class="section-title">
+          <div>
+            <div class="small-title">Administration</div>
+            <h3 style="margin:2px 0 0;">Planifier une maintenance</h3>
+          </div>
+        </div>
+        <div class="filters">
+          <div class="input-group">
+            <label for="maintenance-search">Recherche</label>
+            <input id="maintenance-search" placeholder="oscilloscope, laptop, FPGA..." />
+          </div>
+          <div class="input-group">
+            <label>Tags</label>
+            <div class="tag-bar" id="maintenance-tag-bar"></div>
+          </div>
+        </div>
+        <div style="height:12px"></div>
+        <div id="maintenance-catalog" class="catalog"></div>
       </section>
     </main>
 

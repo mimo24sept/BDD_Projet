@@ -277,7 +277,11 @@ main {
 .modal { width: min(700px, 92vw); background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3); display: grid; gap: 12px; }
 .modal .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 
-.calendar { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.modal-body-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+.modal-hero { background: linear-gradient(135deg, #fff7ed, #fff); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 10px; }
+.hero-media img { width: 100%; border-radius: 12px; object-fit: cover; max-height: 200px; background: #f2f4f8; }
+.hero-info { display: grid; gap: 6px; }
+.modal-calendar { background: #f9fafb; border: 1px dashed var(--line); border-radius: 14px; padding: 12px; }
 
 .message { font-size: 13px; color: var(--muted); }
 .message.ok { color: var(--success); }
@@ -330,4 +334,24 @@ main {
 .loan-item.loan-soon .progress > div { background: #f59e0b; }
 .loan-item.loan-urgent .progress > div { background: #f97316; }
 .loan-item.loan-overdue .progress > div { background: #ef4444; }
-
+.calendar-nav { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.calendar-nav button { padding:8px 12px; }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(36px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.day-cell {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
+}
+.day-cell:hover { border-color: var(--accent-soft); box-shadow: 0 6px 18px rgba(255,140,50,0.18); transform: translateY(-1px); }
+.day-cell.selected { background: #fff6ed; border-color: var(--accent); box-shadow: 0 8px 20px rgba(255,140,50,0.22); }
+.day-cell.in-range { background: #fff7f0; border-color: var(--accent-soft); }
+.day-cell.blocked { background: #f4f4f5; color: #9ca3af; border-style: dashed; cursor: not-allowed; box-shadow: none; }
+.day-cell.empty { background: transparent; border: none; box-shadow: none; cursor: default; }

@@ -52,6 +52,16 @@ if ($method === 'POST' && $action === 'create') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'maintenance') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    set_maintenance($pdo, (int) $_SESSION['user_id']);
+    exit;
+}
+
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
@@ -77,6 +87,7 @@ function list_equipment(PDO $pdo): void
     $items = [];
     foreach ($rows as $row) {
         $id = (int) ($row['id'] ?? 0);
+        $hasMaintenance = !empty($activeLoans[$id]['hasMaintenance']);
         if (!isset($items[$id])) {
             $hasActiveLoan = isset($activeLoans[$id]);
             $items[$id] = [
@@ -84,12 +95,12 @@ function list_equipment(PDO $pdo): void
                 'name' => $row['name'] ?? '',
                 'category' => $row['category'] ?? 'Non classé',
                 'location' => $row['location'] ?? '',
-                'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan),
+                'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan, $hasMaintenance),
                 'condition' => $row['etat'] ?? '',
                 'notes' => '',
                 'serial' => $row['numserie'] ?? '',
                 'tags' => [],
-                'maintenance' => '',
+                'maintenance' => $hasMaintenance,
                 'next_service' => null,
                 'reservations' => $activeLoans[$id]['periods'] ?? [],
             ];
@@ -100,6 +111,7 @@ function list_equipment(PDO $pdo): void
             [
                 $items[$id]['category'],
                 $items[$id]['condition'],
+                $hasMaintenance ? 'maintenance' : null,
             ]
         );
 
@@ -189,6 +201,80 @@ function reserve_equipment(PDO $pdo, int $userId): void
     echo json_encode(['status' => 'ok', 'equipment' => $updated]);
 }
 
+function set_maintenance(PDO $pdo, int $userId): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $start = trim((string) ($data['start'] ?? ''));
+    if ($start === '') {
+        $start = date('Y-m-d');
+    }
+    $end = trim((string) ($data['end'] ?? ''));
+    if ($end === '') {
+        $end = $start;
+    }
+
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant manquant ou invalide']);
+        return;
+    }
+    if (iso_week_key($start) === null || iso_week_key($end) === null) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Dates invalides']);
+        return;
+    }
+    if (strtotime($end) !== false && strtotime($start) !== false && strtotime($end) < strtotime($start)) {
+        [$start, $end] = [$end, $start];
+    }
+
+    $conflict = $pdo->prepare(
+        'SELECT 1
+         FROM `Emprunt` e
+         WHERE e.IDmateriel = :id
+           AND NOT EXISTS (
+             SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
+           )
+           AND e.DATEdebut <= :fin
+           AND e.DATEfin >= :debut
+         LIMIT 1'
+    );
+    $conflict->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
+    if ($conflict->fetchColumn()) {
+        http_response_code(409);
+        echo json_encode(['error' => 'Déjà indisponible sur cette période']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
+        $update->execute([':id' => $id]);
+
+        $insert = $pdo->prepare(
+            'INSERT INTO `Emprunt` (IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt)
+             VALUES (:id, :uid, :debut, :fin, :etat)'
+        );
+        $insert->execute([
+            ':id' => $id,
+            ':uid' => $userId,
+            ':debut' => $start,
+            ':fin' => $end,
+            ':etat' => 'Maintenance',
+        ]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Planification impossible', 'details' => $e->getMessage()]);
+        return;
+    }
+
+    $updated = fetch_equipment_by_id($pdo, $id);
+    echo json_encode(['status' => 'ok', 'equipment' => $updated]);
+}
+
 function create_equipment(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -244,7 +330,7 @@ function create_equipment(PDO $pdo): void
 function fetch_active_loans(PDO $pdo): array
 {
     $stmt = $pdo->query(
-        'SELECT e.IDmateriel, e.DATEdebut, e.DATEfin
+        'SELECT e.IDmateriel, e.DATEdebut, e.DATEfin, e.ETATemprunt
          FROM `Emprunt` e
          WHERE NOT EXISTS (
             SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
@@ -257,8 +343,9 @@ function fetch_active_loans(PDO $pdo): array
         $start = $row['DATEdebut'] ?? '';
         $end = $row['DATEfin'] ?: $start;
         $weeks = weeks_between($start, $end);
+        $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
 
-        $active[$id] ??= ['weeks' => [], 'periods' => []];
+        $active[$id] ??= ['weeks' => [], 'periods' => [], 'hasMaintenance' => false];
         foreach ($weeks as $week) {
             if (!in_array($week, $active[$id]['weeks'], true)) {
                 $active[$id]['weeks'][] = $week;
@@ -267,7 +354,11 @@ function fetch_active_loans(PDO $pdo): array
         $active[$id]['periods'][] = [
             'start' => $start,
             'end' => $end,
+            'type' => $kind,
         ];
+        if ($kind === 'maintenance') {
+            $active[$id]['hasMaintenance'] = true;
+        }
     }
 
     return $active;
@@ -297,17 +388,18 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
     }
 
     $hasActiveLoan = isset($activeLoans[$id]);
+    $hasMaintenance = !empty($activeLoans[$id]['hasMaintenance']);
     $mapped = [
         'id' => (int) ($row['id'] ?? 0),
         'name' => $row['name'] ?? '',
         'category' => $row['category'] ?? 'Non classé',
         'location' => $row['location'] ?? '',
-        'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan),
+        'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan, $hasMaintenance),
         'condition' => $row['etat'] ?? '',
         'notes' => '',
         'serial' => $row['numserie'] ?? '',
         'tags' => [],
-        'maintenance' => '',
+        'maintenance' => $hasMaintenance,
         'next_service' => null,
         'reservations' => $activeLoans[$id]['periods'] ?? [],
     ];
@@ -317,6 +409,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         [
             $mapped['category'],
             $mapped['condition'],
+            $hasMaintenance ? 'maintenance' : null,
         ]
     );
 
@@ -325,8 +418,11 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
     return $mapped;
 }
 
-function map_status(string $dispo, bool $hasActiveLoan): string
+function map_status(string $dispo, bool $hasActiveLoan, bool $hasMaintenance = false): string
 {
+    if ($hasMaintenance) {
+        return 'maintenance';
+    }
     if ($hasActiveLoan || strtolower($dispo) !== 'oui') {
         return 'reserve';
     }
