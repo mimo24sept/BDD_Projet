@@ -13,6 +13,7 @@
     inventory: [],
     loans: [],
     adminLoans: [],
+    accounts: [],
     activeTab: 'borrow',
     filters: { search: '', tag: null },
     maintenanceFilters: { search: '', tag: null },
@@ -52,6 +53,8 @@
   const maintenanceCatalogEl = document.querySelector('#maintenance-catalog');
   const maintenanceSearchInput = document.querySelector('#maintenance-search');
   const maintenanceTagBar = document.querySelector('#maintenance-tag-bar');
+  const maintenanceListEl = document.querySelector('#maintenance-list');
+  const accountsListEl = document.querySelector('#accounts-list');
   let dateStartInput = null;
   let dateEndInput = null;
   let blockedWeeks = [];
@@ -271,6 +274,45 @@
     }
   }
 
+  async function apiFetchUsers() {
+    try {
+      const res = await fetch(`${API.auth}?action=users`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'API users');
+      state.accounts = Array.isArray(data) ? data : [];
+    } catch (err) {
+      state.accounts = [];
+    }
+  }
+
+  async function apiSetUserRole(id, role) {
+    const res = await fetch(`${API.auth}?action=set_role`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id, role }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Mise à jour impossible');
+    }
+    return data;
+  }
+
+  async function apiDeleteUser(id) {
+    const res = await fetch(`${API.auth}?action=delete_user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Suppression impossible');
+    }
+    return data;
+  }
+
   async function apiReturnLoan(id, condition = '') {
     const res = await fetch(`${API.dashboard}?action=return`, {
       method: 'POST',
@@ -281,6 +323,20 @@
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data?.error || 'Retour impossible');
+    }
+    await apiFetchLoans();
+  }
+
+  async function apiRequestCancel(id) {
+    const res = await fetch(`${API.dashboard}?action=cancel_request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Annulation impossible');
     }
     await apiFetchLoans();
   }
@@ -373,6 +429,8 @@
     renderCatalog();
     renderLoans();
     renderAdminLoans();
+    renderMaintenanceAgenda();
+    renderAccounts();
     renderStats();
     renderTags();
     renderMaintenanceCatalog();
@@ -429,12 +487,9 @@
     });
 
     filtered.forEach((item) => {
-      const nextReservation = (item.reservations && item.reservations[0]) || null;
-      const nextLabel = (nextReservation?.type || '').toLowerCase() === 'maintenance'
-        ? 'Maintenance planifiée'
-        : 'Prochaine résa';
+      const nextReservation = (item.reservations || []).find((r) => (r.type || '').toLowerCase() !== 'maintenance') || null;
       const reservationBadge = nextReservation
-        ? `<div class="meta">${nextLabel} : ${nextReservation.start} → ${nextReservation.end}</div>`
+        ? `<div class="meta">Prochaine résa : ${nextReservation.start} → ${nextReservation.end}</div>`
         : '<div class="meta">Aucune réservation à venir</div>';
       const card = document.createElement('article');
       card.className = 'card';
@@ -478,6 +533,107 @@
     });
   }
 
+  function renderMaintenanceAgenda() {
+    if (!maintenanceListEl) return;
+    maintenanceListEl.innerHTML = '';
+    if (!isAdmin()) {
+      maintenanceListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+      return;
+    }
+    const maints = state.adminLoans
+      .filter((l) => (l.type || '').toLowerCase() === 'maintenance')
+      .filter((l) => l.status !== 'rendu');
+
+    maints.forEach((m) => {
+      // Use end date to judge lateness; fallback to start if missing.
+      const severity = dueSeverity(m.due || m.start);
+      const barColor = severityColor(severity);
+      const row = document.createElement('div');
+      row.className = `loan-item loan-${severity}`;
+      row.innerHTML = `
+        <div>
+          <div class="small-title">Maintenance planifiée - ${escapeHtml(severityLabel(severity))}</div>
+          <div style="font-weight:800">${escapeHtml(m.name)}</div>
+          <div class="loan-meta">Du ${m.start} au ${m.due} — ${escapeHtml(m.user || 'Administrateur')}</div>
+          <div class="progress" aria-hidden="true"><div style="width:${m.progress}%; background:${barColor}"></div></div>
+        </div>
+        <div class="admin-actions">
+          <button type="button" class="ghost" data-id="${m.id}">Fin de maintenance</button>
+        </div>
+      `;
+      const btn = row.querySelector('button');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Clôture...';
+          try {
+            await apiReturnLoan(m.id);
+            await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
+            render();
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Fin de maintenance';
+          }
+        });
+      }
+      maintenanceListEl.appendChild(row);
+    });
+
+    if (!maints.length) {
+      maintenanceListEl.innerHTML = '<p class="meta">Aucune maintenance planifiée.</p>';
+    }
+  }
+
+  function renderAccounts() {
+    if (!accountsListEl) return;
+    accountsListEl.innerHTML = '';
+    if (!isAdmin()) {
+      accountsListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+      return;
+    }
+    if (!state.accounts.length) {
+      accountsListEl.innerHTML = '<p class="meta">Aucun compte trouvé.</p>';
+      return;
+    }
+    state.accounts.forEach((acc) => {
+      const row = document.createElement('div');
+      row.className = 'loan-item';
+      row.innerHTML = `
+        <div>
+          <div class="small-title">${escapeHtml(acc.login || 'Utilisateur')}</div>
+          <div class="loan-meta">${escapeHtml(acc.email || '')}</div>
+          <div class="loan-meta">Créé le ${acc.created || 'N/C'}</div>
+          <div class="loan-meta">Dernière connexion : ${acc.last_login || 'Jamais'}</div>
+        </div>
+        <div class="admin-actions">
+          <button type="button" class="ghost danger" data-del="${acc.id}">Supprimer</button>
+        </div>
+      `;
+      const delBtn = row.querySelector('button[data-del]');
+      if (delBtn) {
+        const isAdminRole = (acc.role || '').toLowerCase().includes('admin');
+        if (isAdminRole) {
+          delBtn.disabled = true;
+          delBtn.textContent = 'Admin';
+        } else {
+          delBtn.addEventListener('click', async () => {
+            delBtn.disabled = true;
+            delBtn.textContent = 'Suppression...';
+            try {
+              await apiDeleteUser(acc.id);
+              await apiFetchUsers();
+              renderAccounts();
+            } catch (err) {
+              delBtn.disabled = false;
+              delBtn.textContent = 'Supprimer';
+            }
+          });
+        }
+      }
+      accountsListEl.appendChild(row);
+    });
+  }
+
   function renderCatalog() {
     if (!catalogEl) return;
     catalogEl.innerHTML = '';
@@ -489,13 +645,10 @@
     });
 
     filtered.forEach((item) => {
-      const nextReservation = (item.reservations && item.reservations[0]) || null;
-      const nextLabel = (nextReservation?.type || '').toLowerCase() === 'maintenance'
-        ? 'Maintenance planifiée'
-        : 'Prochaine résa';
-      const reservationBadge = nextReservation
-        ? `<div class="meta">${nextLabel} : ${nextReservation.start} → ${nextReservation.end}</div>`
-        : '<div class="meta">Aucune réservation à venir</div>';
+      const nextMaintenance = (item.reservations || []).find((r) => (r.type || '').toLowerCase() === 'maintenance') || null;
+      const reservationBadge = nextMaintenance
+        ? `<div class="meta">Maintenance planifiée : ${nextMaintenance.start} → ${nextMaintenance.end}</div>`
+        : '<div class="meta">Aucune maintenance planifiée</div>';
       const card = document.createElement('article');
       card.className = 'card';
       card.innerHTML = `
@@ -527,13 +680,21 @@
       const severity = dueSeverity(loan.due);
       const barColor = severityColor(severity);
       const canReturn = isAdmin && loan.type === 'pret' && loan.status !== 'rendu';
+      const canRequestCancel = !isAdmin
+        && loan.type === 'pret'
+        && loan.status !== 'rendu'
+        && loan.status !== 'annulation demandee';
       const actionHtml = canReturn
         ? '<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>'
-        : isAdmin
-          ? '<button type="button" class="ghost" disabled>' +
-              (loan.status === 'rendu' ? 'Déjà rendu' : 'Réservé') +
-            '</button>'
-          : '';
+        : canRequestCancel
+          ? '<button type="button" class="ghost" data-cancel="' + loan.id + '">Demander annulation</button>'
+          : isAdmin
+            ? '<button type="button" class="ghost" disabled>' +
+                (loan.status === 'rendu' ? 'Déjà rendu' : 'Réservé') +
+              '</button>'
+            : (loan.status === 'annulation demandee'
+              ? '<span class="meta">Annulation demandée</span>'
+              : '');
 
       const row = document.createElement('div');
       row.className = `loan-item loan-${severity}`;
@@ -547,6 +708,7 @@
         ${actionHtml}
       `;
       const returnBtn = canReturn ? row.querySelector('button') : null;
+      const cancelBtn = !canReturn ? row.querySelector('button[data-cancel]') : null;
       if (canReturn && returnBtn) {
         returnBtn.addEventListener('click', async () => {
           returnBtn.disabled = true;
@@ -559,6 +721,20 @@
           } catch (err) {
             returnBtn.disabled = false;
             returnBtn.textContent = 'Rendre maintenant';
+          }
+        });
+      }
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', async () => {
+          cancelBtn.disabled = true;
+          cancelBtn.textContent = 'Envoi...';
+          try {
+            await apiRequestCancel(loan.id);
+            loan.status = 'annulation demandee';
+            renderLoans();
+          } catch (err) {
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = 'Demander annulation';
           }
         });
       }
@@ -577,9 +753,36 @@
       adminLoansEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
       return;
     }
+    const today = new Date().toISOString().slice(0, 10);
+    const active = [];
+    const upcoming = [];
     state.adminLoans
+      .filter((l) => l.type !== 'maintenance')
       .filter((l) => l.status !== 'rendu')
       .forEach((loan) => {
+        const statusNorm = (loan.status || '').toLowerCase();
+        const start = loan.start || loan.due;
+        const due = loan.due || loan.start;
+        const startOk = start && start <= today;
+        const dueOk = due && due >= today;
+        if (statusNorm === 'annulation demandee') {
+          upcoming.push({ ...loan, _cancelRequested: true });
+          return;
+        }
+        if (startOk && dueOk) {
+          active.push(loan);
+        } else if (start && start > today) {
+          upcoming.push(loan);
+        } else {
+          active.push(loan);
+        }
+      });
+
+    const renderList = (list, title, opts = {}) => {
+      const block = document.createElement('div');
+      block.className = 'admin-subblock';
+      block.innerHTML = `<div class="small-title" style="margin:4px 0 10px;">${title}</div>`;
+      list.forEach((loan) => {
         const severity = dueSeverity(loan.due);
         const barColor = severityColor(severity);
         const row = document.createElement('div');
@@ -599,28 +802,40 @@
               <option value="passable">Passable</option>
               <option value="reparation nécessaire">Réparation nécessaire</option>
             </select>
-            <button type="button" class="ghost" data-id="${loan.id}">Marquer rendu</button>
+            <button type="button" class="ghost" data-id="${loan.id}">${opts.actionLabel || 'Marquer rendu'}</button>
           </div>
         `;
         const btn = row.querySelector('button');
         const cond = row.querySelector('select');
         btn.addEventListener('click', async () => {
           btn.disabled = true;
-          btn.textContent = 'Retour...';
+          btn.textContent = opts.actionLabel || 'Retour...';
           try {
             await apiReturnLoan(loan.id, cond?.value || '');
             await Promise.all([apiFetchAdminLoans(), apiFetchLoans()]);
             render();
           } catch (err) {
             btn.disabled = false;
-            btn.textContent = 'Marquer rendu';
+            btn.textContent = opts.actionLabel || 'Marquer rendu';
           }
         });
-        adminLoansEl.appendChild(row);
+        block.appendChild(row);
       });
+      adminLoansEl.appendChild(block);
+    };
 
-    if (!state.adminLoans.filter((l) => l.status !== 'rendu').length) {
-      adminLoansEl.innerHTML = '<p class="meta">Aucune réservation en cours.</p>';
+    if (active.length) {
+      renderList(active, 'Réservations en cours');
+    }
+    if (upcoming.length) {
+      const cancels = upcoming.filter((l) => l._cancelRequested);
+      const future = upcoming.filter((l) => !l._cancelRequested);
+      if (future.length) renderList(future, 'Réservations à venir');
+      if (cancels.length) renderList(cancels, 'Demandes d’annulation', { actionLabel: 'Annuler / Rendre' });
+    }
+
+    if (!active.length && !upcoming.length) {
+      adminLoansEl.innerHTML = '<p class="meta">Aucune réservation en cours ou à venir.</p>';
     }
   }
 
@@ -960,7 +1175,7 @@
     setAuthUI();
     await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
     if (isAdmin()) {
-      await apiFetchAdminLoans();
+      await Promise.all([apiFetchAdminLoans(), apiFetchUsers()]);
     }
     render();
   })();

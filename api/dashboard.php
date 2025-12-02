@@ -42,6 +42,11 @@ if ($method === 'POST' && $action === 'return') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'cancel_request') {
+    request_cancel($pdo, (int) $_SESSION['user_id']);
+    exit;
+}
+
 try {
     $scope = $_GET['scope'] ?? 'mine';
     $targetUser = ($scope === 'all' && is_admin()) ? null : (int) $_SESSION['user_id'];
@@ -77,10 +82,12 @@ function fetch_loans(PDO $pdo, ?int $userId): array
         $start = $row['DATEdebut'] ?? null;
         $due = $row['DATEfin'] ?? null;
         $returnedAt = $row['DATErendu'] ?? null;
-        $status = $returnedAt ? 'rendu' : (strtolower((string) $row['ETATemprunt']) ?: 'en cours');
+        $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        $type = $kind === 'maintenance' ? 'maintenance' : 'pret';
+        $status = $returnedAt ? 'rendu' : ($kind ?: 'en cours');
         $loans[] = [
             'id' => (int) $row['IDemprunt'],
-            'type' => 'pret',
+            'type' => $type,
             'name' => $row['NOMmateriel'],
             'start' => $start ?: compute_start_date($due),
             'due' => $due,
@@ -124,8 +131,9 @@ function progress_percent(?string $start, ?string $due): int
 
 function build_stats(array $loans): array
 {
-    $total = count($loans);
-    $returned = count(array_filter($loans, static fn($l) => $l['status'] === 'rendu'));
+    $eligible = array_filter($loans, static fn($l) => ($l['type'] ?? 'pret') !== 'maintenance');
+    $total = count($eligible);
+    $returned = count(array_filter($eligible, static fn($l) => $l['status'] === 'rendu'));
     $active = $total - $returned;
 
     return [
@@ -201,6 +209,58 @@ function return_pret(PDO $pdo, int $userId): void
         $pdo->rollBack();
         http_response_code(500);
         echo json_encode(['error' => 'Retour impossible', 'details' => $e->getMessage()]);
+    }
+}
+
+function request_cancel(PDO $pdo, int $userId): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant invalide']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $select = $pdo->prepare(
+            'SELECT IDemprunt FROM `Emprunt`
+             WHERE IDemprunt = :id
+               AND (:uid = IDuser OR :isAdmin = 1)
+             LIMIT 1'
+        );
+        $select->execute([':id' => $id, ':uid' => $userId, ':isAdmin' => is_admin() ? 1 : 0]);
+        $row = $select->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Réservation introuvable']);
+            return;
+        }
+
+        $alreadyReturned = $pdo->prepare('SELECT 1 FROM `Rendu` WHERE IDemprunt = :id LIMIT 1');
+        $alreadyReturned->execute([':id' => $id]);
+        if ($alreadyReturned->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Déjà rendu']);
+            return;
+        }
+
+        $update = $pdo->prepare(
+            'UPDATE `Emprunt`
+             SET ETATemprunt = "Annulation demandee"
+             WHERE IDemprunt = :id'
+        );
+        $update->execute([':id' => $id]);
+
+        $pdo->commit();
+        echo json_encode(['status' => 'ok']);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Impossible de demander l\'annulation', 'details' => $e->getMessage()]);
     }
 }
 

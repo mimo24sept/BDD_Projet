@@ -87,20 +87,21 @@ function list_equipment(PDO $pdo): void
     $items = [];
     foreach ($rows as $row) {
         $id = (int) ($row['id'] ?? 0);
-        $hasMaintenance = !empty($activeLoans[$id]['hasMaintenance']);
+        $hasMaintenanceAny = !empty($activeLoans[$id]['hasMaintenanceAny']);
+        $hasMaintenanceNow = !empty($activeLoans[$id]['hasMaintenanceNow']);
+        $hasActiveNow = !empty($activeLoans[$id]['hasActiveNow']);
         if (!isset($items[$id])) {
-            $hasActiveLoan = isset($activeLoans[$id]);
             $items[$id] = [
                 'id' => $id,
                 'name' => $row['name'] ?? '',
                 'category' => $row['category'] ?? 'Non classé',
                 'location' => $row['location'] ?? '',
-                'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan, $hasMaintenance),
+                'status' => map_status($hasActiveNow, $hasMaintenanceNow),
                 'condition' => $row['etat'] ?? '',
                 'notes' => '',
                 'serial' => $row['numserie'] ?? '',
                 'tags' => [],
-                'maintenance' => $hasMaintenance,
+                'maintenance' => $hasMaintenanceAny,
                 'next_service' => null,
                 'reservations' => $activeLoans[$id]['periods'] ?? [],
             ];
@@ -111,7 +112,7 @@ function list_equipment(PDO $pdo): void
             [
                 $items[$id]['category'],
                 $items[$id]['condition'],
-                $hasMaintenance ? 'maintenance' : null,
+                $hasMaintenanceAny ? 'maintenance' : null,
             ]
         );
 
@@ -174,8 +175,11 @@ function reserve_equipment(PDO $pdo, int $userId): void
 
     $pdo->beginTransaction();
     try {
-        $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
-        $update->execute([':id' => $id]);
+        $shouldBlockNow = period_is_current($start, $end, date('Y-m-d'));
+        if ($shouldBlockNow) {
+            $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
+            $update->execute([':id' => $id]);
+        }
 
         $insert = $pdo->prepare(
             'INSERT INTO `Emprunt` (IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt)
@@ -248,8 +252,11 @@ function set_maintenance(PDO $pdo, int $userId): void
 
     $pdo->beginTransaction();
     try {
-        $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
-        $update->execute([':id' => $id]);
+        $shouldBlockNow = period_is_current($start, $end, date('Y-m-d'));
+        if ($shouldBlockNow) {
+            $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
+            $update->execute([':id' => $id]);
+        }
 
         $insert = $pdo->prepare(
             'INSERT INTO `Emprunt` (IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt)
@@ -329,6 +336,7 @@ function create_equipment(PDO $pdo): void
 
 function fetch_active_loans(PDO $pdo): array
 {
+    $today = date('Y-m-d');
     $stmt = $pdo->query(
         'SELECT e.IDmateriel, e.DATEdebut, e.DATEfin, e.ETATemprunt
          FROM `Emprunt` e
@@ -344,8 +352,16 @@ function fetch_active_loans(PDO $pdo): array
         $end = $row['DATEfin'] ?: $start;
         $weeks = weeks_between($start, $end);
         $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        $isCurrent = period_is_current($start, $end, $today);
 
-        $active[$id] ??= ['weeks' => [], 'periods' => [], 'hasMaintenance' => false];
+        $active[$id] ??= [
+            'weeks' => [],
+            'periods' => [],
+            'hasMaintenanceAny' => false,
+            'hasMaintenanceNow' => false,
+            'hasActiveNow' => false,
+        ];
+
         foreach ($weeks as $week) {
             if (!in_array($week, $active[$id]['weeks'], true)) {
                 $active[$id]['weeks'][] = $week;
@@ -356,8 +372,16 @@ function fetch_active_loans(PDO $pdo): array
             'end' => $end,
             'type' => $kind,
         ];
+
+        if ($isCurrent) {
+            $active[$id]['hasActiveNow'] = true;
+        }
+
         if ($kind === 'maintenance') {
-            $active[$id]['hasMaintenance'] = true;
+            $active[$id]['hasMaintenanceAny'] = true;
+            if ($isCurrent) {
+                $active[$id]['hasMaintenanceNow'] = true;
+            }
         }
     }
 
@@ -387,19 +411,20 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         return null;
     }
 
-    $hasActiveLoan = isset($activeLoans[$id]);
-    $hasMaintenance = !empty($activeLoans[$id]['hasMaintenance']);
+    $hasActiveLoan = !empty($activeLoans[$id]['hasActiveNow']);
+    $hasMaintenanceAny = !empty($activeLoans[$id]['hasMaintenanceAny']);
+    $hasMaintenanceNow = !empty($activeLoans[$id]['hasMaintenanceNow']);
     $mapped = [
         'id' => (int) ($row['id'] ?? 0),
         'name' => $row['name'] ?? '',
         'category' => $row['category'] ?? 'Non classé',
         'location' => $row['location'] ?? '',
-        'status' => map_status((string) ($row['dispo'] ?? 'Non'), $hasActiveLoan, $hasMaintenance),
+        'status' => map_status($hasActiveLoan, $hasMaintenanceNow),
         'condition' => $row['etat'] ?? '',
         'notes' => '',
         'serial' => $row['numserie'] ?? '',
         'tags' => [],
-        'maintenance' => $hasMaintenance,
+        'maintenance' => $hasMaintenanceAny,
         'next_service' => null,
         'reservations' => $activeLoans[$id]['periods'] ?? [],
     ];
@@ -409,7 +434,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         [
             $mapped['category'],
             $mapped['condition'],
-            $hasMaintenance ? 'maintenance' : null,
+            $hasMaintenanceAny ? 'maintenance' : null,
         ]
     );
 
@@ -418,12 +443,12 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
     return $mapped;
 }
 
-function map_status(string $dispo, bool $hasActiveLoan, bool $hasMaintenance = false): string
+function map_status(bool $hasActiveLoan, bool $hasMaintenance = false): string
 {
     if ($hasMaintenance) {
         return 'maintenance';
     }
-    if ($hasActiveLoan || strtolower($dispo) !== 'oui') {
+    if ($hasActiveLoan) {
         return 'reserve';
     }
     return 'disponible';
@@ -460,6 +485,26 @@ function weeks_between(string $start, string $end): array
     }
 
     return $weeks;
+}
+
+function period_is_current(string $start, string $end, string $today): bool
+{
+    if ($start === '') {
+        return false;
+    }
+    $startDate = strtotime($start);
+    $endDate = strtotime($end !== '' ? $end : $start);
+    $todayDate = strtotime($today);
+
+    if ($startDate === false || $endDate === false || $todayDate === false) {
+        return false;
+    }
+
+    if ($endDate < $startDate) {
+        [$startDate, $endDate] = [$endDate, $startDate];
+    }
+
+    return $startDate <= $todayDate && $todayDate <= $endDate;
 }
 
 function iso_week_key(string $date): ?string

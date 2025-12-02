@@ -230,6 +230,7 @@ main {
 .badge.status-ok { background: #ecfdf3; color: #137a36; }
 .badge.status-loan { background: #fff6ed; color: #c2410c; }
 .badge.status-maint { background: #fef2f2; color: #b91c1c; }
+.ghost.danger { color: var(--danger); border-color: var(--danger); }
 
 .tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .tags span { background: #f6f7fb; padding: 6px 9px; border-radius: 8px; font-size: 12px; color: #4b5563; }
@@ -244,6 +245,15 @@ main {
 .stat-trend { color: var(--success); font-weight: 700; }
 
 .loans-list { display: grid; gap: 12px; }
+.admin-subblock {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: linear-gradient(180deg, #fff, #f9fafb);
+  box-shadow: var(--shadow);
+}
+.admin-subblock .small-title { text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+
 .loan-item {
   background: #fff;
   border: 1px solid var(--line);
@@ -334,6 +344,14 @@ main {
 .loan-item.loan-soon .progress > div { background: #f59e0b; }
 .loan-item.loan-urgent .progress > div { background: #f97316; }
 .loan-item.loan-overdue .progress > div { background: #ef4444; }
+.auth-forms { display: grid; gap: 14px; }
+.auth-form-block {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fff, #f9fafb);
+  box-shadow: var(--shadow);
+}
 .calendar-nav { display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .calendar-nav button { padding:8px 12px; }
 .calendar-grid {
@@ -347,6 +365,7 @@ main {
   border-radius: 10px;
   padding: 10px;
   background: #fff;
+  color: var(--accent-strong);
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
 }

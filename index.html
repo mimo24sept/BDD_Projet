@@ -19,18 +19,60 @@
           <p class="subtitle">Connexion requise pour acceder au catalogue</p>
         </div>
       </div>
-      <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
-        <div class="input-group">
-          <label for="login">Login</label>
-          <input id="login" name="login" placeholder="ex: admin" required />
+      <div class="auth-forms">
+        <div class="auth-form-block" id="login-block">
+          <div class="small-title" style="margin-bottom:6px;">Connexion</div>
+          <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
+            <div class="input-group">
+              <label for="login">Login</label>
+              <input id="login" name="login" placeholder="ex: admin" required />
+            </div>
+            <div class="input-group">
+              <label for="password">Mot de passe</label>
+              <input id="password" name="password" type="password" placeholder="****" required />
+            </div>
+            <button type="submit">Connexion</button>
+            <div id="login-msg" class="message"></div>
+            <button type="button" class="ghost" id="toggle-register">Créer un compte</button>
+          </form>
         </div>
-        <div class="input-group">
-          <label for="password">Mot de passe</label>
-          <input id="password" name="password" type="password" placeholder="****" required />
+
+        <div class="auth-form-block" id="register-block" hidden>
+          <div class="small-title" style="margin-bottom:6px;">Créer un compte</div>
+          <form id="register-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
+            <div class="input-group">
+              <label for="reg-email">Email</label>
+              <input id="reg-email" name="email" type="email" placeholder="prenom.nom@geii.fr" required />
+            </div>
+            <div class="input-group">
+              <label for="reg-login">Login</label>
+              <input id="reg-login" name="login" placeholder="ex: jdoe" required />
+            </div>
+            <div class="input-group">
+              <label for="reg-pass">Mot de passe</label>
+              <input id="reg-pass" name="password" type="password" required />
+            </div>
+            <div class="input-group">
+              <label for="reg-pass2">Confirme mot de passe</label>
+              <input id="reg-pass2" name="confirm" type="password" required />
+            </div>
+            <div class="input-group">
+              <label for="reg-role">Profil</label>
+              <select id="reg-role" name="role">
+                <option value="etudiant">Etudiant</option>
+                <option value="professeur">Professeur</option>
+              </select>
+            </div>
+            <div class="input-group" id="reg-secret-row" hidden>
+              <label for="reg-secret">Mot de passe professeur</label>
+              <input id="reg-secret" name="secret" type="password" placeholder="mot secret requis" />
+            </div>
+            <button type="submit">Créer un compte</button>
+            <div id="register-msg" class="message"></div>
+            <button type="button" class="ghost" id="back-to-login">Retour connexion</button>
+          </form>
         </div>
-        <button type="submit">Connexion</button>
-        <div id="login-msg" class="message"></div>
-      </form>
+      </div>
     </div>
   </div>
   <script src="./assets/login.js" defer></script>
