@@ -12,6 +12,20 @@ const toggleRegisterBtn = document.querySelector('#toggle-register');
 const backToLoginBtn = document.querySelector('#back-to-login');
 const loginBlock = document.querySelector('#login-block');
 const registerBlock = document.querySelector('#register-block');
+const rippleOverlay = document.querySelector('#ripple-overlay');
+const rippleCircles = rippleOverlay ? rippleOverlay.querySelectorAll('.ripple-circle') : [];
+
+function playRippleAndRedirect() {
+  if (!rippleOverlay || !rippleCircles.length) {
+    window.location.href = 'menu.html';
+    return;
+  }
+  rippleOverlay.classList.add('show');
+  rippleCircles.forEach((circle, idx) => {
+    circle.style.animation = `ripplePulse 1s ease-out ${idx * 0.12}s forwards`;
+  });
+  setTimeout(() => { window.location.href = 'menu.html'; }, 850);
+}
 
 function updateSecretVisibility() {
   if (!roleSelect || !secretRow) return;
@@ -59,7 +73,7 @@ loginForm.addEventListener('submit', async (e) => {
   loginMsg.className = 'message';
   try {
     await apiLogin({ login, password });
-    window.location.href = 'menu.html';
+    playRippleAndRedirect();
   } catch (err) {
     loginMsg.textContent = err?.message || 'Connexion impossible';
     loginMsg.className = 'message err';
@@ -84,7 +98,7 @@ if (registerForm) {
     registerMsg.className = 'message';
     try {
       await apiRegister({ email, login, password, confirm, role, secret });
-      window.location.href = 'menu.html';
+      playRippleAndRedirect();
     } catch (err) {
       registerMsg.textContent = err?.message || 'Création impossible';
       registerMsg.className = 'message err';

@@ -32,6 +32,7 @@
         <div class="tab" data-tab="admin-add" data-role="admin">Ajouter du materiel</div>
         <div class="tab" data-tab="admin-returns" data-role="admin">Rendus & réservations</div>
         <div class="tab" data-tab="admin-maintenance" data-role="admin">Maintenance</div>
+        <div class="tab" data-tab="admin-stats" data-role="admin">Statistiques</div>
         <div class="tab" data-tab="admin-accounts" data-role="admin">Comptes</div>
       </div>
 
@@ -53,7 +54,7 @@
           </div>
         </div>
         <div style="height:12px"></div>
-        <div id="catalog" class="catalog"></div>
+        <div id="catalog" class="catalog scroll-area"></div>
       </section>
 
       <section class="panel" data-section="loans" hidden>
@@ -80,7 +81,7 @@
             <div class="stat-trend">Sans retard</div>
           </div>
         </div>
-        <div class="loans-list" id="loans"></div>
+        <div class="loans-list scroll-area" id="loans"></div>
       </section>
 
       <section class="panel" data-section="admin-add" data-role="admin" hidden>
@@ -143,7 +144,9 @@
                 <div class="tag-bar" id="admin-tag-bar"></div>
               </div>
             </div>
-            <div id="admin-inventory" class="catalog admin-catalog"></div>
+            <div class="admin-scroll">
+              <div id="admin-inventory" class="catalog admin-catalog"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -154,47 +157,78 @@
             <h3 style="margin:2px 0 0;">Rendus de matériel</h3>
           </div>
         </div>
-        <div class="loans-list admin-bubble-grid" id="admin-loans"></div>
+        <div class="filters" style="margin-bottom:10px;">
+          <div class="input-group">
+            <input id="admin-loan-search" placeholder="Recherche emprunteur" />
+          </div>
+        </div>
+        <div class="loans-list admin-bubble-grid admin-scroll" id="admin-loans"></div>
       </section>
 
       <section class="panel" data-section="admin-maintenance" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <div class="small-title">Administration</div>
             <h3 style="margin:2px 0 0;">Planifier une maintenance</h3>
           </div>
         </div>
+        <div class="admin-bubble admin-scroll" style="margin-bottom:12px;">
+          <div class="loans-list" id="maintenance-list"></div>
+        </div>
+        <div class="divider"></div>
         <div class="filters">
           <div class="input-group">
-            <label for="maintenance-search">Recherche</label>
-            <input id="maintenance-search" placeholder="oscilloscope, laptop, FPGA..." />
+            <input id="maintenance-search" placeholder="Recherche" />
           </div>
           <div class="input-group">
-            <label>Tags</label>
             <div class="tag-bar" id="maintenance-tag-bar"></div>
           </div>
         </div>
         <div style="height:12px"></div>
-        <div id="maintenance-catalog" class="catalog"></div>
-        <div style="height:18px"></div>
-        <div class="divider"></div>
-        <div class="section-title" style="margin-top:10px;">
-          <div>
-            <div class="small-title">Maintenances planifiées</div>
-            <h3 style="margin:2px 0 0;">Suivi des interventions à venir</h3>
-          </div>
+        <div class="admin-scroll">
+          <div id="maintenance-catalog" class="catalog"></div>
         </div>
-        <div class="loans-list" id="maintenance-list"></div>
       </section>
 
       <section class="panel" data-section="admin-accounts" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <div class="small-title">Administration</div>
             <h3 style="margin:2px 0 0;">Gestion des comptes</h3>
           </div>
         </div>
-        <div class="loans-list" id="accounts-list"></div>
+        <div class="loans-list admin-scroll" id="accounts-list"></div>
+      </section>
+
+      <section class="panel" data-section="admin-stats" data-role="admin" hidden>
+        <div class="section-title">
+          <div>
+            <h3 style="margin:2px 0 0;">Statistiques</h3>
+          </div>
+        </div>
+        <div class="stats" style="margin:12px 0;">
+          <div class="stat-card clickable" id="admin-stat-card-total">
+            <div class="stat-label">Objets empruntés (année)</div>
+            <div class="stat-value" id="admin-stat-total">0</div>
+          </div>
+          <div class="stat-card clickable" id="admin-stat-card-delays">
+            <div class="stat-label">Retards</div>
+            <div class="stat-value" id="admin-stat-delays">0</div>
+          </div>
+          <div class="stat-card clickable" id="admin-stat-card-degrades">
+            <div class="stat-label">Dégradations</div>
+            <div class="stat-value" id="admin-stat-degrades">0</div>
+          </div>
+          <div class="stat-card clickable" id="admin-stat-card-maint">
+            <div class="stat-label">Maintenances terminées</div>
+            <div class="stat-value" id="admin-stat-maint">0</div>
+          </div>
+        </div>
+        <div class="filters" style="margin:10px 0;">
+          <div class="input-group">
+            <input id="admin-stats-search" placeholder="Recherche emprunteur ou matériel" />
+          </div>
+        </div>
+        <div id="admin-stats-msg" class="message"></div>
+        <div class="loans-list admin-scroll" id="admin-stats-list"></div>
       </section>
     </main>
 

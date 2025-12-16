@@ -245,26 +245,48 @@ function set_maintenance(PDO $pdo, int $userId): void
         [$start, $end] = [$end, $start];
     }
 
-    $conflict = $pdo->prepare(
-        'SELECT 1
-         FROM `Emprunt` e
-         WHERE e.IDmateriel = :id
-           AND NOT EXISTS (
-             SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
-           )
-           AND e.DATEdebut <= :fin
-           AND e.DATEfin >= :debut
-         LIMIT 1'
-    );
-    $conflict->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
-    if ($conflict->fetchColumn()) {
-        http_response_code(409);
-        echo json_encode(['error' => 'Déjà indisponible sur cette période']);
-        return;
-    }
-
     $pdo->beginTransaction();
     try {
+        // Supprime les réservations/emprunts qui chevauchent la maintenance (hors maintenances existantes).
+        $overlaps = $pdo->prepare(
+            'SELECT e.IDemprunt
+             FROM `Emprunt` e
+             WHERE e.IDmateriel = :id
+               AND LOWER(e.ETATemprunt) <> "maintenance"
+               AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+               AND e.DATEdebut <= :fin
+               AND e.DATEfin >= :debut'
+        );
+        $overlaps->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
+        $toRemove = $overlaps->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($toRemove)) {
+            $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
+            $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
+            foreach ($toRemove as $eid) {
+                $delRendu->execute([':eid' => (int) $eid]);
+                $del->execute([':eid' => (int) $eid]);
+            }
+        }
+
+        // Vérifie qu'il ne reste pas de maintenance conflictuelle active.
+        $conflictMaint = $pdo->prepare(
+            'SELECT 1
+             FROM `Emprunt` e
+             WHERE e.IDmateriel = :id
+               AND LOWER(e.ETATemprunt) = "maintenance"
+               AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+               AND e.DATEdebut <= :fin
+               AND e.DATEfin >= :debut
+             LIMIT 1'
+        );
+        $conflictMaint->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
+        if ($conflictMaint->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Maintenance déjà prévue sur cette période']);
+            return;
+        }
+
         $shouldBlockNow = period_is_current($start, $end, date('Y-m-d'));
         if ($shouldBlockNow) {
             $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');

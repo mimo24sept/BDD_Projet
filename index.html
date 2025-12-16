@@ -10,6 +10,11 @@
   <link rel="stylesheet" href="./assets/styles.css" />
 </head>
 <body>
+  <div class="ripple-overlay" id="ripple-overlay">
+    <div class="ripple-circle ripple-a"></div>
+    <div class="ripple-circle ripple-b"></div>
+    <div class="ripple-circle ripple-c"></div>
+  </div>
   <div class="auth-wall">
     <div class="panel auth-card">
       <div class="brand" style="margin-bottom:6px;">
@@ -38,20 +43,16 @@
           <div class="small-title" style="margin-bottom:6px;">Créer un compte</div>
           <form id="register-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
             <div class="input-group">
-              <label for="reg-email">Email</label>
-              <input id="reg-email" name="email" type="email" placeholder="prenom.nom@geii.fr" required />
+              <input id="reg-email" name="email" type="email" placeholder="Email" aria-label="Email" required />
             </div>
             <div class="input-group">
-              <label for="reg-login">Login</label>
-              <input id="reg-login" name="login" placeholder="ex: jdoe" required />
+              <input id="reg-login" name="login" placeholder="Login" aria-label="Login" required />
             </div>
             <div class="input-group">
-              <label for="reg-pass">Mot de passe</label>
-              <input id="reg-pass" name="password" type="password" required />
+              <input id="reg-pass" name="password" type="password" placeholder="Mot de passe" aria-label="Mot de passe" required />
             </div>
             <div class="input-group">
-              <label for="reg-pass2">Confirme mot de passe</label>
-              <input id="reg-pass2" name="confirm" type="password" required />
+              <input id="reg-pass2" name="confirm" type="password" placeholder="Confirmer le mot de passe" aria-label="Confirmer le mot de passe" required />
             </div>
             <div class="input-group">
               <label for="reg-role">Profil</label>

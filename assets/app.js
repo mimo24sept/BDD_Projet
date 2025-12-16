@@ -20,8 +20,13 @@
     filters: { search: '', tags: [] },
     adminFilters: { search: '', tag: null, sort: 'recent' },
     maintenanceFilters: { search: '', tag: null },
+    adminLoanSearch: '',
+    adminHistory: [],
+    adminStatsView: 'total',
+    adminHistorySearch: '',
     modalItem: null,
     stats: null,
+    adminStats: null,
   };
 
   const logoutBtn = document.querySelector('#logout-btn');
@@ -61,10 +66,26 @@
   const maintenanceTagBar = document.querySelector('#maintenance-tag-bar');
   const maintenanceListEl = document.querySelector('#maintenance-list');
   const accountsListEl = document.querySelector('#accounts-list');
+  const adminLoanSearchInput = document.querySelector('#admin-loan-search');
+  const adminStatsEls = {
+    total: document.querySelector('#admin-stat-total'),
+    delays: document.querySelector('#admin-stat-delays'),
+    degrades: document.querySelector('#admin-stat-degrades'),
+    maint: document.querySelector('#admin-stat-maint'),
+    msg: document.querySelector('#admin-stats-msg'),
+    search: document.querySelector('#admin-stats-search'),
+    list: document.querySelector('#admin-stats-list'),
+    cards: {
+      total: document.querySelector('#admin-stat-card-total'),
+      delays: document.querySelector('#admin-stat-card-delays'),
+      degrades: document.querySelector('#admin-stat-card-degrades'),
+      maint: document.querySelector('#admin-stat-card-maint'),
+    },
+  };
   let dateStartInput = null;
   let dateEndInput = null;
   let blockedWeeks = [];
-  let blockedDates = [];
+  let blockedDates = {};
   let reservationPeriods = [];
   let modalMode = 'reserve';
   let calendarMonth = null;
@@ -96,6 +117,46 @@
     maintenanceSearchInput.addEventListener('input', () => {
       state.maintenanceFilters.search = maintenanceSearchInput.value.toLowerCase();
       renderMaintenanceCatalog();
+    });
+  }
+  if (adminLoanSearchInput) {
+    adminLoanSearchInput.addEventListener('input', () => {
+      state.adminLoanSearch = adminLoanSearchInput.value.toLowerCase();
+      renderAdminLoans();
+    });
+  }
+  if (adminStatsEls.search) {
+    adminStatsEls.search.addEventListener('input', () => {
+      state.adminHistorySearch = adminStatsEls.search.value.toLowerCase();
+      renderAdminStatsList();
+    });
+  }
+  if (adminStatsEls.cards.total) {
+    adminStatsEls.cards.total.addEventListener('click', () => {
+      state.adminStatsView = 'total';
+      renderAdminStats();
+      renderAdminStatsList();
+    });
+  }
+  if (adminStatsEls.cards.delays) {
+    adminStatsEls.cards.delays.addEventListener('click', () => {
+      state.adminStatsView = 'delays';
+      renderAdminStats();
+      renderAdminStatsList();
+    });
+  }
+  if (adminStatsEls.cards.degrades) {
+    adminStatsEls.cards.degrades.addEventListener('click', () => {
+      state.adminStatsView = 'degrades';
+      renderAdminStats();
+      renderAdminStatsList();
+    });
+  }
+  if (adminStatsEls.cards.maint) {
+    adminStatsEls.cards.maint.addEventListener('click', () => {
+      state.adminStatsView = 'maint';
+      renderAdminStats();
+      renderAdminStatsList();
     });
   }
   if (adminSearchInput) {
@@ -150,6 +211,16 @@
           end: range.end,
         };
         if (modalMode === 'maintenance') {
+          const dates = datesBetween(range.start, range.end);
+          const overrides = dates.filter((d) => blockedDates[d] && blockedDates[d] !== 'maintenance').length;
+          if (overrides > 0) {
+            const ok = window.confirm(`Cette maintenance écrasera ${overrides} réservation(s). Continuer ?`);
+            if (!ok) {
+              modalMsg.textContent = 'Planification annulée';
+              modalMsg.className = 'message';
+              return;
+            }
+          }
           await apiSetMaintenance(payload);
         } else {
           const res = await fetch(`${API.equipment}?action=reserve`, {
@@ -303,8 +374,30 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API emprunts admin');
       state.adminLoans = data.loans || [];
+      if (adminStatsEls.msg && !state.adminStats) {
+        adminStatsEls.msg.textContent = '';
+      }
     } catch (err) {
       state.adminLoans = [];
+    }
+  }
+
+  async function apiFetchAdminStats() {
+    if (!isAdmin()) return;
+    try {
+      const res = await fetch(`${API.dashboard}?action=admin_stats`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'API stats');
+      state.adminStats = data || { total_year: 0, delays: 0, degrades: 0 };
+      state.adminHistory = data.history || [];
+      if (adminStatsEls.msg) adminStatsEls.msg.textContent = '';
+    } catch (err) {
+      state.adminStats = { total_year: 0, delays: 0, degrades: 0 };
+      state.adminHistory = [];
+      if (adminStatsEls.msg) {
+        adminStatsEls.msg.textContent = err?.message || 'Stats indisponibles';
+        adminStatsEls.msg.className = 'message err';
+      }
     }
   }
 
@@ -487,6 +580,7 @@
     renderAdminTags();
     renderMaintenanceCatalog();
     renderMaintenanceTags();
+    renderAdminStats();
   }
 
   function updateTabs() {
@@ -653,25 +747,25 @@
       return okSearch && okTag;
     });
 
-    filtered.forEach((item) => {
-      const nextReservation = (item.reservations || []).find((r) => (r.type || '').toLowerCase() !== 'maintenance') || null;
-      const reservationBadge = nextReservation
-        ? `<div class="meta">Prochaine résa : ${formatDisplayDate(nextReservation.start)} → ${formatDisplayDate(nextReservation.end)}</div>`
-        : '<div class="meta">Aucune réservation à venir</div>';
+    const sorted = filtered.slice().sort((a, b) => Number(needsRepair(b)) - Number(needsRepair(a)));
+
+    sorted.forEach((item) => {
       const card = document.createElement('article');
-      card.className = 'card';
+      card.className = 'card' + (needsRepair(item) ? ' card-alert' : '');
       card.innerHTML = `
-        <img src="${item.picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
+        <img src="${item.picture}" alt="" loading="lazy" />
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <h3>${escapeHtml(item.name)}</h3>
-            <div class="meta">${escapeHtml(item.category)} - ${escapeHtml(item.location || 'Stock')}</div>
+            <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
           </div>
           ${statusBadge(item.status)}
         </div>
-        ${reservationBadge}
-        <div class="tags">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
-        <button type="button" class="ghost" data-id="${item.id}">Planifier maintenance</button>
+        <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
+          <div class="tags" style="margin:0;">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
+          <button type="button" class="ghost" data-id="${item.id}">Planifier maintenance</button>
+        </div>
       `;
       card.querySelector('button').addEventListener('click', () => openModal(item, 'maintenance'));
       maintenanceCatalogEl.appendChild(card);
@@ -718,12 +812,12 @@
       const row = document.createElement('div');
       row.className = `loan-item loan-${severity}`;
       row.innerHTML = `
-        <div>
-          <div class="small-title">Maintenance planifiée - ${escapeHtml(severityLabel(severity))}</div>
-          <div style="font-weight:800">${escapeHtml(m.name)}</div>
-          <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
-          <div class="progress" aria-hidden="true"><div style="width:${m.progress}%; background:${barColor}"></div></div>
-        </div>
+       <div>
+         <div class="small-title">Maintenance planifiée - ${escapeHtml(severityLabel(severity))}</div>
+         <div style="font-weight:800">${escapeHtml(m.name)}</div>
+         <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
+         <div class="progress" aria-hidden="true"><div style="width:${m.progress}%; background:${barColor}"></div></div>
+       </div>
         <div class="admin-actions">
           <button type="button" class="ghost" data-id="${m.id}">Fin de maintenance</button>
         </div>
@@ -734,7 +828,7 @@
           btn.disabled = true;
           btn.textContent = 'Clôture...';
           try {
-            await apiReturnLoan(m.id);
+            await apiReturnLoan(m.id, '');
             await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
             render();
           } catch (err) {
@@ -931,6 +1025,11 @@
     state.adminLoans
       .filter((l) => l.type !== 'maintenance')
       .filter((l) => l.status !== 'rendu')
+      .filter((l) => {
+        if (!state.adminLoanSearch) return true;
+        const haystack = `${l.user || ''} ${l.name || ''}`.toLowerCase();
+        return haystack.includes(state.adminLoanSearch);
+      })
       .forEach((loan) => {
         const statusNorm = (loan.status || '').toLowerCase();
         const start = loan.start || loan.due;
@@ -1064,6 +1163,83 @@
     statsEls.returned.textContent = String(stats.returned ?? 0);
   }
 
+  function renderAdminStats() {
+    if (!adminStatsEls.total) return;
+    if (!isAdmin()) {
+      adminStatsEls.total.textContent = '0';
+      adminStatsEls.delays.textContent = '0';
+      adminStatsEls.degrades.textContent = '0';
+      if (adminStatsEls.maint) adminStatsEls.maint.textContent = '0';
+      return;
+    }
+    const stats = state.adminStats || { total_year: 0, delays: 0, degrades: 0, maints: 0 };
+    adminStatsEls.total.textContent = String(stats.total_year ?? 0);
+    adminStatsEls.delays.textContent = String(stats.delays ?? 0);
+    adminStatsEls.degrades.textContent = String(stats.degrades ?? 0);
+    if (adminStatsEls.maint) adminStatsEls.maint.textContent = String(stats.maints ?? 0);
+    Object.entries(adminStatsEls.cards).forEach(([key, el]) => {
+      if (!el) return;
+      el.classList.toggle('active', state.adminStatsView === key.replace('card-', ''));
+    });
+  }
+
+  function renderAdminStatsList() {
+    if (!adminStatsEls.list) return;
+    adminStatsEls.list.innerHTML = '';
+    if (!isAdmin()) {
+      adminStatsEls.list.innerHTML = '<p class="meta">Réservé aux administrateurs.</p>';
+      return;
+    }
+    const view = state.adminStatsView;
+    const all = Array.isArray(state.adminHistory) ? state.adminHistory : [];
+    const filtered = all.filter((item) => {
+      const matchesView = view === 'total'
+        ? true
+        : view === 'delays'
+          ? item.is_delay
+          : view === 'degrades'
+            ? item.is_degrade
+            : view === 'maint'
+              ? item.is_maint
+              : true;
+      if (!matchesView) return false;
+      if (!state.adminHistorySearch) return true;
+      const haystack = `${item.user || ''} ${item.name || ''}`.toLowerCase();
+      return haystack.includes(state.adminHistorySearch);
+    });
+
+    filtered.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'loan-item';
+      const badges = [];
+      if (it.is_delay) badges.push('<span class="badge status-loan">Retard</span>');
+      if (it.is_degrade) {
+        let transition = '';
+        if ((it.return_state || '').includes('->')) {
+          transition = it.return_state.split(':').pop() || it.return_state;
+        }
+        const cleanTransition = transition ? transition.replace(/^degrade:/i, '') : '';
+        const label = cleanTransition || 'Dégradé';
+        badges.push(`<span class="badge status-maint">${escapeHtml(label)}</span>`);
+      }
+      if (it.is_maint) badges.push('<span class="badge status-ok">Maintenance</span>');
+      row.innerHTML = `
+        <div>
+          <div class="small-title">${escapeHtml(it.name || 'Objet')}</div>
+          <div class="loan-meta"><span class="user-pill">${escapeHtml(it.user || 'Inconnu')}</span></div>
+          <div class="loan-meta">Du ${formatDisplayDate(it.start)} au ${formatDisplayDate(it.due)}</div>
+          <div class="loan-meta">Rendu le ${it.returned ? formatDisplayDate(it.returned) : 'Non rendu'}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${badges.join('')}</div>
+      `;
+      adminStatsEls.list.appendChild(row);
+    });
+
+    if (!filtered.length) {
+      adminStatsEls.list.innerHTML = '<p class="meta">Aucun résultat pour ce filtre.</p>';
+    }
+  }
+
   function openModal(item, mode = 'reserve') {
     modalMode = mode;
     state.modalItem = item;
@@ -1171,6 +1347,12 @@
     return null;
   }
 
+  function needsRepair(item) {
+    const cond = String(item?.condition || '').toLowerCase();
+    const plain = cond.normalize ? cond.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : cond;
+    return plain.includes('reparation necessaire');
+  }
+
   function placeholderImage(seed) {
     const s = encodeURIComponent(seed.toLowerCase());
     return `https://source.unsplash.com/collection/190727/600x400?sig=${s}`;
@@ -1206,16 +1388,27 @@
   function isRangeFree(start, end) {
     if (!start || !end) return false;
     const dates = datesBetween(start, end);
-    return dates.every((d) => !blockedDates.includes(d));
+    if (modalMode === 'maintenance') {
+      return dates.every((d) => (blockedDates[d] || '') !== 'maintenance');
+    }
+    return dates.every((d) => !blockedDates[d]);
   }
 
   function buildBlockedDates(periods) {
-    const dates = new Set();
+    const dates = {};
     periods.forEach((p) => {
       const list = datesBetween(p.start, p.end || p.start);
-      list.forEach((d) => dates.add(d));
+      const type = (p.type || '').toLowerCase();
+      list.forEach((d) => {
+        // Prioritize maintenance if overlaps.
+        if (type === 'maintenance') {
+          dates[d] = 'maintenance';
+        } else if (!dates[d]) {
+          dates[d] = 'reserve';
+        }
+      });
     });
-    return Array.from(dates);
+    return dates;
   }
 
   function datesBetween(start, end) {
@@ -1281,11 +1474,16 @@
         return;
       }
       const dateStr = cell.toISOString().slice(0, 10);
-      const blocked = blockedDates.includes(dateStr);
+      const blockedType = blockedDates[dateStr];
+      const canOverride = modalMode === 'maintenance' && blockedType && blockedType !== 'maintenance';
+      const blocked = Boolean(blockedType) && !canOverride;
       const selected = isDateSelected(dateStr);
       const inRange = isDateInSelection(dateStr);
       btn.textContent = String(cell.getUTCDate());
       if (blocked) btn.classList.add('blocked');
+      if (blockedType === 'maintenance') btn.classList.add('blocked-maint');
+      if (canOverride && blockedType !== 'maintenance') btn.classList.add('busy-loan');
+      else if (blockedType && blockedType !== 'maintenance') btn.classList.add('blocked-loan');
       if (selected) btn.classList.add('selected');
       if (inRange && !selected) btn.classList.add('in-range');
       btn.onclick = () => handleDayClick(dateStr);
@@ -1294,7 +1492,7 @@
   }
 
   function handleDayClick(dateStr) {
-    if (blockedDates.includes(dateStr)) return;
+    if (blockedDates[dateStr] && !(modalMode === 'maintenance' && blockedDates[dateStr] !== 'maintenance')) return;
     if (!selectedStartDate || (selectedStartDate && selectedEndDate)) {
       selectedStartDate = dateStr;
       selectedEndDate = null;
@@ -1418,7 +1616,7 @@
     setAuthUI();
     await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
     if (isAdmin()) {
-      await Promise.all([apiFetchAdminLoans(), apiFetchUsers()]);
+      await Promise.all([apiFetchAdminLoans(), apiFetchUsers(), apiFetchAdminStats()]);
     }
     render();
   })();

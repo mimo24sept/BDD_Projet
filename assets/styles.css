@@ -239,6 +239,19 @@ main {
 }
 
 .catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.scroll-area {
+  max-height: 65vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.admin-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+.admin-scroll .card { min-width: 0; }
 
 .card {
   background: #fff;
@@ -256,6 +269,10 @@ main {
   transform: translateY(-4px);
   box-shadow: var(--shadow);
   border-color: var(--accent-soft);
+}
+.card.card-alert {
+  border: 2px solid rgba(255, 68, 68, 0.4);
+  box-shadow: 0 12px 30px rgba(255, 68, 68, 0.15);
 }
 
 .card img {
@@ -298,6 +315,8 @@ main {
 .stat-label { color: var(--muted); font-size: 13px; }
 .stat-value { font-size: 22px; font-weight: 800; letter-spacing: -0.2px; }
 .stat-trend { color: var(--success); font-weight: 700; }
+.stat-card.clickable { cursor: pointer; transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+.stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.08); border-color: var(--accent-soft); }
 
 .loans-list { display: grid; gap: 12px; }
 .admin-bubble-grid {
@@ -441,6 +460,33 @@ main {
   background: linear-gradient(180deg, #fff, #f9fafb);
   box-shadow: var(--shadow);
 }
+.ripple-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 40;
+  display: none;
+}
+.ripple-overlay.show { display: block; }
+.ripple-circle {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0.3;
+}
+.ripple-circle.ripple-a { background: var(--accent); }
+.ripple-circle.ripple-b { background: #fff; opacity: 0.7; }
+.ripple-circle.ripple-c { background: var(--accent-strong); }
+@keyframes ripplePulse {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0.4; }
+  70% { opacity: 0.25; }
+  100% { transform: translate(-50%, -50%) scale(18); opacity: 0; }
+}
 .calendar-nav { display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .calendar-nav button { padding:8px 12px; }
 .calendar-grid {
@@ -462,4 +508,13 @@ main {
 .day-cell.selected { background: #fff6ed; border-color: var(--accent); box-shadow: 0 8px 20px rgba(255,140,50,0.22); }
 .day-cell.in-range { background: #fff7f0; border-color: var(--accent-soft); }
 .day-cell.blocked { background: #f4f4f5; color: #9ca3af; border-style: dashed; cursor: not-allowed; box-shadow: none; }
+.day-cell.blocked-loan { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; border-style: solid; }
+.day-cell.blocked-maint { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; border-style: solid; }
+.day-cell.busy-loan { background: #fff7ed; color: #c2410c; border-color: #ffedd5; }
+.day-cell.busy-loan.in-range,
+.day-cell.busy-loan.selected {
+  background: #fff6ed;
+  border-color: var(--accent);
+  box-shadow: 0 8px 20px rgba(255,140,50,0.18);
+}
 .day-cell.empty { background: transparent; border: none; box-shadow: none; cursor: default; }

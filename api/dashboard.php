@@ -32,6 +32,22 @@ if (!isset($_SESSION['user_id'])) {
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
+if ($method === 'GET' && $action === 'admin_stats') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    try {
+        $stats = build_admin_stats($pdo);
+        echo json_encode($stats);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Stats indisponibles', 'details' => $e->getMessage()]);
+    }
+    exit;
+}
+
 if ($method === 'POST' && $action === 'return') {
     if (!is_admin()) {
         http_response_code(403);
@@ -143,6 +159,80 @@ function build_stats(array $loans): array
     ];
 }
 
+function build_admin_stats(PDO $pdo): array
+{
+    $year = (int) date('Y');
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare(
+        'SELECT e.DATEdebut, e.DATEfin, e.ETATemprunt, r.DATErendu, r.ETATrendu,
+                m.NOMmateriel, u.NOMuser
+         FROM `Emprunt` e
+         JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
+         LEFT JOIN `Rendu` r ON r.IDemprunt = e.IDemprunt
+         LEFT JOIN `User` u ON u.IDuser = e.IDuser
+         WHERE YEAR(e.DATEdebut) = :y'
+    );
+    $stmt->execute([':y' => $year]);
+
+    $total = 0;
+    $delays = 0;
+    $degrades = 0;
+    $maints = 0;
+    $history = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        $isMaintenance = $kind === 'maintenance';
+        if ($isMaintenance) {
+            $maints += 1;
+        } else {
+            $total += 1;
+        }
+        $start = $row['DATEdebut'] ?? null;
+        $due = $row['DATEfin'] ?? null;
+        $returned = $row['DATErendu'] ?? null;
+        $etatRendu = $row['ETATrendu'] ?? '';
+        $isDelay = false;
+        if ($due) {
+            if ($returned && strtotime($returned) > strtotime($due)) {
+                $isDelay = true;
+                if (!$isMaintenance) {
+                    $delays += 1;
+                }
+            } elseif (!$returned && strtotime($due) < strtotime($today)) {
+                $isDelay = true;
+                if (!$isMaintenance) {
+                    $delays += 1;
+                }
+            }
+        }
+        $isDegrade = $etatRendu && is_degradation($etatRendu);
+        if ($isDegrade && !$isMaintenance) {
+            $degrades += 1;
+        }
+
+        $history[] = [
+          'name' => $row['NOMmateriel'] ?? '',
+          'start' => $start,
+          'due' => $due,
+          'returned' => $returned,
+          'user' => $row['NOMuser'] ?? '',
+          'status' => $row['ETATemprunt'] ?? '',
+          'return_state' => $etatRendu,
+          'is_delay' => $isDelay,
+          'is_degrade' => $isDegrade,
+          'is_maint' => $isMaintenance,
+        ];
+    }
+
+    return [
+        'total_year' => $total,
+        'delays' => $delays,
+        'degrades' => $degrades,
+        'maints' => $maints,
+        'history' => $history,
+    ];
+}
+
 function return_pret(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -153,7 +243,7 @@ function return_pret(PDO $pdo, int $userId): void
         echo json_encode(['error' => 'Identifiant invalide']);
         return;
     }
-    $allowed = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
+    $allowed = ['neuf', 'bon', 'passable', 'reparation nécessaire', 'reparation necessaire'];
     if ($condition !== '' && !in_array($condition, $allowed, true)) {
         http_response_code(400);
         echo json_encode(['error' => 'Etat invalide']);
@@ -163,7 +253,8 @@ function return_pret(PDO $pdo, int $userId): void
     $pdo->beginTransaction();
     try {
         $select = $pdo->prepare(
-            'SELECT IDmateriel FROM `Emprunt`
+            'SELECT IDmateriel, ETATemprunt
+             FROM `Emprunt`
              WHERE IDemprunt = :id
                AND (:uid = IDuser OR :isAdmin = 1)
              LIMIT 1'
@@ -177,6 +268,7 @@ function return_pret(PDO $pdo, int $userId): void
             return;
         }
         $materielId = (int) $row['IDmateriel'];
+        $isMaintenanceLoan = strtolower((string) ($row['ETATemprunt'] ?? '')) === 'maintenance';
 
         $alreadyReturned = $pdo->prepare('SELECT 1 FROM `Rendu` WHERE IDemprunt = :id LIMIT 1');
         $alreadyReturned->execute([':id' => $id]);
@@ -194,14 +286,33 @@ function return_pret(PDO $pdo, int $userId): void
         );
         $updatePret->execute([':id' => $id]);
 
+        $currentMat = $pdo->prepare('SELECT Etat FROM `Materiel` WHERE IDmateriel = :mid LIMIT 1');
+        $currentMat->execute([':mid' => $materielId]);
+        $prevCondition = strtolower((string) ($currentMat->fetchColumn() ?: 'bon'));
+
+        $condition = $isMaintenanceLoan ? 'bon' : ($condition !== '' ? $condition : $prevCondition);
+        $condition = normalize_condition($condition);
+        $prevConditionNorm = normalize_condition($prevCondition);
+
+        if (!$isMaintenanceLoan && condition_rank($condition) > condition_rank($prevConditionNorm)) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Impossible d’améliorer l’état par rapport à l’emprunt']);
+            return;
+        }
+
         $updateMat = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Oui", Etat = :etat WHERE IDmateriel = :mid');
-        $updateMat->execute([':mid' => $materielId, ':etat' => $condition !== '' ? $condition : 'Bon']);
+        $updateMat->execute([':mid' => $materielId, ':etat' => $condition]);
+
+        $afterLabel = $condition !== '' ? $condition : 'Rendu';
+        $beforeLabel = $prevConditionNorm ?: 'inconnu';
+        $isDegrade = condition_rank($afterLabel) < condition_rank($beforeLabel);
 
         $insertRendu = $pdo->prepare(
             'INSERT INTO `Rendu` (IDemprunt, DATErendu, ETATrendu)
              VALUES (:id, CURDATE(), :etat)'
         );
-        $insertRendu->execute([':id' => $id, ':etat' => $condition !== '' ? $condition : 'Rendu']);
+        $insertRendu->execute([':id' => $id, ':etat' => $isDegrade ? 'degrade:' . $beforeLabel . '->' . $afterLabel : $afterLabel]);
 
         $pdo->commit();
         echo json_encode(['status' => 'ok', 'returned_id' => $id]);
@@ -268,4 +379,37 @@ function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');
     return stripos($role, 'admin') !== false;
+}
+
+function normalize_condition(string $value): string
+{
+    $value = strtolower(trim($value));
+    $map = [
+        'neuf' => 'neuf',
+        'bon' => 'bon',
+        'passable' => 'passable',
+        'reparation necessaire' => 'reparation nécessaire',
+        'reparation nécessaire' => 'reparation nécessaire',
+        'reparation' => 'reparation nécessaire',
+    ];
+    return $map[$value] ?? $value;
+}
+
+function condition_rank(string $value): int
+{
+    $value = normalize_condition($value);
+    $order = ['reparation nécessaire' => 0, 'passable' => 1, 'bon' => 2, 'neuf' => 3];
+    return $order[$value] ?? 1;
+}
+
+function is_degradation(string $etatRendu): bool
+{
+    if (str_starts_with((string) $etatRendu, 'degrade:')) {
+        return true;
+    }
+    if (!str_contains((string) $etatRendu, '->')) {
+        return false;
+    }
+    [$before, $after] = array_pad(explode('->', (string) $etatRendu, 2), 2, '');
+    return condition_rank($after) < condition_rank($before);
 }
