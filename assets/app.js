@@ -9,6 +9,12 @@
   if (!appShell) return;
 
   const BASE_TAGS = ['Info', 'Elen', 'Ener', 'Auto'];
+  const CONDITION_RANKS = {
+    'reparation nécessaire': 0,
+    passable: 1,
+    bon: 2,
+    neuf: 3,
+  };
 
   const state = {
     user: null,
@@ -1059,6 +1065,9 @@
         const severity = dueSeverity(loan.due);
         const barColor = severityColor(severity);
         const userLabel = escapeHtml(loan.user || 'Inconnu');
+        const baseCondition = loan.condition || '';
+        const conditionLabel = formatConditionLabel(baseCondition);
+        const optionsHtml = buildReturnOptions(baseCondition);
         const isUpcoming = opts.variant === 'upcoming';
         const statusText = isUpcoming
           ? (loan._cancelRequested ? 'Demande d’annulation' : 'Réservation à venir')
@@ -1073,6 +1082,7 @@
             <div class="small-title">${escapeHtml(statusText)}${severityText ? ' - ' + escapeHtml(severityText) : ''}</div>
             <div style="font-weight:800">${escapeHtml(loan.name)}</div>
             <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
+            <div class="loan-meta">Etat prêt: ${escapeHtml(conditionLabel)}</div>
             <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
             <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
           </div>
@@ -1080,11 +1090,7 @@
           <div class="admin-actions">
             ${showCondition ? `
             <select data-cond="${loan.id}">
-              <option value="">Etat au retour</option>
-              <option value="neuf">Neuf</option>
-              <option value="bon">Bon</option>
-              <option value="passable">Passable</option>
-              <option value="reparation nécessaire">Réparation nécessaire</option>
+              ${optionsHtml}
             </select>
             ` : ''}
             <button type="button" class="ghost" data-id="${loan.id}">${opts.actionLabel || 'Marquer rendu'}</button>
@@ -1238,6 +1244,50 @@
     if (!filtered.length) {
       adminStatsEls.list.innerHTML = '<p class="meta">Aucun résultat pour ce filtre.</p>';
     }
+  }
+
+  function normalizeCondition(value = '') {
+    const cleaned = String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+    if (cleaned.includes('reparation')) return 'reparation nécessaire';
+    if (cleaned.includes('passable')) return 'passable';
+    if (cleaned.includes('neuf')) return 'neuf';
+    if (cleaned.includes('bon')) return 'bon';
+    return '';
+  }
+
+  function conditionRank(value = '') {
+    const norm = normalizeCondition(value);
+    const maxRank = Math.max(...Object.values(CONDITION_RANKS));
+    return norm && norm in CONDITION_RANKS ? CONDITION_RANKS[norm] : maxRank;
+  }
+
+  function allowedReturnConditions(baseCondition = '') {
+    const rank = conditionRank(baseCondition);
+    const ordered = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
+    return ordered.filter((c) => conditionRank(c) <= rank);
+  }
+
+  function formatConditionLabel(value = '') {
+    const norm = normalizeCondition(value);
+    if (norm === 'reparation nécessaire') return 'Réparation nécessaire';
+    if (norm === 'passable') return 'Passable';
+    if (norm === 'bon') return 'Bon';
+    if (norm === 'neuf') return 'Neuf';
+    return value || 'N/C';
+  }
+
+  function buildReturnOptions(baseCondition = '') {
+    const allowed = allowedReturnConditions(baseCondition);
+    return allowed
+      .map((c) => {
+        const value = normalizeCondition(c) || c;
+        return `<option value="${escapeHtml(value)}">${escapeHtml(formatConditionLabel(c))}</option>`;
+      })
+      .join('');
   }
 
   function openModal(item, mode = 'reserve') {

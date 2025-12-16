@@ -80,7 +80,7 @@ function fetch_loans(PDO $pdo, ?int $userId): array
 
     $where = $userId !== null ? 'WHERE e.IDuser = :uid' : '';
     $sql = "SELECT e.IDemprunt, e.DATEdebut, e.DATEfin, e.ETATemprunt,
-                   m.NOMmateriel, m.Emplacement, m.IDmateriel,
+                   m.NOMmateriel, m.Emplacement, m.IDmateriel, m.Etat AS EtatMateriel,
                    r.DATErendu,
                    u.NOMuser
             FROM `Emprunt` e
@@ -105,11 +105,13 @@ function fetch_loans(PDO $pdo, ?int $userId): array
             'id' => (int) $row['IDemprunt'],
             'type' => $type,
             'name' => $row['NOMmateriel'],
+            'material_id' => (int) $row['IDmateriel'],
             'start' => $start ?: compute_start_date($due),
             'due' => $due,
             'status' => $status,
             'progress' => progress_percent($start ?: compute_start_date($due), $due),
             'user' => $row['NOMuser'] ?? '',
+            'condition' => $row['EtatMateriel'] ?? '',
         ];
     }
 

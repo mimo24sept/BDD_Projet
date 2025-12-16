@@ -1,70 +1,77 @@
-<h1 align="center">✨ SAE – Gestion d’un parc de matériels ✨</h1>
+# Parc matériels GEII — Application web
 
-<p align="center">
-  <span style="background: linear-gradient(90deg, #5ac8fa, #34c759, #ffcc00); color:#0f172a; padding:6px 12px; border-radius:12px; font-weight:700;">
-    GEII S5 · Base de données · Application web
-  </span>
-</p>
+> Interface full front (HTML/CSS/JS vanilla) + API PHP pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Stack-PostgreSQL_|_Node_|_React-0ea5e9?style=flat-square&logo=postgresql&logoColor=white" alt="Stack badge" />
-  <img src="https://img.shields.io/badge/Objectif-Gestion%20de%20parc-22c55e?style=flat-square" alt="Objectif badge" />
-  <img src="https://img.shields.io/badge/Méthodo-SAE-orange?style=flat-square" alt="Metho badge" />
-</p>
+## Aperçu express
+- Authentification avec rôles (étudiant/professeur/admin), création de compte et effet ripple sur la page de connexion (`index.html`).
+- Catalogue filtrable (recherche + tags), fiche détaillée, modale avec calendrier animé, blocage des dates déjà réservées ou en maintenance (`menu.html` + `assets/app.js`).
+- Réservations et maintenances multi-jours, gestion des collisions, mise à jour immédiate de la dispo matériel.
+- Rendus admin avec liste des prêts en cours/à venir, sélection d’état restreinte (impossible d’améliorer l’état par rapport à l’emprunt).
+- Statistiques côté utilisateur et tableau de bord admin (retards, dégradations, maintenances, historique filtrable).
+- Reset complet du parc et des emprunts pour repartir à neuf (`api/reset_state.php`).
+
+## Pile technique
+- **Frontend** : HTML + CSS custom (`assets/styles.css`), JavaScript vanilla (`assets/app.js`, `assets/login.js`), animations (ripple, modales, calendriers, badges).
+- **Backend** : PHP 8.x (PDO), endpoints JSON (`api/auth.php`, `api/equipment.php`, `api/dashboard.php`, `api/reset_state.php`).
+- **Base de données** : MySQL/MariaDB, structure fournie dans `BDD/Projet_BDD.sql`.
+
+## Schéma fonctionnel
+- **Tables clés** : `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`.
+- **Statuts prêt** : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
+- **Etat matériel** : `neuf`, `bon`, `passable`, `reparation nécessaire` (l’admin ne peut saisir qu’un état inférieur ou égal à l’état au moment du prêt).
+- **Dispo matériel** : `Oui/Non` sur `Materiel.Dispo`, mis à jour dès qu’une réservation active chevauche la période courante.
+
+## Parcours utilisateur
+1. **Connexion / Création** : login/mdp, rôle choisi (professeur avec mot secret côté front), redirection vers `menu.html`.
+2. **Catalogue** : recherche, filtres tags, affichage état/emplacement, badge dispo. Réservation via modale + calendrier (max 14 jours, dates grisées).
+3. **Maintenance (admin)** : planification multi-jours avec avertissement si écrase une réservation.
+4. **Rendus (admin)** : liste des prêts en cours/à venir, saisie de l’état (dropdown bornée), validation immédiate du retour.
+5. **Stats** : cartes synthèse côté user, stats admin (retards/dégradations/maintenances) avec historique filtrable.
+
+## Installation rapide
+1. **Cloner le projet**
+   ```bash
+   git clone <repo> && cd BDD_Projet
+   ```
+2. **Configurer la base**  
+   - Créer une base `Projet_BDD`.  
+   - Importer le schéma/données :  
+     ```bash
+     mysql -u <user> -p Projet_BDD < BDD/Projet_BDD.sql
+     ```
+3. **Paramétrer la connexion**  
+   - Editer `api/config.php` (ou variables d’env : `DB_DSN`, `DB_USER`, `DB_PASSWORD`).  
+   - DSN exemple : `mysql:host=127.0.0.1;port=3306;dbname=Projet_BDD;charset=utf8mb4`.
+4. **Lancer en local**  
+   ```bash
+   php -S 127.0.0.1:8000 -t .
+   ```
+   Ouvrir `http://127.0.0.1:8000/index.html`.
+5. **Comptes de test** (issus du dump)  
+   - Admin : `admin` / `admin`  
+   - Utilisateur : `testtruc` / `1234`
+
+## Points d’API
+- `GET /api/auth.php` : session courante.  
+- `POST /api/auth.php?action=login|register|logout` : auth/compte.  
+- `GET /api/equipment.php` : catalogue + réservations.  
+- `POST /api/equipment.php?action=reserve|create|delete|maintenance` : réservation CRUD + maintenance (admin requis selon action).  
+- `GET /api/dashboard.php?scope=mine|all` : emprunts utilisateur ou globaux (admin).  
+- `POST /api/dashboard.php?action=return` : marquer un prêt rendu (admin).  
+- `POST /api/dashboard.php?action=cancel_request` : demander une annulation.  
+- `GET /api/dashboard.php?action=admin_stats` : stats admin.  
+- `POST /api/reset_state.php` : remise à zéro (admin).
+
+## Détails UI & UX
+- Ripple animé lors de la connexion, transitions douces sur cartes/modales, badges statut/état, grille responsive, scrollbar stylisée.
+- Calendrier custom (navigation mois, sélection début/fin, blocage des semaines déjà occupées).
+- Messages contextuels (erreurs/ok) et mises à jour en temps réel après chaque action (réservations, rendus, maintenance).
+
+## Dépannage rapide
+- **403/401** : vérifier la session (cookies activés) et le rôle (admin requis pour certaines actions).  
+- **Connexion DB** : valider `api/config.php` et les droits MySQL ; le DSN doit cibler `127.0.0.1` si le socket local bloque.  
+- **Reset de démo** : appeler `POST /api/reset_state.php` pour vider emprunts/rendus et remettre tout disponible.
 
 ---
 
-## 🚀 Contexte
-Le département GEII possède un parc de matériel (oscilloscopes, générateurs, cartes électroniques) prêté aux étudiants et enseignants. L’objectif est de créer une application web pour suivre les prêts, la maintenance et l’état du matériel.
-
-## 🎯 Objectifs pédagogiques
-- Développer un système de gestion de stocks et de prêts.
-- Mettre en place un suivi des retards et de la maintenance.
-- Générer des statistiques d’utilisation.
-
-## 🧩 Fonctionnalités attendues
-- Authentification et gestion des rôles.
-- Catalogue du matériel avec fiche technique (photo, état, localisation).
-- Réservation et prêt avec dates de retour.
-- Gestion des retards et envoi d’alertes.
-- Module de maintenance (historique, coûts, planning).
-- Export des données (Excel, PDF).
-
-<details>
-<summary>📌 Contraintes & livrables (cliquer pour déplier)</summary>
-
-### Contraintes
-- Interface ergonomique.
-- Sauvegarde régulière des données.
-
-### Livrables
-- Code source et base de données.
-- Scripts d’installation et de sauvegarde.
-- Manuel utilisateur et technique.
-
-## ✅ Check-list de fin de SAE
-- [ ] Auth & rôles fonctionnels.
-- [ ] CRUD matériel + fiches techniques.
-- [ ] Flux de prêt/réservation complet (création → retour → retard → alerte).
-- [ ] Module maintenance avec historique et coûts.
-- [ ] Exports Excel/PDF opérationnels.
-- [ ] Sauvegardes documentées + scripts testés.
-- [ ] Manuels utilisateur et technique livrés.
-
----
-
-## 🛠️ Démarrage rapide (mini-stack PHP)
-Squelette minimal pour dialoguer avec MySQL (phpMyAdmin) + session login/mot de passe.
-
-- `api/config.php` : renseigner `DB_DSN`, `DB_USER`, `DB_PASSWORD`.
-- `api/db.php` : connexion PDO.
-- `api/install.php` : création des tables `users` et `equipment` + utilisateur par défaut (`admin` / `admin` si la table est vide).
-- `api/auth.php` : login/logout (session PHP).
-- `api/equipment.php` : mini API REST (GET/POST/PUT/DELETE) protégée par la session.
-- `index.html` : front léger HTML/JS ; formulaire de connexion + CRUD matériel via `fetch`.
-
-### Installer et lancer
-1. Ajuster `api/config.php` ou exporter les variables d’environnement (`DB_DSN`, `DB_USER`, `DB_PASSWORD`).
-2. Exécuter `api/install.php` une fois (par navigateur ou `php api/install.php`) pour créer les tables et l’utilisateur par défaut.
-3. Servir les fichiers (ex : `php -S localhost:8000` depuis `BDD_Projet`, puis ouvrir `http://localhost:8000/`).
-4. Se connecter avec le login/mot de passe stocké en base (par défaut `admin` / `admin` après `install.php`), puis utiliser le CRUD.
+Fait avec soin pour le parc GEII : catalogue animé, flux complets de prêt/rendu/maintenance, et stats prêtes à l’emploi. Bonne démo ! 🎛️
