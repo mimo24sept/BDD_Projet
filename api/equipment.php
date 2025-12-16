@@ -52,6 +52,16 @@ if ($method === 'POST' && $action === 'create') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'delete') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    delete_equipment($pdo);
+    exit;
+}
+
 if ($method === 'POST' && $action === 'maintenance') {
     if (!is_admin()) {
         http_response_code(403);
@@ -90,11 +100,13 @@ function list_equipment(PDO $pdo): void
         $hasMaintenanceAny = !empty($activeLoans[$id]['hasMaintenanceAny']);
         $hasMaintenanceNow = !empty($activeLoans[$id]['hasMaintenanceNow']);
         $hasActiveNow = !empty($activeLoans[$id]['hasActiveNow']);
+        $categories = normalize_categories($row['category'] ?? '');
         if (!isset($items[$id])) {
             $items[$id] = [
                 'id' => $id,
                 'name' => $row['name'] ?? '',
                 'category' => $row['category'] ?? 'Non classé',
+                'categories' => $categories,
                 'location' => $row['location'] ?? '',
                 'status' => map_status($hasActiveNow, $hasMaintenanceNow),
                 'condition' => $row['etat'] ?? '',
@@ -110,11 +122,12 @@ function list_equipment(PDO $pdo): void
         $items[$id]['tags'] = merge_tags(
             $items[$id]['tags'],
             [
-                $items[$id]['category'],
-                $items[$id]['condition'],
-                $hasMaintenanceAny ? 'maintenance' : null,
-            ]
-        );
+            $items[$id]['category'],
+            ...$categories,
+            $items[$id]['condition'],
+            $hasMaintenanceAny ? 'maintenance' : null,
+        ]
+    );
 
         if (isset($activeLoans[$id]['weeks'])) {
             $items[$id]['reserved_weeks'] = $activeLoans[$id]['weeks'];
@@ -286,11 +299,28 @@ function create_equipment(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
     $name = trim((string) ($data['name'] ?? ''));
-    $categoryName = trim((string) ($data['category'] ?? ''));
+    $payloadCategories = $data['categories'] ?? [];
+    $categories = [];
+    if (is_array($payloadCategories)) {
+        foreach ($payloadCategories as $cat) {
+            $cat = ucfirst(strtolower(trim((string) $cat)));
+            if ($cat !== '') {
+                $categories[] = $cat;
+            }
+        }
+    } elseif (is_string($payloadCategories) && trim($payloadCategories) !== '') {
+        $categories = normalize_categories($payloadCategories);
+    }
+    $categories = array_values(array_unique($categories));
+    $allowedCategories = ['Info', 'Elen', 'Ener', 'Auto'];
+    $categories = array_values(array_filter(
+        $categories,
+        static fn($c) => in_array($c, $allowedCategories, true)
+    ));
+    $categoryName = implode(', ', $categories);
     $categoryId = (int) ($data['category_id'] ?? 0);
     $location = trim((string) ($data['location'] ?? ''));
-    $serial = trim((string) ($data['serial'] ?? ''));
-    $condition = trim((string) ($data['condition'] ?? ''));
+    $condition = ucfirst(strtolower(trim((string) ($data['condition'] ?? ''))));
 
     if ($name === '' || ($categoryId <= 0 && $categoryName === '') || $location === '') {
         http_response_code(400);
@@ -310,6 +340,8 @@ function create_equipment(PDO $pdo): void
                 $categoryId = (int) $pdo->lastInsertId();
             }
         }
+
+        $serial = generate_reference($pdo, $name, $categories ?: [$categoryName]);
 
         $insert = $pdo->prepare(
             'INSERT INTO `Materiel` (NOMmateriel, IDcategorie, Emplacement, Dispo, NUMserie, Etat)
@@ -331,6 +363,63 @@ function create_equipment(PDO $pdo): void
         $pdo->rollBack();
         http_response_code(500);
         echo json_encode(['error' => 'Insertion impossible', 'details' => $e->getMessage()]);
+    }
+}
+
+function delete_equipment(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant manquant ou invalide']);
+        return;
+    }
+
+    $active = $pdo->prepare(
+        'SELECT 1
+         FROM `Emprunt` e
+         WHERE e.IDmateriel = :id
+           AND NOT EXISTS (
+             SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
+           )
+         LIMIT 1'
+    );
+    $active->execute([':id' => $id]);
+    if ($active->fetchColumn()) {
+        http_response_code(409);
+        echo json_encode(['error' => 'Impossible de supprimer : emprunt ou réservation active']);
+        return;
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $delReturns = $pdo->prepare(
+            'DELETE r FROM `Rendu` r
+             JOIN `Emprunt` e ON e.IDemprunt = r.IDemprunt
+             WHERE e.IDmateriel = :id'
+        );
+        $delReturns->execute([':id' => $id]);
+
+        $delLoans = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDmateriel = :id');
+        $delLoans->execute([':id' => $id]);
+
+        $delMat = $pdo->prepare('DELETE FROM `Materiel` WHERE IDmateriel = :id');
+        $delMat->execute([':id' => $id]);
+
+        if ($delMat->rowCount() === 0) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Matériel introuvable']);
+            return;
+        }
+
+        $pdo->commit();
+        echo json_encode(['status' => 'ok']);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Suppression impossible', 'details' => $e->getMessage()]);
     }
 }
 
@@ -411,6 +500,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         return null;
     }
 
+    $categories = normalize_categories($row['category'] ?? '');
     $hasActiveLoan = !empty($activeLoans[$id]['hasActiveNow']);
     $hasMaintenanceAny = !empty($activeLoans[$id]['hasMaintenanceAny']);
     $hasMaintenanceNow = !empty($activeLoans[$id]['hasMaintenanceNow']);
@@ -418,6 +508,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         'id' => (int) ($row['id'] ?? 0),
         'name' => $row['name'] ?? '',
         'category' => $row['category'] ?? 'Non classé',
+        'categories' => $categories,
         'location' => $row['location'] ?? '',
         'status' => map_status($hasActiveLoan, $hasMaintenanceNow),
         'condition' => $row['etat'] ?? '',
@@ -433,6 +524,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         $mapped['tags'],
         [
             $mapped['category'],
+            ...$categories,
             $mapped['condition'],
             $hasMaintenanceAny ? 'maintenance' : null,
         ]
@@ -458,6 +550,52 @@ function merge_tags(array $existing, array $candidates): array
 {
     $cleaned = array_filter(array_map(static fn($t) => $t !== null ? strtolower((string) $t) : null, $candidates));
     return array_values(array_unique(array_merge($existing, $cleaned)));
+}
+
+function normalize_categories(string $value): array
+{
+    $parts = array_map(
+        static fn($c) => ucfirst(strtolower(trim((string) $c))),
+        preg_split('/[,;]+/', $value) ?: []
+    );
+    return array_values(array_filter(array_unique($parts), static fn($c) => $c !== ''));
+}
+
+function generate_reference(PDO $pdo, string $name, array $categories): string
+{
+    $map = [
+        'INFO' => 'INF',
+        'ELEN' => 'ELE',
+        'ENER' => 'ENE',
+        'AUTO' => 'AUT',
+    ];
+    $base = 'MAT';
+    $normalizedCats = array_values(array_filter(array_map(
+        static fn($c) => strtoupper(preg_replace('/[^A-Z]/', '', (string) $c)),
+        $categories
+    )));
+    if (count($normalizedCats) === 1) {
+        $cat = $normalizedCats[0];
+        $base = $map[$cat] ?? substr($cat, 0, 3) ?: 'MAT';
+    } elseif (count($normalizedCats) > 1) {
+        $cleanName = strtoupper(preg_replace('/[^A-Z0-9]/', '', $name));
+        $base = substr($cleanName, 0, 3) ?: 'MAT';
+    }
+
+    $stmt = $pdo->prepare('SELECT `NUMserie` FROM `Materiel` WHERE `NUMserie` LIKE :pfx');
+    $stmt->execute([':pfx' => $base . '-%']);
+    $max = 0;
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $ref) {
+        if (preg_match('/-(\d+)$/', (string) $ref, $m)) {
+            $num = (int) $m[1];
+            if ($num > $max) {
+                $max = $num;
+            }
+        }
+    }
+
+    $next = $max + 1;
+    return sprintf('%s-%04d', $base, $next);
 }
 
 function weeks_between(string $start, string $end): array

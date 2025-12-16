@@ -8,6 +8,8 @@
   const appShell = document.querySelector('#app-shell');
   if (!appShell) return;
 
+  const BASE_TAGS = ['Info', 'Elen', 'Ener', 'Auto'];
+
   const state = {
     user: null,
     inventory: [],
@@ -15,7 +17,8 @@
     adminLoans: [],
     accounts: [],
     activeTab: 'borrow',
-    filters: { search: '', tag: null },
+    filters: { search: '', tags: [] },
+    adminFilters: { search: '', tag: null, sort: 'recent' },
     maintenanceFilters: { search: '', tag: null },
     modalItem: null,
     stats: null,
@@ -45,11 +48,14 @@
   const adminMsg = document.querySelector('#admin-msg');
   const adminInputs = {
     name: document.querySelector('#admin-name'),
-    category: document.querySelector('#admin-category'),
+    categories: document.querySelectorAll('input[name="admin-categories"]'),
     location: document.querySelector('#admin-location'),
-    serial: document.querySelector('#admin-serial'),
     condition: document.querySelector('#admin-condition'),
   };
+  const adminInventoryEl = document.querySelector('#admin-inventory');
+  const adminSearchInput = document.querySelector('#admin-search');
+  const adminTagBar = document.querySelector('#admin-tag-bar');
+  const adminSortSelect = document.querySelector('#admin-sort');
   const maintenanceCatalogEl = document.querySelector('#maintenance-catalog');
   const maintenanceSearchInput = document.querySelector('#maintenance-search');
   const maintenanceTagBar = document.querySelector('#maintenance-tag-bar');
@@ -90,6 +96,18 @@
     maintenanceSearchInput.addEventListener('input', () => {
       state.maintenanceFilters.search = maintenanceSearchInput.value.toLowerCase();
       renderMaintenanceCatalog();
+    });
+  }
+  if (adminSearchInput) {
+    adminSearchInput.addEventListener('input', () => {
+      state.adminFilters.search = adminSearchInput.value.toLowerCase();
+      renderAdminCatalog();
+    });
+  }
+  if (adminSortSelect) {
+    adminSortSelect.addEventListener('change', () => {
+      state.adminFilters.sort = adminSortSelect.value;
+      renderAdminCatalog();
     });
   }
 
@@ -170,11 +188,18 @@
     adminForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!isAdmin()) return;
+      const selectedCats = Array.from(adminInputs.categories || [])
+        .filter((c) => c.checked)
+        .map((c) => c.value);
+      if (!selectedCats.length) {
+        adminMsg.textContent = 'Choisissez au moins une catégorie';
+        adminMsg.className = 'message err';
+        return;
+      }
       const payload = {
         name: adminInputs.name?.value?.trim(),
-        category: adminInputs.category?.value?.trim(),
+        categories: selectedCats,
         location: adminInputs.location?.value?.trim(),
-        serial: adminInputs.serial?.value?.trim(),
         condition: adminInputs.condition?.value?.trim(),
       };
       adminMsg.textContent = 'Enregistrement...';
@@ -218,6 +243,18 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API equipement');
       state.inventory = data.map((item) => {
+        const rawCategories = Array.isArray(item.categories)
+          ? item.categories
+          : String(item.category || '')
+            .split(/[,;]+/)
+            .map((c) => c.trim())
+            .filter(Boolean);
+        const normalizedCategories = rawCategories
+          .map(canonicalCategory)
+          .filter(Boolean);
+        const categories = normalizedCategories.length ? normalizedCategories : rawCategories;
+        const tags = normalizedCategories.filter(Boolean);
+        const categoryLabel = categories.length ? categories.join(', ') : (item.category || 'Non classé');
         const reservations = (item.reservations || [])
           .map((r) => ({
             start: r.start,
@@ -225,18 +262,15 @@
             type: r.type || '',
           }))
           .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-        const tags = (item.tags && item.tags.length ? item.tags : [
-          item.category,
-          item.condition,
-          item.maintenance ? 'maintenance' : null,
-        ]).filter(Boolean);
         const descriptionParts = [
           item.notes,
           item.condition ? `Etat: ${item.condition}` : '',
-          item.next_service ? `Maintenance prevue le ${item.next_service}` : '',
+          item.next_service ? `Maintenance prevue le ${formatDisplayDate(item.next_service)}` : '',
         ].filter(Boolean);
         return {
           ...item,
+          category: categoryLabel,
+          categories,
           tags,
           reservations,
           picture: item.picture || placeholderImage(item.name),
@@ -363,6 +397,22 @@
     return data?.equipment;
   }
 
+  async function apiDeleteEquipment(id) {
+    const res = await fetch(`${API.equipment}?action=delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error || 'Suppression impossible');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
   async function apiSetMaintenance(payload) {
     const res = await fetch(`${API.equipment}?action=maintenance`, {
       method: 'POST',
@@ -427,12 +477,14 @@
     applyRoleVisibility();
     updateTabs();
     renderCatalog();
+    renderAdminCatalog();
     renderLoans();
     renderAdminLoans();
     renderMaintenanceAgenda();
     renderAccounts();
     renderStats();
     renderTags();
+    renderAdminTags();
     renderMaintenanceCatalog();
     renderMaintenanceTags();
   }
@@ -456,19 +508,134 @@
   }
 
   function renderTags() {
-    const allTags = Array.from(new Set(state.inventory.flatMap((item) => item.tags)));
+    const allTags = BASE_TAGS.filter((tag) => state.inventory.some((item) => (item.tags || []).includes(tag)));
     tagBar.innerHTML = '';
     allTags.forEach((tag) => {
       const chip = document.createElement('button');
-      chip.className = 'tag-chip' + (state.filters.tag === tag ? ' active' : '');
+      const isActive = state.filters.tags.includes(tag);
+      chip.className = 'tag-chip' + (isActive ? ' active' : '');
       chip.type = 'button';
-      chip.textContent = `#${tag}`;
+      chip.textContent = tag;
       chip.addEventListener('click', () => {
-        state.filters.tag = state.filters.tag === tag ? null : tag;
+        if (isActive) {
+          state.filters.tags = state.filters.tags.filter((t) => t !== tag);
+        } else {
+          state.filters.tags = [...state.filters.tags, tag];
+        }
         renderCatalog();
         renderTags();
       });
       tagBar.appendChild(chip);
+    });
+  }
+
+  function renderAdminTags() {
+    if (!adminTagBar) return;
+    if (!isAdmin()) {
+      adminTagBar.innerHTML = '';
+      return;
+    }
+    const allTags = Array.from(new Set(state.inventory.flatMap((item) => item.tags)));
+    adminTagBar.innerHTML = '';
+    allTags.forEach((tag) => {
+      const chip = document.createElement('button');
+      chip.className = 'tag-chip' + (state.adminFilters.tag === tag ? ' active' : '');
+      chip.type = 'button';
+      chip.textContent = tag;
+      chip.addEventListener('click', () => {
+        state.adminFilters.tag = state.adminFilters.tag === tag ? null : tag;
+        renderAdminCatalog();
+        renderAdminTags();
+      });
+      adminTagBar.appendChild(chip);
+    });
+  }
+
+  function renderAdminCatalog() {
+    if (!adminInventoryEl) return;
+    adminInventoryEl.innerHTML = '';
+    if (!isAdmin()) {
+      adminInventoryEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+      return;
+    }
+
+    const filtered = state.inventory.filter((item) => {
+      const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.location || ''} ${item.tags.join(' ')}`.toLowerCase();
+      const okSearch = matchText.includes(state.adminFilters.search);
+      const okTag = !state.adminFilters.tag || item.tags.includes(state.adminFilters.tag);
+      return okSearch && okTag;
+    });
+
+    const statusWeight = (status = '') => {
+      const map = { disponible: 0, reserve: 1, emprunte: 1, pret: 1, maintenance: 2, hs: 3 };
+      return map[status.toLowerCase()] ?? 4;
+    };
+
+    const sorted = filtered.slice().sort((a, b) => {
+      switch (state.adminFilters.sort) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'category':
+          return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+        case 'status':
+          return statusWeight(a.status) - statusWeight(b.status) || a.name.localeCompare(b.name);
+        case 'location':
+          return (a.location || '').localeCompare(b.location || '') || a.name.localeCompare(b.name);
+        default:
+          return (b.id || 0) - (a.id || 0);
+      }
+    });
+
+    if (!sorted.length) {
+      adminInventoryEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
+      return;
+    }
+
+    sorted.forEach((item) => {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.innerHTML = `
+        <img src="${item.picture}" alt="" loading="lazy" />
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>
+            <h3>${escapeHtml(item.name)}</h3>
+            <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
+          </div>
+          ${statusBadge(item.status)}
+        </div>
+        <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
+          <div class="tags" style="margin:0;">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
+          <button type="button" class="ghost danger" data-del="${item.id}">Supprimer</button>
+        </div>
+        <div class="message" data-error></div>
+      `;
+      const delBtn = card.querySelector('button[data-del]');
+      const errEl = card.querySelector('[data-error]');
+      if (delBtn) {
+        delBtn.addEventListener('click', async () => {
+          if (!confirm('Supprimer définitivement ce matériel ?')) return;
+          delBtn.disabled = true;
+          delBtn.textContent = 'Suppression...';
+          if (errEl) {
+            errEl.textContent = '';
+            errEl.className = 'message';
+          }
+          try {
+            await apiDeleteEquipment(item.id);
+            await Promise.all([apiFetchEquipment(), apiFetchAdminLoans()]);
+            render();
+          } catch (err) {
+            delBtn.disabled = false;
+            delBtn.textContent = 'Supprimer';
+            if (errEl) {
+              errEl.textContent = err?.message || 'Suppression impossible';
+              errEl.className = 'message err';
+            }
+          }
+        });
+      }
+      adminInventoryEl.appendChild(card);
     });
   }
 
@@ -480,7 +647,7 @@
       return;
     }
     const filtered = state.inventory.filter((item) => {
-      const matchText = `${item.name} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
+      const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
       const okSearch = matchText.includes(state.maintenanceFilters.search);
       const okTag = !state.maintenanceFilters.tag || item.tags.includes(state.maintenanceFilters.tag);
       return okSearch && okTag;
@@ -489,7 +656,7 @@
     filtered.forEach((item) => {
       const nextReservation = (item.reservations || []).find((r) => (r.type || '').toLowerCase() !== 'maintenance') || null;
       const reservationBadge = nextReservation
-        ? `<div class="meta">Prochaine résa : ${nextReservation.start} → ${nextReservation.end}</div>`
+        ? `<div class="meta">Prochaine résa : ${formatDisplayDate(nextReservation.start)} → ${formatDisplayDate(nextReservation.end)}</div>`
         : '<div class="meta">Aucune réservation à venir</div>';
       const card = document.createElement('article');
       card.className = 'card';
@@ -503,7 +670,7 @@
           ${statusBadge(item.status)}
         </div>
         ${reservationBadge}
-        <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
+        <div class="tags">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
         <button type="button" class="ghost" data-id="${item.id}">Planifier maintenance</button>
       `;
       card.querySelector('button').addEventListener('click', () => openModal(item, 'maintenance'));
@@ -523,7 +690,7 @@
       const chip = document.createElement('button');
       chip.className = 'tag-chip' + (state.maintenanceFilters.tag === tag ? ' active' : '');
       chip.type = 'button';
-      chip.textContent = `#${tag}`;
+      chip.textContent = tag;
       chip.addEventListener('click', () => {
         state.maintenanceFilters.tag = state.maintenanceFilters.tag === tag ? null : tag;
         renderMaintenanceCatalog();
@@ -554,7 +721,7 @@
         <div>
           <div class="small-title">Maintenance planifiée - ${escapeHtml(severityLabel(severity))}</div>
           <div style="font-weight:800">${escapeHtml(m.name)}</div>
-          <div class="loan-meta">Du ${m.start} au ${m.due} — ${escapeHtml(m.user || 'Administrateur')}</div>
+          <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
           <div class="progress" aria-hidden="true"><div style="width:${m.progress}%; background:${barColor}"></div></div>
         </div>
         <div class="admin-actions">
@@ -602,8 +769,7 @@
         <div>
           <div class="small-title">${escapeHtml(acc.login || 'Utilisateur')}</div>
           <div class="loan-meta">${escapeHtml(acc.email || '')}</div>
-          <div class="loan-meta">Créé le ${acc.created || 'N/C'}</div>
-          <div class="loan-meta">Dernière connexion : ${acc.last_login || 'Jamais'}</div>
+          <div class="loan-meta">Créé le ${formatDisplayDate(acc.created)}</div>
         </div>
         <div class="admin-actions">
           <button type="button" class="ghost danger" data-del="${acc.id}">Supprimer</button>
@@ -638,17 +804,22 @@
     if (!catalogEl) return;
     catalogEl.innerHTML = '';
     const filtered = state.inventory.filter((item) => {
-      const matchText = `${item.name} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
+      const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
       const okSearch = matchText.includes(state.filters.search);
-      const okTag = !state.filters.tag || item.tags.includes(state.filters.tag);
-      return okSearch && okTag;
+      const okTags = !state.filters.tags.length
+        || state.filters.tags.every((tag) => item.tags.includes(tag));
+      return okSearch && okTags;
     });
 
     filtered.forEach((item) => {
       const nextMaintenance = (item.reservations || []).find((r) => (r.type || '').toLowerCase() === 'maintenance') || null;
       const reservationBadge = nextMaintenance
-        ? `<div class="meta">Maintenance planifiée : ${nextMaintenance.start} → ${nextMaintenance.end}</div>`
+        ? `<div class="meta">Maintenance planifiée : ${formatDisplayDate(nextMaintenance.start)} → ${formatDisplayDate(nextMaintenance.end)}</div>`
         : '<div class="meta">Aucune maintenance planifiée</div>';
+      const categoriesLabel = (item.categories && item.categories.length)
+        ? item.categories.join(', ')
+        : item.category;
+      const availabilityLabel = (item.status || '').toLowerCase() === 'disponible' ? 'Disponible' : 'Indisponible';
       const card = document.createElement('article');
       card.className = 'card';
       card.innerHTML = `
@@ -656,12 +827,13 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <h3>${escapeHtml(item.name)}</h3>
-            <div class="meta">${escapeHtml(item.category)} - ${escapeHtml(item.location || 'Stock')}</div>
+            <div class="meta">${escapeHtml(categoriesLabel)}</div>
+            <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
+            <div class="meta">État: ${escapeHtml(item.condition || 'N/C')}</div>
           </div>
           ${statusBadge(item.status)}
         </div>
         ${reservationBadge}
-        <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
         <button type="button" class="ghost" data-id="${item.id}">Voir et reserver</button>
       `;
       card.querySelector('button').addEventListener('click', () => openModal(item));
@@ -699,12 +871,12 @@
       const row = document.createElement('div');
       row.className = `loan-item loan-${severity}`;
       row.innerHTML = `
-        <div>
-          <div class="small-title">${escapeHtml(loan.status)} - ${escapeHtml(severityLabel(severity))}</div>
-          <div style="font-weight:800">${escapeHtml(loan.name)}</div>
-          <div class="loan-meta">Du ${loan.start} au ${loan.due}</div>
-          <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
-        </div>
+          <div>
+            <div class="small-title">${escapeHtml(loan.status)} - ${escapeHtml(severityLabel(severity))}</div>
+            <div style="font-weight:800">${escapeHtml(loan.name)}</div>
+            <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
+            <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
+          </div>
         ${actionHtml}
       `;
       const returnBtn = canReturn ? row.querySelector('button') : null;
@@ -778,23 +950,36 @@
         }
       });
 
-    const renderList = (list, title, opts = {}) => {
+    const renderList = (target, list, title, opts = {}) => {
+      if (!list.length) return;
       const block = document.createElement('div');
       block.className = 'admin-subblock';
-      block.innerHTML = `<div class="small-title" style="margin:4px 0 10px;">${title}</div>`;
+      if (opts.variant) block.classList.add(`admin-${opts.variant}`);
+      block.innerHTML = '';
       list.forEach((loan) => {
         const severity = dueSeverity(loan.due);
         const barColor = severityColor(severity);
+        const userLabel = escapeHtml(loan.user || 'Inconnu');
+        const isUpcoming = opts.variant === 'upcoming';
+        const statusText = isUpcoming
+          ? (loan._cancelRequested ? 'Demande d’annulation' : 'Réservation à venir')
+          : loan.status;
+        const severityText = isUpcoming ? '' : severityLabel(severity);
+        const showActions = !isUpcoming || loan._cancelRequested;
+        const showCondition = showActions && !loan._cancelRequested;
         const row = document.createElement('div');
         row.className = `loan-item loan-${severity}`;
         row.innerHTML = `
           <div>
-            <div class="small-title">${escapeHtml(loan.status)} - ${escapeHtml(severityLabel(severity))}</div>
+            <div class="small-title">${escapeHtml(statusText)}${severityText ? ' - ' + escapeHtml(severityText) : ''}</div>
             <div style="font-weight:800">${escapeHtml(loan.name)}</div>
-            <div class="loan-meta">Du ${loan.start} au ${loan.due} — ${escapeHtml(loan.user || 'Inconnu')}</div>
+            <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
+            <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
             <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
           </div>
+          ${showActions ? `
           <div class="admin-actions">
+            ${showCondition ? `
             <select data-cond="${loan.id}">
               <option value="">Etat au retour</option>
               <option value="neuf">Neuf</option>
@@ -802,39 +987,67 @@
               <option value="passable">Passable</option>
               <option value="reparation nécessaire">Réparation nécessaire</option>
             </select>
+            ` : ''}
             <button type="button" class="ghost" data-id="${loan.id}">${opts.actionLabel || 'Marquer rendu'}</button>
-          </div>
+          </div>` : ''}
         `;
         const btn = row.querySelector('button');
         const cond = row.querySelector('select');
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          btn.textContent = opts.actionLabel || 'Retour...';
-          try {
-            await apiReturnLoan(loan.id, cond?.value || '');
-            await Promise.all([apiFetchAdminLoans(), apiFetchLoans()]);
-            render();
-          } catch (err) {
-            btn.disabled = false;
-            btn.textContent = opts.actionLabel || 'Marquer rendu';
-          }
-        });
+        if (btn) {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = opts.actionLabel || 'Retour...';
+            try {
+              const condition = cond ? cond.value : '';
+              await apiReturnLoan(loan.id, condition);
+              await Promise.all([apiFetchAdminLoans(), apiFetchLoans()]);
+              render();
+            } catch (err) {
+              btn.disabled = false;
+              btn.textContent = opts.actionLabel || 'Marquer rendu';
+            }
+          });
+        }
         block.appendChild(row);
       });
-      adminLoansEl.appendChild(block);
+      target.appendChild(block);
     };
 
+    const buildBubble = (title, subtitle, variant) => {
+      const bubble = document.createElement('div');
+      bubble.className = 'admin-bubble';
+      if (variant) bubble.classList.add(`bubble-${variant}`);
+      bubble.innerHTML = `
+        <div class="bubble-head">
+          <div>
+            <div class="small-title">${title}</div>
+            ${subtitle ? `<div class="meta">${subtitle}</div>` : ''}
+          </div>
+        </div>
+      `;
+      return bubble;
+    };
+
+    let hasContent = false;
+
     if (active.length) {
-      renderList(active, 'Réservations en cours');
-    }
-    if (upcoming.length) {
-      const cancels = upcoming.filter((l) => l._cancelRequested);
-      const future = upcoming.filter((l) => !l._cancelRequested);
-      if (future.length) renderList(future, 'Réservations à venir');
-      if (cancels.length) renderList(cancels, 'Demandes d’annulation', { actionLabel: 'Annuler / Rendre' });
+      const bubble = buildBubble('Réservations en cours', '', 'current');
+      renderList(bubble, active, '', { variant: 'current' });
+      adminLoansEl.appendChild(bubble);
+      hasContent = true;
     }
 
-    if (!active.length && !upcoming.length) {
+    const cancels = upcoming.filter((l) => l._cancelRequested);
+    const future = upcoming.filter((l) => !l._cancelRequested);
+    if (future.length || cancels.length) {
+      const bubble = buildBubble('Réservations à venir', '', 'upcoming');
+      if (future.length) renderList(bubble, future, '', { variant: 'upcoming' });
+      if (cancels.length) renderList(bubble, cancels, '', { actionLabel: 'Annuler réservation', variant: 'alert' });
+      adminLoansEl.appendChild(bubble);
+      hasContent = true;
+    }
+
+    if (!hasContent) {
       adminLoansEl.innerHTML = '<p class="meta">Aucune réservation en cours ou à venir.</p>';
     }
   }
@@ -862,6 +1075,9 @@
     calendarMonth = new Date();
     modalTitle.textContent = item.name;
     const picture = item.picture || placeholderImage(item.name);
+    const categoriesLabel = (item.categories && item.categories.length)
+      ? item.categories.join(', ')
+      : item.category;
     modalBody.innerHTML = `
       <div class="modal-body-grid">
         <div class="modal-hero">
@@ -870,9 +1086,10 @@
           </div>
           <div class="hero-info">
             <div class="badge ${item.status === 'maintenance' ? 'status-maint' : 'status-ok'}">${escapeHtml(item.status || 'Etat')}</div>
+            <div class="meta">Catégories : <strong>${escapeHtml(categoriesLabel || 'N/C')}</strong></div>
+            <div class="meta">Référence : <strong>${escapeHtml(item.serial || 'N/C')}</strong></div>
             <div class="meta">Condition : <strong>${escapeHtml(item.condition || 'N/C')}</strong></div>
             <div class="meta">Emplacement : <strong>${escapeHtml(item.location || 'Stock')}</strong></div>
-            <div class="tags">${item.tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join('')}</div>
             <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
           </div>
         </div>
@@ -926,6 +1143,32 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  function formatDisplayDate(dateStr) {
+    if (!dateStr) return 'N/C';
+    const parts = String(dateStr).split('-');
+    if (parts.length === 3) {
+      const [y, m, d] = parts;
+      return `${d}/${m}/${y}`;
+    }
+    return dateStr;
+  }
+
+  function formatDateLocal(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function canonicalCategory(cat) {
+    const lower = String(cat || '').toLowerCase();
+    if (lower.startsWith('info')) return 'Info';
+    if (lower.startsWith('elen')) return 'Elen';
+    if (lower.startsWith('ener')) return 'Ener';
+    if (lower.startsWith('auto')) return 'Auto';
+    return null;
   }
 
   function placeholderImage(seed) {
@@ -984,7 +1227,7 @@
     const step = s <= e ? 1 : -1;
     const cursor = new Date(s);
     while ((step === 1 && cursor <= e) || (step === -1 && cursor >= e)) {
-      dates.push(cursor.toISOString().slice(0, 10));
+      dates.push(formatDateLocal(cursor));
       cursor.setDate(cursor.getDate() + step);
     }
     return dates;
@@ -1106,11 +1349,11 @@
     for (let i = 0; i < 52; i += 1) {
       const key = isoWeekKey(cursor.toISOString().slice(0, 10));
       if (key && !blockedWeeks.includes(key)) {
-        return cursor.toISOString().slice(0, 10);
+        return formatDateLocal(cursor);
       }
       cursor.setDate(cursor.getDate() + 7);
     }
-    return new Date().toISOString().slice(0, 10);
+    return formatDateLocal(new Date());
   }
 
   function weekStartFromDate(dateObj) {
@@ -1124,7 +1367,7 @@
     const d = new Date(`${dateStr}T00:00:00`);
     if (Number.isNaN(d.getTime())) return dateStr;
     d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
+    return formatDateLocal(d);
   }
 
   function updateAvailabilityMessage() {
@@ -1138,7 +1381,7 @@
     const free = isRangeFree(range.start, range.end);
     reserveBtn.disabled = !free;
     const label = free ? 'message ok' : 'message err';
-    modalMsg.textContent = free ? `Du ${range.start} au ${range.end}` : 'Periode deja reservee';
+    modalMsg.textContent = free ? `Du ${formatDisplayDate(range.start)} au ${formatDisplayDate(range.end)}` : 'Periode deja reservee';
     modalMsg.className = label;
   }
 

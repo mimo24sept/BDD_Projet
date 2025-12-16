@@ -86,44 +86,75 @@
       <section class="panel" data-section="admin-add" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <div class="small-title">Administration</div>
             <h3 style="margin:2px 0 0;">Ajouter un matériel</h3>
           </div>
         </div>
-        <form id="admin-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
-          <div class="input-group">
-            <label for="admin-name">Nom</label>
-            <input id="admin-name" name="name" required placeholder="Oscilloscope Tektronix..." />
+        <div class="admin-add-grid">
+          <div class="admin-card">
+            <form id="admin-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+              <div class="input-group">
+                <input id="admin-name" name="name" required placeholder="Nom" />
+              </div>
+              <div class="input-group">
+                <div class="choice-grid">
+                  <label><input type="checkbox" name="admin-categories" value="Info" /> Info</label>
+                  <label><input type="checkbox" name="admin-categories" value="Elen" /> Elen</label>
+                  <label><input type="checkbox" name="admin-categories" value="Ener" /> Ener</label>
+                  <label><input type="checkbox" name="admin-categories" value="Auto" /> Auto</label>
+                </div>
+              </div>
+              <div class="input-group">
+                <input id="admin-location" name="location" required placeholder="Emplacement" />
+              </div>
+              <div class="input-group">
+                <select id="admin-condition" name="condition" required>
+                  <option value="">Etat</option>
+                  <option value="Neuf">Neuf</option>
+                  <option value="Bon">Bon</option>
+                  <option value="Passable">Passable</option>
+                  <option value="Reparation Necessaire">Réparation nécessaire</option>
+                </select>
+              </div>
+              <button type="submit">Ajouter</button>
+              <div id="admin-msg" class="message"></div>
+            </form>
           </div>
-          <div class="input-group">
-            <label for="admin-category">Categorie</label>
-            <input id="admin-category" name="category" required placeholder="Oscilloscope, Outil de mesure..." />
+
+          <div class="admin-card">
+            <div class="section-title" style="align-items:flex-start;">
+              <div>
+                <h3 style="margin:2px 0 0;">Rechercher, trier, retirer du parc</h3>
+              </div>
+            </div>
+            <div class="admin-tools">
+              <div class="input-group">
+                <input id="admin-search" placeholder="Recherche" />
+              </div>
+              <div class="input-group">
+                <select id="admin-sort">
+                  <option value="recent">Trier</option>
+                  <option value="name">Nom (A-Z)</option>
+                  <option value="category">Catégorie</option>
+                  <option value="status">Statut</option>
+                  <option value="location">Emplacement</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <div class="tag-bar" id="admin-tag-bar"></div>
+              </div>
+            </div>
+            <div id="admin-inventory" class="catalog admin-catalog"></div>
           </div>
-          <div class="input-group">
-            <label for="admin-location">Emplacement</label>
-            <input id="admin-location" name="location" required placeholder="B05, armoire 3..." />
-          </div>
-          <div class="input-group">
-            <label for="admin-serial">Numero de serie</label>
-            <input id="admin-serial" name="serial" placeholder="REF-1234" />
-          </div>
-          <div class="input-group">
-            <label for="admin-condition">Etat</label>
-            <input id="admin-condition" name="condition" placeholder="Bon, Moyen..." />
-          </div>
-          <button type="submit">Ajouter</button>
-          <div id="admin-msg" class="message"></div>
-        </form>
+        </div>
       </section>
 
       <section class="panel" data-section="admin-returns" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <div class="small-title">Administration</div>
             <h3 style="margin:2px 0 0;">Rendus de matériel</h3>
           </div>
         </div>
-        <div class="loans-list" id="admin-loans"></div>
+        <div class="loans-list admin-bubble-grid" id="admin-loans"></div>
       </section>
 
       <section class="panel" data-section="admin-maintenance" data-role="admin" hidden>

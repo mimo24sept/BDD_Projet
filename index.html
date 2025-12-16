@@ -16,7 +16,6 @@
         <div class="brand-mark">GE</div>
         <div>
           <h1>Parc Materiels GEII</h1>
-          <p class="subtitle">Connexion requise pour acceder au catalogue</p>
         </div>
       </div>
       <div class="auth-forms">
@@ -24,12 +23,10 @@
           <div class="small-title" style="margin-bottom:6px;">Connexion</div>
           <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
             <div class="input-group">
-              <label for="login">Login</label>
-              <input id="login" name="login" placeholder="ex: admin" required />
+              <input id="login" name="login" placeholder="Login" aria-label="Login" required />
             </div>
             <div class="input-group">
-              <label for="password">Mot de passe</label>
-              <input id="password" name="password" type="password" placeholder="****" required />
+              <input id="password" name="password" type="password" placeholder="Mot de passe" aria-label="Mot de passe" required />
             </div>
             <button type="submit">Connexion</button>
             <div id="login-msg" class="message"></div>
