@@ -1,4 +1,5 @@
 ﻿// Login-only script used on index.html. Redirects to menu.html after auth.
+// Rôle : gérer la connexion/inscription côté front, puis lancer l'animation ripple avant de rediriger.
 
 const API = { auth: './api/auth.php' };
 
@@ -15,6 +16,7 @@ const registerBlock = document.querySelector('#register-block');
 const rippleOverlay = document.querySelector('#ripple-overlay');
 const rippleCircles = rippleOverlay ? rippleOverlay.querySelectorAll('.ripple-circle') : [];
 
+// Animation ripple puis redirection vers le tableau de bord après succès.
 function playRippleAndRedirect() {
   if (!rippleOverlay || !rippleCircles.length) {
     window.location.href = 'menu.html';
@@ -27,6 +29,7 @@ function playRippleAndRedirect() {
   setTimeout(() => { window.location.href = 'menu.html'; }, 850);
 }
 
+// Affiche le champ "mot secret" uniquement si le rôle professeur est choisi.
 function updateSecretVisibility() {
   if (!roleSelect || !secretRow) return;
   const wantsProf = roleSelect.value === 'professeur';
@@ -37,6 +40,7 @@ function updateSecretVisibility() {
   }
 }
 
+// Bascule entre bloc login et bloc inscription.
 function switchMode(mode) {
   const isLogin = mode === 'login';
   if (loginForm) {
@@ -64,6 +68,7 @@ if (toggleRegisterBtn) toggleRegisterBtn.addEventListener('click', () => switchM
 if (backToLoginBtn) backToLoginBtn.addEventListener('click', () => switchMode('login'));
 switchMode('login');
 
+// Soumission du formulaire de connexion.
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const login = loginForm.elements['login'].value.trim();
@@ -84,6 +89,7 @@ if (roleSelect && secretRow) {
   roleSelect.addEventListener('change', updateSecretVisibility);
 }
 
+// Soumission du formulaire de création de compte.
 if (registerForm) {
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -106,6 +112,7 @@ if (registerForm) {
   });
 }
 
+// Appels API bas niveau.
 async function apiLogin(payload) {
   const res = await fetch(`${API.auth}?action=login`, {
     method: 'POST',

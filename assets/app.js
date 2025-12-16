@@ -1,4 +1,7 @@
-﻿const API = {
+﻿// Frontend principal : catalogue, réservations, prêts, maintenance et stats.
+// Tout est en vanilla JS : état global, appels API, rendu dynamique, calendrier, modales.
+
+const API = {
   auth: './api/auth.php',
   equipment: './api/equipment.php',
   dashboard: './api/dashboard.php',
@@ -8,6 +11,7 @@
   const appShell = document.querySelector('#app-shell');
   if (!appShell) return;
 
+  // Constantes et état applicatif partagé.
   const BASE_TAGS = ['Info', 'Elen', 'Ener', 'Auto'];
   const CONDITION_RANKS = {
     'reparation nécessaire': 0,
@@ -35,6 +39,7 @@
     adminStats: null,
   };
 
+  // Sélecteurs DOM principaux.
   const logoutBtn = document.querySelector('#logout-btn');
   const userChip = document.querySelector('#user-chip');
   const tabs = document.querySelectorAll('[data-tab]');
@@ -98,6 +103,7 @@
   let selectedStartDate = null;
   let selectedEndDate = null;
 
+  // Gestion logout.
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       await apiLogout();
@@ -106,6 +112,7 @@
     });
   }
 
+  // Navigation entre onglets.
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       state.activeTab = tab.dataset.tab;
@@ -113,6 +120,7 @@
     });
   });
 
+  // Filtres catalogue / maintenance / prêts admin / stats admin.
   if (searchInput) {
     searchInput.addEventListener('input', () => {
       state.filters.search = searchInput.value.toLowerCase();
@@ -178,6 +186,7 @@
     });
   }
 
+  // Modale (ouvrir/fermer) et bouton réserver/maintenance.
   if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
   if (modalBackdrop) {
     modalBackdrop.addEventListener('click', (e) => {
@@ -185,6 +194,7 @@
     });
   }
 
+  // Réservation ou planification maintenance depuis la modale.
   if (reserveBtn) {
     reserveBtn.addEventListener('click', async () => {
       const range = selectionRange();
@@ -261,6 +271,7 @@
     });
   }
 
+  // Formulaire d'ajout matériel (admin).
   if (adminForm) {
     adminForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -303,6 +314,8 @@
       }
     });
   }
+
+  // --- API : session, catalogue, emprunts, stats, CRUD matériel/prêts ---
 
   async function apiSession() {
     try {
@@ -900,6 +913,7 @@
     });
   }
 
+  // Catalogue public (recherche + tags) et cartes de réservation.
   function renderCatalog() {
     if (!catalogEl) return;
     catalogEl.innerHTML = '';
@@ -945,6 +959,7 @@
     }
   }
 
+  // Bloc "Mes emprunts" côté utilisateur (retours ou annulations).
   function renderLoans() {
     loansEl.innerHTML = '';
     const isAdmin = (state.user?.role || '').toLowerCase().includes('admin');
@@ -1018,6 +1033,7 @@
     }
   }
 
+  // Vue admin des prêts en cours/à venir + actions de rendu/annulation.
   function renderAdminLoans() {
     if (!adminLoansEl) return;
     adminLoansEl.innerHTML = '';
@@ -1157,6 +1173,7 @@
     }
   }
 
+  // Stats côté utilisateur (cartes synthèse).
   function renderStats() {
     const fallback = {
       total_year: state.loans.length,
@@ -1169,6 +1186,7 @@
     statsEls.returned.textContent = String(stats.returned ?? 0);
   }
 
+  // Stats côté admin (retards / dégradations / maintenances).
   function renderAdminStats() {
     if (!adminStatsEls.total) return;
     if (!isAdmin()) {
@@ -1189,6 +1207,7 @@
     });
   }
 
+  // Historique détaillé pour les filtres de stats admin.
   function renderAdminStatsList() {
     if (!adminStatsEls.list) return;
     adminStatsEls.list.innerHTML = '';
@@ -1246,6 +1265,7 @@
     }
   }
 
+  // --- Normalisation et bornage des états matériels ---
   function normalizeCondition(value = '') {
     const cleaned = String(value || '')
       .toLowerCase()
@@ -1290,6 +1310,7 @@
       .join('');
   }
 
+  // --- Modale de réservation / maintenance et calendrier custom ---
   function openModal(item, mode = 'reserve') {
     modalMode = mode;
     state.modalItem = item;
@@ -1346,6 +1367,7 @@
     modalBackdrop.classList.remove('show');
   }
 
+  // Helpers d'affichage (badges, échappement, formatage dates).
   function statusBadge(status = '') {
     const norm = status.toLowerCase();
     let cls = 'status-ok';
@@ -1408,6 +1430,7 @@
     return `https://source.unsplash.com/collection/190727/600x400?sig=${s}`;
   }
 
+  // Outils calendrier (semaines, dates bloquées, rendu grille).
   function isoWeekKey(dateStr) {
     if (!dateStr) return null;
     const d = new Date(`${dateStr}T00:00:00`);
@@ -1541,6 +1564,7 @@
     });
   }
 
+  // Gestion de la sélection de plage sur le calendrier (avec blocage max 14 jours et dates occupées).
   function handleDayClick(dateStr) {
     if (blockedDates[dateStr] && !(modalMode === 'maintenance' && blockedDates[dateStr] !== 'maintenance')) return;
     if (!selectedStartDate || (selectedStartDate && selectedEndDate)) {
