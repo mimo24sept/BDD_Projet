@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+// API Auth : login/logout, inscription, rôles et liste des utilisateurs (admin).
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');

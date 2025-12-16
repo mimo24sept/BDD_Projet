@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+// API Equipement : catalogue, réservations, créations/suppressions et maintenance.
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');

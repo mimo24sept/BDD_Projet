@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+// Installe le schéma/données de base depuis BDD/Projet_BDD.sql si les tables n'existent pas.
 
 header('Content-Type: application/json; charset=utf-8');
 

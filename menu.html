@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./assets/styles.css" />
 </head>
 <body>
+  <!-- Coquille principale de l'appli (onglets, modale, listes) -->
   <div id="app-shell">
     <header>
       <div class="brand">
@@ -26,6 +27,7 @@
     </header>
 
     <main>
+      <!-- Navigation par onglets (filtré par rôle admin) -->
       <div class="tabs">
         <div class="tab active" data-tab="borrow">Emprunter un objet</div>
         <div class="tab" data-tab="loans">Mes emprunts & stats</div>
@@ -36,6 +38,7 @@
         <div class="tab" data-tab="admin-accounts" data-role="admin">Comptes</div>
       </div>
 
+      <!-- Catalogue public avec filtres -->
       <section class="panel" data-section="borrow">
         <div class="section-title" style="margin-bottom:10px;">
           <div>
@@ -57,6 +60,7 @@
         <div id="catalog" class="catalog scroll-area"></div>
       </section>
 
+      <!-- Espace utilisateur : emprunts et stats -->
       <section class="panel" data-section="loans" hidden>
         <div class="section-title">
           <div>
@@ -84,6 +88,7 @@
         <div class="loans-list scroll-area" id="loans"></div>
       </section>
 
+      <!-- Admin : ajout + inventaire -->
       <section class="panel" data-section="admin-add" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -151,6 +156,7 @@
         </div>
       </section>
 
+      <!-- Admin : rendus et réservations -->
       <section class="panel" data-section="admin-returns" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -165,6 +171,7 @@
         <div class="loans-list admin-bubble-grid admin-scroll" id="admin-loans"></div>
       </section>
 
+      <!-- Admin : maintenance -->
       <section class="panel" data-section="admin-maintenance" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -189,6 +196,7 @@
         </div>
       </section>
 
+      <!-- Admin : comptes -->
       <section class="panel" data-section="admin-accounts" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -232,6 +240,7 @@
       </section>
     </main>
 
+    <!-- Modale partagée (réservation / maintenance) -->
     <div class="modal-backdrop" id="modal">
       <div class="modal">
         <div class="top">

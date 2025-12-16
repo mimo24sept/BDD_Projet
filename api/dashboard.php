@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+// API Tableau de bord : emprunts utilisateur/admin, rendus, annulations et stats.
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');

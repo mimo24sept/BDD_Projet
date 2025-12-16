@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./assets/styles.css" />
 </head>
 <body>
+  <!-- Effet ripple plein écran lors de la connexion -->
   <div class="ripple-overlay" id="ripple-overlay">
     <div class="ripple-circle ripple-a"></div>
     <div class="ripple-circle ripple-b"></div>
@@ -23,7 +24,7 @@
           <h1>Parc Materiels GEII</h1>
         </div>
       </div>
-      <div class="auth-forms">
+      <div class="auth-forms"><!-- Bloc login + inscription -->
         <div class="auth-form-block" id="login-block">
           <div class="small-title" style="margin-bottom:6px;">Connexion</div>
           <form id="login-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">
@@ -39,6 +40,7 @@
           </form>
         </div>
 
+        <!-- Formulaire d'inscription avec bascule du mot secret pour prof -->
         <div class="auth-form-block" id="register-block" hidden>
           <div class="small-title" style="margin-bottom:6px;">Créer un compte</div>
           <form id="register-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items:end; gap:12px;">

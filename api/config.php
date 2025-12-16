@@ -1,5 +1,5 @@
 <?php
-// Basic database configuration (MySQL / phpMyAdmin). Override with environment variables.
+// Configuration BD (MySQL/MariaDB) surchargée par variables d'environnement si présentes.
 
 return [
     // Example DSN for MySQL: mysql:host=127.0.0.1;port=3306;dbname=Projet_BDD;charset=utf8mb4

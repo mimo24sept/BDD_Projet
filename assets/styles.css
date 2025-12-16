@@ -1,4 +1,5 @@
-﻿:root {
+﻿/* Variables de thème (couleurs, arrondis, typo) */
+:root {
   --bg: #fdfdfb;
   --card: #ffffff;
   --ink: #1f2933;
@@ -17,6 +18,7 @@
 
 * { box-sizing: border-box; }
 
+/* Fond texturé + typo globale */
 body {
   margin: 0;
   font-family: var(--font);
@@ -31,6 +33,7 @@ body {
 a { color: var(--accent-strong); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* En-tête et branding */
 header {
   padding: 24px 22px 12px;
   max-width: 1200px;
@@ -54,6 +57,7 @@ h1 { margin: 0; font-size: 22px; letter-spacing: -0.4px; }
 
 .hero { max-width: 1200px; margin: 0 auto; padding: 0 22px 24px; }
 
+/* Cartes principales (panels) */
 .panel {
   background: var(--card);
   border: 1px solid var(--line);
@@ -80,6 +84,7 @@ h1 { margin: 0; font-size: 22px; letter-spacing: -0.4px; }
 .input-group { display: grid; gap: 8px; }
 label { color: var(--muted); font-size: 14px; }
 
+/* Champs et sélecteurs */
 input, select, textarea {
   width: 100%;
   padding: 12px 14px;
@@ -98,6 +103,7 @@ input:focus, select:focus, textarea:focus {
   transform: translateY(-1px);
 }
 
+/* Boutons (plein et ghost) */
 button {
   border: none;
   border-radius: 12px;
@@ -122,6 +128,7 @@ button.ghost {
 
 button.ghost:hover { border-color: var(--accent); color: var(--accent-strong); }
 
+/* Layout principal + onglets */
 .header-actions { display: flex; gap: 10px; align-items: center; }
 
 main {

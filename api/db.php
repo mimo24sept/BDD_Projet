@@ -1,5 +1,6 @@
 <?php
 
+// Connexion PDO centralisée avec options sécurisées.
 function get_pdo(): PDO
 {
     static $pdo = null;

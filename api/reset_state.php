@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+// Réinitialise la base de démo : tout disponible, emprunts/rendus supprimés (admin).
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
