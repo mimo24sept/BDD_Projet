@@ -57,15 +57,13 @@
               <input id="reg-pass2" name="confirm" type="password" placeholder="Confirmer le mot de passe" aria-label="Confirmer le mot de passe" required />
             </div>
             <div class="input-group">
-              <label for="reg-role">Profil</label>
-              <select id="reg-role" name="role">
+              <select id="reg-role" name="role" aria-label="Profil">
                 <option value="etudiant">Etudiant</option>
                 <option value="professeur">Professeur</option>
               </select>
             </div>
             <div class="input-group" id="reg-secret-row" hidden>
-              <label for="reg-secret">Mot de passe professeur</label>
-              <input id="reg-secret" name="secret" type="password" placeholder="mot secret requis" />
+              <input id="reg-secret" name="secret" type="password" placeholder="Mot de passe professeur" aria-label="Mot de passe professeur" />
             </div>
             <button type="submit">Créer un compte</button>
             <div id="register-msg" class="message"></div>

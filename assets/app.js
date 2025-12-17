@@ -37,6 +37,7 @@ const API = {
     modalItem: null,
     stats: null,
     adminStats: null,
+    loanSearch: '',
   };
 
   // Sélecteurs DOM principaux.
@@ -54,6 +55,7 @@ const API = {
   };
   const searchInput = document.querySelector('#search');
   const tagBar = document.querySelector('#tag-bar');
+  const loanSearchInput = document.querySelector('#loan-search');
   const modalBackdrop = document.querySelector('#modal');
   const modalTitle = document.querySelector('#modal-title');
   const modalBody = document.querySelector('#modal-body');
@@ -125,6 +127,12 @@ const API = {
     searchInput.addEventListener('input', () => {
       state.filters.search = searchInput.value.toLowerCase();
       renderCatalog();
+    });
+  }
+  if (loanSearchInput) {
+    loanSearchInput.addEventListener('input', () => {
+      state.loanSearch = loanSearchInput.value.toLowerCase();
+      renderLoans();
     });
   }
   if (maintenanceSearchInput) {
@@ -557,9 +565,10 @@ const API = {
       const isAdminTab = tab.dataset.role === 'admin';
       const isUserLoansTab = tab.dataset.tab === 'loans';
       const isBorrowTab = tab.dataset.tab === 'borrow';
+      const isStatsTab = tab.dataset.tab === 'stats';
       if (isAdminTab) {
         tab.style.display = adminEnabled ? '' : 'none';
-      } else if (isUserLoansTab || isBorrowTab) {
+      } else if (isUserLoansTab || isBorrowTab || isStatsTab) {
         tab.style.display = adminEnabled ? 'none' : '';
       } else {
         tab.style.display = '';
@@ -569,15 +578,16 @@ const API = {
       const isAdminSection = sec.dataset.role === 'admin';
       const isUserLoans = sec.dataset.section === 'loans';
       const isBorrow = sec.dataset.section === 'borrow';
+      const isStats = sec.dataset.section === 'stats';
       if (isAdminSection) {
         sec.hidden = !adminEnabled;
-      } else if ((isUserLoans || isBorrow) && adminEnabled) {
+      } else if ((isUserLoans || isBorrow || isStats) && adminEnabled) {
         sec.hidden = true;
       } else {
         sec.hidden = false;
       }
     });
-    if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow')) {
+    if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow' || state.activeTab === 'stats')) {
       state.activeTab = 'admin-add';
     }
     if (!adminEnabled && state.activeTab.startsWith('admin')) {
@@ -614,9 +624,10 @@ const API = {
       const isAdminSection = sec.dataset.role === 'admin';
       const isLoansSection = sec.dataset.section === 'loans';
       const isBorrowSection = sec.dataset.section === 'borrow';
+      const isStatsSection = sec.dataset.section === 'stats';
       sec.hidden = sec.dataset.section !== state.activeTab
         || (isAdminSection && !isAdmin())
-        || ((isLoansSection || isBorrowSection) && isAdmin());
+        || ((isLoansSection || isBorrowSection || isStatsSection) && isAdmin());
     });
   }
 
@@ -926,29 +937,22 @@ const API = {
     });
 
     filtered.forEach((item) => {
-      const nextMaintenance = (item.reservations || []).find((r) => (r.type || '').toLowerCase() === 'maintenance') || null;
-      const reservationBadge = nextMaintenance
-        ? `<div class="meta">Maintenance planifiée : ${formatDisplayDate(nextMaintenance.start)} → ${formatDisplayDate(nextMaintenance.end)}</div>`
-        : '<div class="meta">Aucune maintenance planifiée</div>';
-      const categoriesLabel = (item.categories && item.categories.length)
-        ? item.categories.join(', ')
-        : item.category;
-      const availabilityLabel = (item.status || '').toLowerCase() === 'disponible' ? 'Disponible' : 'Indisponible';
+      const tagsHtml = item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('');
       const card = document.createElement('article');
       card.className = 'card';
       card.innerHTML = `
-        <img src="${item.picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <h3>${escapeHtml(item.name)}</h3>
-            <div class="meta">${escapeHtml(categoriesLabel)}</div>
             <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
-            <div class="meta">État: ${escapeHtml(item.condition || 'N/C')}</div>
           </div>
           ${statusBadge(item.status)}
         </div>
-        ${reservationBadge}
-        <button type="button" class="ghost" data-id="${item.id}">Voir et reserver</button>
+        <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
+          <div class="tags" style="margin:0;">${tagsHtml}</div>
+          <button type="button" class="ghost" data-id="${item.id}">Voir et reserver</button>
+        </div>
       `;
       card.querySelector('button').addEventListener('click', () => openModal(item));
       catalogEl.appendChild(card);
@@ -963,14 +967,50 @@ const API = {
   function renderLoans() {
     loansEl.innerHTML = '';
     const isAdmin = (state.user?.role || '').toLowerCase().includes('admin');
-    state.loans.forEach((loan) => {
-      const severity = dueSeverity(loan.due);
-      const barColor = severityColor(severity);
+    const today = new Date().toISOString().slice(0, 10);
+    const filteredLoans = state.loans.filter((loan) => {
+      if (!state.loanSearch) return true;
+      const haystack = `${loan.name || ''} ${loan.status || ''}`.toLowerCase();
+      return haystack.includes(state.loanSearch);
+    });
+    const sortedLoans = filteredLoans.sort((a, b) => {
+      const started = (loan) => loan.start && loan.start <= today;
+      const severityKey = (loan) => {
+        if (!started(loan)) return 'future';
+        return dueSeverity(loan.due);
+      };
+      const weight = (key) => {
+        const map = { overdue: 0, urgent: 1, soon: 2, ok: 3, future: 4 };
+        return map[key] ?? 5;
+      };
+      const wa = weight(severityKey(a));
+      const wb = weight(severityKey(b));
+      if (wa !== wb) return wa - wb;
+      if (wa === weight('future')) {
+        return (a.start || '').localeCompare(b.start || '');
+      }
+      return (a.due || '').localeCompare(b.due || '');
+    });
+
+    sortedLoans.forEach((loan) => {
+      const hasStarted = loan.start ? loan.start <= today : false;
+      const severity = hasStarted ? dueSeverity(loan.due) : 'ok';
+      const barColor = hasStarted ? severityColor(severity) : '#e5e7eb';
+      const statusLower = (loan.status || '').toLowerCase();
+      const isOngoing = hasStarted && statusLower === 'en cours';
+      const userStateLabel = isOngoing
+        ? (severity === 'overdue'
+          ? 'Retard'
+          : severity === 'urgent' || severity === 'soon'
+            ? 'Retour proche'
+            : 'A jour')
+        : 'A venir';
       const canReturn = isAdmin && loan.type === 'pret' && loan.status !== 'rendu';
       const canRequestCancel = !isAdmin
         && loan.type === 'pret'
         && loan.status !== 'rendu'
-        && loan.status !== 'annulation demandee';
+        && loan.status !== 'annulation demandee'
+        && !hasStarted;
       const actionHtml = canReturn
         ? '<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>'
         : canRequestCancel
@@ -987,7 +1027,7 @@ const API = {
       row.className = `loan-item loan-${severity}`;
       row.innerHTML = `
           <div>
-            <div class="small-title">${escapeHtml(loan.status)} - ${escapeHtml(severityLabel(severity))}</div>
+            <div class="small-title">${escapeHtml(userStateLabel)}</div>
             <div style="font-weight:800">${escapeHtml(loan.name)}</div>
             <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
             <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
@@ -1676,7 +1716,7 @@ const API = {
 
   function severityLabel(severity) {
     if (severity === 'overdue') return 'En retard';
-    if (severity === 'urgent') return 'Retour imminent';
+    if (severity === 'urgent') return 'Retour proche';
     if (severity === 'soon') return 'Retour proche';
     return 'A jour';
   }

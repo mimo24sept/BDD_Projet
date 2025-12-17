@@ -30,7 +30,8 @@
       <!-- Navigation par onglets (filtré par rôle admin) -->
       <div class="tabs">
         <div class="tab active" data-tab="borrow">Emprunter un objet</div>
-        <div class="tab" data-tab="loans">Mes emprunts & stats</div>
+        <div class="tab" data-tab="loans">Mes emprunts</div>
+        <div class="tab" data-tab="stats">Stats</div>
         <div class="tab" data-tab="admin-add" data-role="admin">Ajouter du materiel</div>
         <div class="tab" data-tab="admin-returns" data-role="admin">Rendus & réservations</div>
         <div class="tab" data-tab="admin-maintenance" data-role="admin">Maintenance</div>
@@ -42,17 +43,14 @@
       <section class="panel" data-section="borrow">
         <div class="section-title" style="margin-bottom:10px;">
           <div>
-            <div class="small-title">Catalogue</div>
-            <h3 style="margin:2px 0 0;">Selectionne et filtre par tags</h3>
+            <h3 style="margin:2px 0 0;">Catalogue</h3>
           </div>
         </div>
         <div class="filters">
           <div class="input-group">
-            <label for="search">Recherche</label>
-            <input id="search" placeholder="oscilloscope, laptop, FPGA..." />
+            <input id="search" placeholder="recherche" />
           </div>
           <div class="input-group">
-            <label>Tags</label>
             <div class="tag-bar" id="tag-bar"></div>
           </div>
         </div>
@@ -64,8 +62,22 @@
       <section class="panel" data-section="loans" hidden>
         <div class="section-title">
           <div>
-            <div class="small-title">Mes emprunts</div>
-            <h3 style="margin:2px 0 0;">Retours anticipes, suivi et stats</h3>
+            <h3 style="margin:2px 0 0;">Mes emprunts</h3>
+          </div>
+        </div>
+        <div class="filters" style="margin-bottom:10px;">
+          <div class="input-group">
+            <input id="loan-search" placeholder="recherche" />
+          </div>
+        </div>
+        <div class="loans-list scroll-area" id="loans"></div>
+      </section>
+
+      <section class="panel" data-section="stats" hidden>
+        <div class="section-title">
+          <div>
+            <div class="small-title">Mes statistiques</div>
+            <h3 style="margin:2px 0 0;">Synthèse de mes emprunts</h3>
           </div>
         </div>
         <div class="stats" style="margin:12px 0;">
@@ -85,7 +97,6 @@
             <div class="stat-trend">Sans retard</div>
           </div>
         </div>
-        <div class="loans-list scroll-area" id="loans"></div>
       </section>
 
       <!-- Admin : ajout + inventaire -->
