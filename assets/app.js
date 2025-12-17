@@ -36,6 +36,8 @@ const API = {
     adminHistorySearch: '',
     modalItem: null,
     stats: null,
+    loanHistory: [],
+    userStatsView: 'total',
     adminStats: null,
     loanSearch: '',
   };
@@ -50,8 +52,15 @@ const API = {
   const adminLoansEl = document.querySelector('#admin-loans');
   const statsEls = {
     total: document.querySelector('#stat-total'),
-    active: document.querySelector('#stat-active'),
-    returned: document.querySelector('#stat-returned'),
+    delays: document.querySelector('#stat-delays'),
+    degrades: document.querySelector('#stat-degrades'),
+    list: document.querySelector('#user-stats-list'),
+    msg: document.querySelector('#user-stats-msg'),
+    cards: {
+      total: document.querySelector('#user-stat-card-total'),
+      delays: document.querySelector('#user-stat-card-delays'),
+      degrades: document.querySelector('#user-stat-card-degrades'),
+    },
   };
   const searchInput = document.querySelector('#search');
   const tagBar = document.querySelector('#tag-bar');
@@ -151,6 +160,27 @@ const API = {
     adminStatsEls.search.addEventListener('input', () => {
       state.adminHistorySearch = adminStatsEls.search.value.toLowerCase();
       renderAdminStatsList();
+    });
+  }
+  if (statsEls.cards.total) {
+    statsEls.cards.total.addEventListener('click', () => {
+      state.userStatsView = 'total';
+      renderStats();
+      renderUserStatsList();
+    });
+  }
+  if (statsEls.cards.delays) {
+    statsEls.cards.delays.addEventListener('click', () => {
+      state.userStatsView = 'delays';
+      renderStats();
+      renderUserStatsList();
+    });
+  }
+  if (statsEls.cards.degrades) {
+    statsEls.cards.degrades.addEventListener('click', () => {
+      state.userStatsView = 'degrades';
+      renderStats();
+      renderUserStatsList();
     });
   }
   if (adminStatsEls.cards.total) {
@@ -387,11 +417,23 @@ const API = {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API emprunts');
       state.loans = (data.loans || []).filter((l) => l.status !== 'rendu');
-      state.stats = data.stats || null;
+      const rawHistory = Array.isArray(data?.stats?.history) ? data.stats.history : (data.loans || []);
+      const history = normalizeHistory(rawHistory);
+      state.loanHistory = history;
+      state.stats = data.stats ? { ...data.stats, history } : { history };
+      if (statsEls.msg) {
+        statsEls.msg.textContent = '';
+        statsEls.msg.className = 'message';
+      }
       return;
     } catch (err) {
       state.loans = [];
       state.stats = null;
+      state.loanHistory = [];
+      if (statsEls.msg) {
+        statsEls.msg.textContent = err?.message || 'Stats indisponibles';
+        statsEls.msg.className = 'message err';
+      }
     }
   }
 
@@ -426,6 +468,29 @@ const API = {
         adminStatsEls.msg.className = 'message err';
       }
     }
+  }
+
+  function normalizeHistory(list = []) {
+    const today = new Date();
+    return (Array.isArray(list) ? list : [])
+      .filter((item) => (item.type || 'pret') !== 'maintenance')
+      .map((item) => {
+        const dueDate = item.due ? new Date(`${item.due}T00:00:00`) : null;
+        const returnedDate = item.returned ? new Date(`${item.returned}T00:00:00`) : null;
+        const dueValid = dueDate && !Number.isNaN(dueDate.getTime());
+        const returnedValid = returnedDate && !Number.isNaN(returnedDate.getTime());
+        const isDelayComputed = Boolean(dueValid)
+          && ((returnedValid && returnedDate > dueDate) || (!returnedValid && dueDate < today));
+        const returnState = item.return_state || '';
+        const lowerState = String(returnState).toLowerCase();
+        const isDegradeComputed = lowerState.startsWith('degrade') || String(returnState).includes('->');
+        return {
+          ...item,
+          is_delay: item.is_delay ?? isDelayComputed,
+          is_degrade: item.is_degrade ?? isDegradeComputed,
+          type: item.type || 'pret',
+        };
+      });
   }
 
   async function apiFetchUsers() {
@@ -551,7 +616,9 @@ const API = {
 
   function setAuthUI() {
     if (userChip) {
-      userChip.textContent = state.user ? `Connecte: ${state.user.login || 'profil'}` : 'Non connecte';
+      const login = state.user?.login || 'profil';
+      const prettyLogin = login.charAt(0).toUpperCase() + login.slice(1);
+      userChip.textContent = state.user ? `Utilisateur : ${prettyLogin}` : 'Non connecte';
     }
   }
 
@@ -605,6 +672,7 @@ const API = {
     renderMaintenanceAgenda();
     renderAccounts();
     renderStats();
+    renderUserStatsList();
     renderTags();
     renderAdminTags();
     renderMaintenanceCatalog();
@@ -1215,15 +1283,81 @@ const API = {
 
   // Stats côté utilisateur (cartes synthèse).
   function renderStats() {
+    if (!statsEls.total) return;
+    const history = Array.isArray(state.stats?.history)
+      ? state.stats.history
+      : Array.isArray(state.loanHistory)
+        ? state.loanHistory
+        : [];
+    const safeHistory = Array.isArray(history) ? history : [];
+    const currentYear = new Date().getFullYear();
+    const yearHistory = safeHistory.filter((item) => {
+      if (!item.start) return false;
+      const dt = new Date(`${item.start}T00:00:00`);
+      return !Number.isNaN(dt.getTime()) && dt.getFullYear() === currentYear;
+    });
     const fallback = {
-      total_year: state.loans.length,
-      active: state.loans.filter((l) => l.status === 'en cours').length,
-      returned: Math.max(0, state.loans.length - state.loans.filter((l) => l.status === 'en cours').length),
+      total_year: yearHistory.length,
+      delays: yearHistory.filter((h) => h.is_delay).length,
+      degrades: yearHistory.filter((h) => h.is_degrade).length,
+      history: safeHistory,
     };
-    const stats = state.stats || fallback;
+    const stats = state.stats ? { ...fallback, ...state.stats, history: safeHistory } : fallback;
     statsEls.total.textContent = String(stats.total_year ?? stats.total ?? 0);
-    statsEls.active.textContent = String(stats.active ?? 0);
-    statsEls.returned.textContent = String(stats.returned ?? 0);
+    if (statsEls.delays) statsEls.delays.textContent = String(stats.delays ?? 0);
+    if (statsEls.degrades) statsEls.degrades.textContent = String(stats.degrades ?? 0);
+    Object.entries(statsEls.cards || {}).forEach(([key, el]) => {
+      if (!el) return;
+      el.classList.toggle('active', state.userStatsView === key);
+    });
+  }
+
+  function renderUserStatsList() {
+    if (!statsEls.list) return;
+    const history = Array.isArray(state.stats?.history)
+      ? state.stats.history
+      : Array.isArray(state.loanHistory)
+        ? state.loanHistory
+        : [];
+    statsEls.list.innerHTML = '';
+    if (!history.length) {
+      statsEls.list.innerHTML = '<p class="meta">Pas encore d\'historique.</p>';
+      return;
+    }
+    const filtered = history.filter((it) => {
+      if (state.userStatsView === 'delays') return Boolean(it.is_delay);
+      if (state.userStatsView === 'degrades') return Boolean(it.is_degrade);
+      return true;
+    });
+
+    filtered.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'loan-item';
+      const badges = [];
+      if (it.is_delay) badges.push('<span class="badge status-loan">Retard</span>');
+      if (it.is_degrade) {
+        let transition = '';
+        if ((it.return_state || '').includes('->')) {
+          transition = it.return_state.split(':').pop() || it.return_state;
+        }
+        const cleanTransition = transition ? transition.replace(/^degrade:/i, '') : '';
+        const label = cleanTransition || 'Dégradé';
+        badges.push(`<span class="badge status-maint">${escapeHtml(label)}</span>`);
+      }
+      row.innerHTML = `
+        <div>
+          <div class="small-title">${escapeHtml(it.name || 'Objet')}</div>
+          <div class="loan-meta">Du ${formatDisplayDate(it.start)} au ${formatDisplayDate(it.due)}</div>
+          <div class="loan-meta">${it.returned ? `Rendu le ${formatDisplayDate(it.returned)}` : 'Pas encore rendu'}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${badges.join('')}</div>
+      `;
+      statsEls.list.appendChild(row);
+    });
+
+    if (!filtered.length) {
+      statsEls.list.innerHTML = '<p class="meta">Aucun élément pour ce filtre.</p>';
+    }
   }
 
   // Stats côté admin (retards / dégradations / maintenances).

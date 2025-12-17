@@ -322,6 +322,7 @@ main {
 .stat-label { color: var(--muted); font-size: 13px; }
 .stat-value { font-size: 22px; font-weight: 800; letter-spacing: -0.2px; }
 .stat-trend { color: var(--success); font-weight: 700; }
+.stat-card.active { border-color: var(--accent-soft); box-shadow: 0 12px 30px rgba(255,140,50,0.14); background: #fff8f1; }
 .stat-card.clickable { cursor: pointer; transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
 .stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.08); border-color: var(--accent-soft); }
 

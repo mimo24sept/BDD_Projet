@@ -82,7 +82,7 @@ function fetch_loans(PDO $pdo, ?int $userId): array
     $where = $userId !== null ? 'WHERE e.IDuser = :uid' : '';
     $sql = "SELECT e.IDemprunt, e.DATEdebut, e.DATEfin, e.ETATemprunt,
                    m.NOMmateriel, m.Emplacement, m.IDmateriel, m.Etat AS EtatMateriel,
-                   r.DATErendu,
+                   r.DATErendu, r.ETATrendu,
                    u.NOMuser
             FROM `Emprunt` e
             JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
@@ -100,6 +100,7 @@ function fetch_loans(PDO $pdo, ?int $userId): array
         $due = $row['DATEfin'] ?? null;
         $returnedAt = $row['DATErendu'] ?? null;
         $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        $returnState = $row['ETATrendu'] ?? '';
         $type = $kind === 'maintenance' ? 'maintenance' : 'pret';
         $status = $returnedAt ? 'rendu' : ($kind ?: 'en cours');
         $loans[] = [
@@ -113,6 +114,8 @@ function fetch_loans(PDO $pdo, ?int $userId): array
             'progress' => progress_percent($start ?: compute_start_date($due), $due),
             'user' => $row['NOMuser'] ?? '',
             'condition' => $row['EtatMateriel'] ?? '',
+            'returned' => $returnedAt,
+            'return_state' => $returnState,
         ];
     }
 
@@ -150,15 +153,79 @@ function progress_percent(?string $start, ?string $due): int
 
 function build_stats(array $loans): array
 {
+    $today = date('Y-m-d');
+    $todayTs = strtotime($today);
+    $year = (int) date('Y');
     $eligible = array_filter($loans, static fn($l) => ($l['type'] ?? 'pret') !== 'maintenance');
-    $total = count($eligible);
-    $returned = count(array_filter($eligible, static fn($l) => $l['status'] === 'rendu'));
-    $active = $total - $returned;
+
+    $history = [];
+    $totalYear = 0;
+    $delays = 0;
+    $degrades = 0;
+
+    foreach ($eligible as $loan) {
+        $start = $loan['start'] ?? null;
+        $due = $loan['due'] ?? null;
+        $returned = $loan['returned'] ?? null;
+        $returnState = $loan['return_state'] ?? '';
+
+        $startYear = null;
+        if ($start) {
+            $startTs = strtotime($start);
+            if ($startTs !== false) {
+                $startYear = (int) date('Y', $startTs);
+            }
+        }
+
+        $dueTs = $due ? strtotime($due) : false;
+        $returnedTs = $returned ? strtotime($returned) : false;
+        $isDelay = false;
+        if ($dueTs !== false) {
+            if (($returnedTs !== false && $returnedTs > $dueTs) || ($returnedTs === false && $todayTs !== false && $dueTs < $todayTs)) {
+                $isDelay = true;
+            }
+        }
+
+        $isDegrade = $returnState !== '' && is_degradation($returnState);
+
+        if ($startYear === $year) {
+            $totalYear += 1;
+            if ($isDelay) {
+                $delays += 1;
+            }
+            if ($isDegrade) {
+                $degrades += 1;
+            }
+        }
+
+        $history[] = [
+            'id' => $loan['id'] ?? null,
+            'name' => $loan['name'] ?? '',
+            'start' => $start,
+            'due' => $due,
+            'returned' => $returned,
+            'status' => $loan['status'] ?? '',
+            'return_state' => $returnState,
+            'is_delay' => $isDelay,
+            'is_degrade' => $isDegrade,
+            'type' => $loan['type'] ?? 'pret',
+        ];
+    }
+
+    usort($history, static function ($a, $b) {
+        return strcmp($b['start'] ?? '', $a['start'] ?? '');
+    });
+
+    $returnedCount = count(array_filter($eligible, static fn($l) => ($l['status'] ?? '') === 'rendu'));
+    $active = max(0, count($eligible) - $returnedCount);
 
     return [
-        'total_year' => $total,
+        'total_year' => $totalYear,
         'active' => $active,
-        'returned' => $returned,
+        'returned' => $returnedCount,
+        'delays' => $delays,
+        'degrades' => $degrades,
+        'history' => $history,
     ];
 }
 
