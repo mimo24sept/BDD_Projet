@@ -584,32 +584,17 @@ function normalize_categories(string $value): array
     return array_values(array_filter(array_unique($parts), static fn($c) => $c !== ''));
 }
 
-function generate_reference(PDO $pdo, string $name, array $categories): string
+function generate_reference(PDO $pdo, string $name, array $categories = []): string
 {
-    $map = [
-        'INFO' => 'INF',
-        'ELEN' => 'ELE',
-        'ENER' => 'ENE',
-        'AUTO' => 'AUT',
-    ];
-    $base = 'MAT';
-    $normalizedCats = array_values(array_filter(array_map(
-        static fn($c) => strtoupper(preg_replace('/[^A-Z]/', '', (string) $c)),
-        $categories
-    )));
-    if (count($normalizedCats) === 1) {
-        $cat = $normalizedCats[0];
-        $base = $map[$cat] ?? substr($cat, 0, 3) ?: 'MAT';
-    } elseif (count($normalizedCats) > 1) {
-        $cleanName = strtoupper(preg_replace('/[^A-Z0-9]/', '', $name));
-        $base = substr($cleanName, 0, 3) ?: 'MAT';
-    }
+    // Base : 3 premières lettres du nom (translittérées), complétées en X si besoin.
+    $base = build_reference_prefix($name);
 
+    // Cherche les références existantes qui partagent ce préfixe.
     $stmt = $pdo->prepare('SELECT `NUMserie` FROM `Materiel` WHERE `NUMserie` LIKE :pfx');
-    $stmt->execute([':pfx' => $base . '-%']);
+    $stmt->execute([':pfx' => $base . '%']);
     $max = 0;
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $ref) {
-        if (preg_match('/-(\d+)$/', (string) $ref, $m)) {
+        if (preg_match('/^' . preg_quote($base, '/') . '-?(\\d+)$/i', (string) $ref, $m)) {
             $num = (int) $m[1];
             if ($num > $max) {
                 $max = $num;
@@ -618,7 +603,53 @@ function generate_reference(PDO $pdo, string $name, array $categories): string
     }
 
     $next = $max + 1;
-    return sprintf('%s-%04d', $base, $next);
+    return sprintf('%s-%03d', $base, $next);
+}
+
+function build_reference_prefix(string $name): string
+{
+    $asciiName = transliterate_to_ascii($name);
+    // Garde uniquement les lettres (insensible à la casse), puis majuscule.
+    $lettersOnly = preg_replace('/[^A-Za-z]/', '', $asciiName);
+    $clean = strtoupper($lettersOnly ?? '');
+    if ($clean === '') {
+        $clean = 'MAT';
+    }
+    $base = substr($clean, 0, 3);
+    if (strlen($base) < 3) {
+        $base = str_pad($base, 3, 'X');
+    }
+    return $base;
+}
+
+function transliterate_to_ascii(string $value): string
+{
+    $map = [
+        'À' => 'A', 'Â' => 'A', 'Ä' => 'A', 'Á' => 'A', 'Ã' => 'A', 'Å' => 'A', 'Æ' => 'AE',
+        'Ç' => 'C',
+        'È' => 'E', 'É' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+        'Ì' => 'I', 'Í' => 'I', 'Î' => 'I', 'Ï' => 'I',
+        'Ñ' => 'N',
+        'Ò' => 'O', 'Ó' => 'O', 'Ô' => 'O', 'Ö' => 'O', 'Õ' => 'O',
+        'Ù' => 'U', 'Ú' => 'U', 'Û' => 'U', 'Ü' => 'U',
+        'Ý' => 'Y',
+        'à' => 'a', 'â' => 'a', 'ä' => 'a', 'á' => 'a', 'ã' => 'a', 'å' => 'a', 'æ' => 'ae',
+        'ç' => 'c',
+        'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
+        'ñ' => 'n',
+        'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'ö' => 'o', 'õ' => 'o',
+        'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
+        'ý' => 'y', 'ÿ' => 'y',
+    ];
+
+    $ascii = function_exists('iconv')
+        ? @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value)
+        : $value;
+    if ($ascii === false || $ascii === null || $ascii === '') {
+        $ascii = $value;
+    }
+    return strtr($ascii, $map);
 }
 
 function weeks_between(string $start, string $end): array

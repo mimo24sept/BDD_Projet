@@ -1505,26 +1505,36 @@ const API = {
           <div class="hero-media">
             <img src="${picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
           </div>
-          <div class="hero-info">
-            <div class="badge ${item.status === 'maintenance' ? 'status-maint' : 'status-ok'}">${escapeHtml(item.status || 'Etat')}</div>
-            <div class="meta">Catégories : <strong>${escapeHtml(categoriesLabel || 'N/C')}</strong></div>
-            <div class="meta">Référence : <strong>${escapeHtml(item.serial || 'N/C')}</strong></div>
-            <div class="meta">Condition : <strong>${escapeHtml(item.condition || 'N/C')}</strong></div>
-            <div class="meta">Emplacement : <strong>${escapeHtml(item.location || 'Stock')}</strong></div>
-            <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
+            <div class="hero-info">
+              <div class="badge ${item.status === 'maintenance' ? 'status-maint' : 'status-ok'}">${escapeHtml(item.status || 'Etat')}</div>
+              <div class="meta">Catégories : <strong>${escapeHtml(categoriesLabel || 'N/C')}</strong></div>
+              <div class="meta">Référence : <strong>${escapeHtml(item.serial || 'N/C')}</strong></div>
+              <div class="meta">Emplacement : <strong>${escapeHtml(item.location || 'Stock')}</strong></div>
+              <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
+            </div>
+          </div>
+          <div class="modal-calendar">
+            <div class="calendar-nav">
+              <button type="button" class="ghost" id="cal-prev">&#8592;</button>
+              <div class="small-title" id="cal-title"></div>
+              <button type="button" class="ghost" id="cal-next">&#8594;</button>
+            </div>
+            <div class="input-group" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:center; gap:8px; margin:10px 0;">
+              <label style="font-weight:700;">Du
+                <input id="manual-start" type="text" inputmode="numeric" placeholder="JJ/MM/AAAA" />
+              </label>
+              <label style="font-weight:700;">au
+                <input id="manual-end" type="text" inputmode="numeric" placeholder="JJ/MM/AAAA" />
+              </label>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
           </div>
         </div>
-        <div class="modal-calendar">
-          <div class="calendar-nav">
-            <button type="button" class="ghost" id="cal-prev">&#8592;</button>
-            <div class="small-title" id="cal-title"></div>
-            <button type="button" class="ghost" id="cal-next">&#8594;</button>
-          </div>
-          <div class="calendar-grid" id="calendar-grid"></div>
-          <p class="meta">Clique un debut puis une fin (max 14 jours). Les dates grisées sont indisponibles.</p>
-        </div>
-      </div>
-    `;
+      `;
+    dateStartInput = modalBody.querySelector('#manual-start');
+    dateEndInput = modalBody.querySelector('#manual-end');
+    if (dateStartInput) dateStartInput.addEventListener('input', handleManualDateInput);
+    if (dateEndInput) dateEndInput.addEventListener('input', handleManualDateInput);
     renderCalendar();
     modalMsg.textContent = '';
     updateAvailabilityMessage();
@@ -1761,6 +1771,7 @@ const API = {
       }
     }
     renderCalendar();
+    syncManualInputs();
     updateAvailabilityMessage();
   }
 
@@ -1816,12 +1827,85 @@ const API = {
     return formatDateLocal(d);
   }
 
+  function parseManualInput(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    let y; let m; let d;
+    if (raw.includes('/')) {
+      const parts = raw.split('/');
+      if (parts.length !== 3) return null;
+      [d, m, y] = parts;
+    } else if (raw.includes('-')) {
+      const parts = raw.split('-');
+      if (parts.length !== 3) return null;
+      [y, m, d] = parts;
+    } else {
+      return null;
+    }
+    y = String(y).padStart(4, '0');
+    m = String(m).padStart(2, '0');
+    d = String(d).padStart(2, '0');
+    const date = new Date(`${y}-${m}-${d}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    return formatDateLocal(date);
+  }
+
+  function formatManualInput(value) {
+    if (!value) return '';
+    const parts = String(value).split('-');
+    if (parts.length !== 3) return '';
+    const [y, m, d] = parts;
+    return `${d}/${m}/${y}`;
+  }
+
+  function handleManualDateInput() {
+    const startRaw = dateStartInput ? dateStartInput.value : '';
+    const endRaw = dateEndInput ? dateEndInput.value : '';
+    const start = parseManualInput(startRaw);
+    const end = parseManualInput(endRaw);
+    if (start) {
+      selectedStartDate = start;
+    } else if (startRaw.trim() === '') {
+      selectedStartDate = null;
+    }
+    if (end) {
+      selectedEndDate = end;
+    } else if (endRaw.trim() === '') {
+      selectedEndDate = null;
+    }
+    if (selectedStartDate && selectedEndDate) {
+      const startDate = new Date(`${selectedStartDate}T00:00:00`);
+      const endDate = new Date(`${selectedEndDate}T00:00:00`);
+      if (startDate > endDate) {
+        [selectedStartDate, selectedEndDate] = [selectedEndDate, selectedStartDate];
+      }
+    }
+    renderCalendar();
+    updateAvailabilityMessage();
+  }
+
+  function syncManualInputs() {
+    if (dateStartInput) {
+      dateStartInput.value = selectedStartDate ? formatManualInput(selectedStartDate) : '';
+    }
+    if (dateEndInput) {
+      dateEndInput.value = selectedEndDate ? formatManualInput(selectedEndDate) : '';
+    }
+  }
+
   function updateAvailabilityMessage() {
     const range = selectionRange();
     if (!range) {
       reserveBtn.disabled = true;
       modalMsg.textContent = 'Choisissez un debut puis une fin.';
       modalMsg.className = 'message';
+      return;
+    }
+    const diff = dateDiffDays(range.start, range.end);
+    if (diff > 14) {
+      reserveBtn.disabled = true;
+      modalMsg.textContent = 'Sélection limitée à 14 jours.';
+      modalMsg.className = 'message err';
       return;
     }
     const free = isRangeFree(range.start, range.end);
