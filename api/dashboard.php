@@ -25,6 +25,7 @@ try {
 }
 
 ensure_prolongation_table($pdo);
+ensure_maintenance_request_table($pdo);
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
@@ -97,7 +98,15 @@ try {
     $loans = fetch_loans($pdo, $targetUser);
     $stats = build_stats($loans);
     $notifications = consume_notifications($pdo, (int) $_SESSION['user_id']);
-    echo json_encode(['loans' => $loans, 'stats' => $stats, 'notifications' => $notifications]);
+    $maintenanceRequests = (is_admin() || is_technician())
+        ? fetch_maintenance_requests($pdo, $scope === 'all' ? null : (int) $_SESSION['user_id'])
+        : [];
+    echo json_encode([
+        'loans' => $loans,
+        'stats' => $stats,
+        'notifications' => $notifications,
+        'maintenance_requests' => $maintenanceRequests,
+    ]);
 } catch (Throwable $e) {
     http_response_code(500);
     echo json_encode(['error' => 'Lecture des données impossible', 'details' => $e->getMessage()]);
@@ -389,6 +398,70 @@ function fetch_extension_for_loan(PDO $pdo, int $loanId): ?array
     } catch (Throwable $e) {
         return null;
     }
+}
+
+// S'assure que la table des demandes de maintenance existe.
+function ensure_maintenance_request_table(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `MaintenanceRequest` (
+            `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT,
+            `IDmateriel` int(11) NOT NULL,
+            `IDuser` int(11) NOT NULL,
+            `DATEdebut` date NOT NULL,
+            `DATEfin` date NOT NULL,
+            `Status` enum("pending","approved","rejected") NOT NULL DEFAULT "pending",
+            `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`IDmaintenance`),
+            KEY `idx_maint_req_material` (`IDmateriel`),
+            KEY `idx_maint_req_user` (`IDuser`),
+            CONSTRAINT `fk_maint_req_material_dash` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
+            CONSTRAINT `fk_maint_req_user_dash` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    );
+    $done = true;
+}
+
+// Récupère les demandes de maintenance en attente (optionnellement filtrées par demandeur).
+function fetch_maintenance_requests(PDO $pdo, ?int $userId): array
+{
+    ensure_maintenance_request_table($pdo);
+    $where = 'WHERE mr.Status = "pending"';
+    $params = [];
+    if ($userId !== null) {
+        $where .= ' AND mr.IDuser = :uid';
+        $params[':uid'] = $userId;
+    }
+    $stmt = $pdo->prepare(
+        "SELECT mr.IDmaintenance AS id, mr.IDmateriel, mr.IDuser, mr.DATEdebut, mr.DATEfin, mr.Status,
+                m.NOMmateriel, u.NOMuser
+         FROM `MaintenanceRequest` mr
+         LEFT JOIN `Materiel` m ON m.IDmateriel = mr.IDmateriel
+         LEFT JOIN `User` u ON u.IDuser = mr.IDuser
+         $where
+         ORDER BY mr.CreatedAt DESC"
+    );
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    return array_map(
+        static fn($row) => [
+            'id' => (int) ($row['id'] ?? 0),
+            'material_id' => (int) ($row['IDmateriel'] ?? 0),
+            'start' => $row['DATEdebut'] ?? '',
+            'due' => $row['DATEfin'] ?? ($row['DATEdebut'] ?? ''),
+            'status' => $row['Status'] ?? '',
+            'name' => $row['NOMmateriel'] ?? '',
+            'requested_by' => $row['NOMuser'] ?? '',
+            'requested_by_id' => (int) ($row['IDuser'] ?? 0),
+            'type' => 'maintenance_request',
+            'progress' => 0,
+        ],
+        $rows ?: []
+    );
 }
 
 // Marque un prêt comme rendu : contrôle accès, insère le rendu, met à jour l'état matériel et la disponibilité.

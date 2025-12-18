@@ -73,6 +73,16 @@ if ($method === 'POST' && $action === 'maintenance') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'maintenance_decide') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    decide_maintenance_request($pdo);
+    exit;
+}
+
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
@@ -261,6 +271,8 @@ function set_maintenance(PDO $pdo, int $userId): void
         [$start, $end] = [$end, $start];
     }
 
+    ensure_maintenance_request_table($pdo);
+
     $pdo->beginTransaction();
     try {
         // Supprime les réservations/emprunts qui chevauchent la maintenance (hors maintenances existantes).
@@ -276,13 +288,17 @@ function set_maintenance(PDO $pdo, int $userId): void
         );
         $overlaps->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
         $toRemove = $overlaps->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($toRemove) && !is_admin()) {
+            $requestId = store_pending_maintenance_request($pdo, $id, $userId, $start, $end);
+            $pdo->commit();
+            echo json_encode([
+                'status' => 'pending',
+                'request_id' => $requestId,
+                'message' => 'Demande envoyée pour validation administrateur',
+            ]);
+            return;
+        }
         if (!empty($toRemove)) {
-            if (!is_admin()) {
-                $pdo->rollBack();
-                http_response_code(403);
-                echo json_encode(['error' => 'Conflit avec des réservations : autorisation administrateur requise']);
-                return;
-            }
             $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
             $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
             foreach ($toRemove as $row) {
@@ -352,6 +368,231 @@ function set_maintenance(PDO $pdo, int $userId): void
 
     $updated = fetch_equipment_by_id($pdo, $id);
     echo json_encode(['status' => 'ok', 'equipment' => $updated]);
+}
+
+// Valide ou refuse une demande de maintenance (admin).
+function decide_maintenance_request(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $decision = strtolower((string) ($data['decision'] ?? ''));
+    $decision = in_array($decision, ['approve', 'reject'], true) ? $decision : '';
+
+    if ($id <= 0 || $decision === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Requête invalide']);
+        return;
+    }
+
+    ensure_maintenance_request_table($pdo);
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT mr.IDmaintenance, mr.IDmateriel, mr.IDuser, mr.DATEdebut, mr.DATEfin, mr.Status,
+                    m.NOMmateriel
+             FROM `MaintenanceRequest` mr
+             LEFT JOIN `Materiel` m ON m.IDmateriel = mr.IDmateriel
+             WHERE mr.IDmaintenance = :id
+             LIMIT 1'
+        );
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Demande introuvable']);
+            return;
+        }
+
+        $status = strtolower((string) ($row['Status'] ?? ''));
+        if ($status !== 'pending') {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Demande déjà traitée']);
+            return;
+        }
+
+        $materialId = (int) ($row['IDmateriel'] ?? 0);
+        $techId = (int) ($row['IDuser'] ?? 0);
+        $start = $row['DATEdebut'] ?? '';
+        $end = $row['DATEfin'] ?? $start;
+        if ($materialId <= 0 || $start === '') {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Demande invalide (données manquantes)']);
+            return;
+        }
+
+        if ($decision === 'reject') {
+            $reject = $pdo->prepare(
+                'UPDATE `MaintenanceRequest`
+                 SET Status = "rejected"
+                 WHERE IDmaintenance = :id'
+            );
+            $reject->execute([':id' => $id]);
+            $pdo->commit();
+            echo json_encode(['status' => 'rejected', 'request_id' => $id]);
+            return;
+        }
+
+        $overlaps = $pdo->prepare(
+            'SELECT e.IDemprunt, e.IDuser, e.DATEdebut, e.DATEfin, m.NOMmateriel
+             FROM `Emprunt` e
+             LEFT JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
+             WHERE e.IDmateriel = :id
+               AND LOWER(e.ETATemprunt) NOT LIKE "maintenance%"
+               AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+               AND e.DATEdebut <= :fin
+               AND e.DATEfin >= :debut'
+        );
+        $overlaps->execute([':id' => $materialId, ':debut' => $start, ':fin' => $end]);
+        $toRemove = $overlaps->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($toRemove)) {
+            $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
+            $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
+            foreach ($toRemove as $rowRm) {
+                $eid = (int) ($rowRm['IDemprunt'] ?? 0);
+                $delRendu->execute([':eid' => $eid]);
+                $del->execute([':eid' => $eid]);
+                $userIdReservation = (int) ($rowRm['IDuser'] ?? 0);
+                if ($userIdReservation > 0) {
+                    $startStr = $rowRm['DATEdebut'] ?? '';
+                    $endStr = $rowRm['DATEfin'] ?? $startStr;
+                    $materialName = trim((string) ($rowRm['NOMmateriel'] ?? ''));
+                    $message = sprintf(
+                        'Votre réservation du %s au %s pour %s a été annulée suite à une maintenance planifiée.',
+                        format_date_fr($startStr),
+                        format_date_fr($endStr),
+                        $materialName !== '' ? $materialName : 'le matériel'
+                    );
+                    enqueue_notification($pdo, $userIdReservation, $message);
+                }
+            }
+        }
+
+        $conflictMaint = $pdo->prepare(
+            'SELECT 1
+             FROM `Emprunt` e
+             WHERE e.IDmateriel = :id
+               AND LOWER(e.ETATemprunt) LIKE "maintenance%"
+               AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+               AND e.DATEdebut <= :fin
+               AND e.DATEfin >= :debut
+             LIMIT 1'
+        );
+        $conflictMaint->execute([':id' => $materialId, ':debut' => $start, ':fin' => $end]);
+        if ($conflictMaint->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Maintenance déjà prévue sur cette période']);
+            return;
+        }
+
+        $shouldBlockNow = period_is_current($start, $end, date('Y-m-d'));
+        if ($shouldBlockNow) {
+            $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
+            $update->execute([':id' => $materialId]);
+        }
+
+        $insert = $pdo->prepare(
+            'INSERT INTO `Emprunt` (IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt)
+             VALUES (:id, :uid, :debut, :fin, :etat)'
+        );
+        $insert->execute([
+            ':id' => $materialId,
+            ':uid' => $techId > 0 ? $techId : (int) $_SESSION['user_id'],
+            ':debut' => $start,
+            ':fin' => $end,
+            ':etat' => 'Maintenance',
+        ]);
+
+        $markApproved = $pdo->prepare(
+            'UPDATE `MaintenanceRequest`
+             SET Status = "approved"
+             WHERE IDmaintenance = :id'
+        );
+        $markApproved->execute([':id' => $id]);
+
+        $pdo->commit();
+
+        $updated = fetch_equipment_by_id($pdo, $materialId);
+        echo json_encode(['status' => 'approved', 'request_id' => $id, 'equipment' => $updated]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Traitement impossible', 'details' => $e->getMessage()]);
+    }
+}
+
+// Enregistre ou met à jour une demande de maintenance en attente pour un matériel.
+function store_pending_maintenance_request(PDO $pdo, int $materialId, int $userId, string $start, string $end): int
+{
+    ensure_maintenance_request_table($pdo);
+    $existing = $pdo->prepare(
+        'SELECT IDmaintenance
+         FROM `MaintenanceRequest`
+         WHERE IDmateriel = :mid
+           AND Status = "pending"
+         ORDER BY CreatedAt DESC
+         LIMIT 1'
+    );
+    $existing->execute([':mid' => $materialId]);
+    $reqId = (int) ($existing->fetchColumn() ?: 0);
+
+    if ($reqId > 0) {
+        $update = $pdo->prepare(
+            'UPDATE `MaintenanceRequest`
+             SET IDuser = :uid, DATEdebut = :start, DATEfin = :end, Status = "pending", CreatedAt = CURRENT_TIMESTAMP
+             WHERE IDmaintenance = :id'
+        );
+        $update->execute([
+            ':uid' => $userId,
+            ':start' => $start,
+            ':end' => $end,
+            ':id' => $reqId,
+        ]);
+        return $reqId;
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO `MaintenanceRequest` (IDmateriel, IDuser, DATEdebut, DATEfin, Status)
+         VALUES (:mid, :uid, :start, :end, "pending")'
+    );
+    $insert->execute([
+        ':mid' => $materialId,
+        ':uid' => $userId,
+        ':start' => $start,
+        ':end' => $end,
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
+// S'assure de la présence de la table des demandes de maintenance.
+function ensure_maintenance_request_table(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `MaintenanceRequest` (
+            `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT,
+            `IDmateriel` int(11) NOT NULL,
+            `IDuser` int(11) NOT NULL,
+            `DATEdebut` date NOT NULL,
+            `DATEfin` date NOT NULL,
+            `Status` enum("pending","approved","rejected") NOT NULL DEFAULT "pending",
+            `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`IDmaintenance`),
+            KEY `idx_maint_req_material` (`IDmateriel`),
+            KEY `idx_maint_req_user` (`IDuser`),
+            CONSTRAINT `fk_maint_req_material` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
+            CONSTRAINT `fk_maint_req_user` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    );
+    $done = true;
 }
 
 // Crée un nouvel équipement dans la base (admin).

@@ -41,6 +41,7 @@ const API = {
     adminStats: null,
     loanSearch: '',
     notifications: [],
+    maintenanceRequests: [],
   };
 
   // Sélecteurs DOM principaux.
@@ -311,15 +312,12 @@ const API = {
           start: range.start,
           end: range.end,
         };
+        let pendingMaintenance = false;
         if (modalMode === 'maintenance') {
           const dates = datesBetween(range.start, range.end);
           const overrides = dates.filter((d) => blockedDates[d] && blockedDates[d] !== 'maintenance').length;
-          if (overrides > 0 && isTechnician() && !isAdmin()) {
-            modalMsg.textContent = 'Conflit avec des réservations : validation administrateur requise.';
-            modalMsg.className = 'message err';
-            return;
-          }
-          if (overrides > 0) {
+          const techOnly = isTechnician() && !isAdmin();
+          if (overrides > 0 && !techOnly) {
             const ok = window.confirm(`Cette maintenance écrasera ${overrides} réservation(s). Continuer ?`);
             if (!ok) {
               modalMsg.textContent = 'Planification annulée';
@@ -327,7 +325,12 @@ const API = {
               return;
             }
           }
-          await apiSetMaintenance(payload);
+          const result = await apiSetMaintenance(payload);
+          pendingMaintenance = result?.status === 'pending';
+          if (pendingMaintenance) {
+            modalMsg.textContent = 'Demande envoyée pour validation administrateur';
+            modalMsg.className = 'message ok';
+          }
         } else {
           const res = await fetch(`${API.equipment}?action=reserve`, {
             method: 'POST',
@@ -349,7 +352,10 @@ const API = {
             }
           }
         }
-        modalMsg.textContent = modalMode === 'maintenance' ? 'Maintenance planifiée' : 'Reservation enregistrée';
+        const successMsg = modalMode === 'maintenance'
+          ? (pendingMaintenance ? 'Demande envoyée pour validation administrateur' : 'Maintenance planifiée')
+          : 'Reservation enregistrée';
+        modalMsg.textContent = successMsg;
         modalMsg.className = 'message ok';
         closeModal();
         await Promise.all([apiFetchEquipment(), apiFetchLoans(), apiFetchAdminLoans()]);
@@ -477,6 +483,7 @@ const API = {
       state.loanHistory = history;
       state.stats = data.stats ? { ...data.stats, history } : { history };
       state.notifications = Array.isArray(data.notifications) ? data.notifications : [];
+      state.maintenanceRequests = Array.isArray(data.maintenance_requests) ? data.maintenance_requests : [];
       if (statsEls.msg) {
         statsEls.msg.textContent = '';
         statsEls.msg.className = 'message';
@@ -487,6 +494,7 @@ const API = {
       state.stats = null;
       state.loanHistory = [];
       state.notifications = [];
+      state.maintenanceRequests = [];
       if (statsEls.msg) {
         statsEls.msg.textContent = err?.message || 'Stats indisponibles';
         statsEls.msg.className = 'message err';
@@ -501,11 +509,13 @@ const API = {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'API emprunts admin');
       state.adminLoans = data.loans || [];
+      state.maintenanceRequests = Array.isArray(data.maintenance_requests) ? data.maintenance_requests : [];
       if (adminStatsEls.msg && !state.adminStats) {
         adminStatsEls.msg.textContent = '';
       }
     } catch (err) {
       state.adminLoans = [];
+      state.maintenanceRequests = [];
     }
   }
 
@@ -727,7 +737,24 @@ const API = {
       err.status = res.status;
       throw err;
     }
-    return data?.equipment;
+    return data;
+  }
+
+  // Validation ou refus d'une demande de maintenance (admin).
+  async function apiDecideMaintenance(id, decision) {
+    const res = await fetch(`${API.equipment}?action=maintenance_decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id, decision }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data?.error || 'Traitement maintenance impossible');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
   }
 
   // Met à jour l'affichage du chip utilisateur selon la session.
@@ -756,7 +783,7 @@ const API = {
 
   // Accès maintenance (admin ou technicien).
   function hasMaintenanceAccess() {
-    return isTechnician();
+    return isTechnician() || isAdmin();
   }
 
   // Durée max d'une réservation/prolongation selon le rôle.
@@ -1132,9 +1159,90 @@ const API = {
       maintenanceListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs ou techniciens.</p>';
       return;
     }
+    const isAdminUser = isAdmin();
+    const pendingRequests = (state.maintenanceRequests || [])
+      .filter((r) => (r.status || '').toLowerCase() === 'pending');
     const maints = state.adminLoans
       .filter((l) => (l.type || '').toLowerCase() === 'maintenance')
       .filter((l) => l.status !== 'rendu');
+
+    if (pendingRequests.length) {
+      const block = document.createElement('div');
+      block.className = 'admin-subblock admin-alert';
+      const title = document.createElement('div');
+      title.className = 'small-title';
+      title.textContent = 'Demandes de maintenance en attente';
+      block.appendChild(title);
+      pendingRequests.forEach((req) => {
+        const end = req.due || req.end || req.start;
+        const row = document.createElement('div');
+        row.className = 'loan-item loan-cancel';
+        row.innerHTML = `
+         <div>
+           <div class="small-title">Validation administrateur requise</div>
+           <div style="font-weight:800">${escapeHtml(req.name || 'Matériel')}</div>
+           <div class="loan-meta">Du ${formatDisplayDate(req.start)} au ${formatDisplayDate(end)}</div>
+           <div class="loan-meta">Demandé par ${escapeHtml(req.requested_by || 'Technicien')}</div>
+         </div>
+         <div class="admin-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+           ${isAdminUser ? `
+             <button type="button" class="ghost" data-approve="${req.id}">Valider</button>
+             <button type="button" class="ghost danger" data-reject="${req.id}">Refuser</button>
+           ` : '<span class="meta">En attente validation admin</span>'}
+         </div>
+        `;
+        const approveBtn = row.querySelector('button[data-approve]');
+        const rejectBtn = row.querySelector('button[data-reject]');
+        const setLoading = (btn, label) => {
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = label;
+          }
+          if (approveBtn && approveBtn !== btn) approveBtn.disabled = true;
+          if (rejectBtn && rejectBtn !== btn) rejectBtn.disabled = true;
+        };
+        const resetButtons = () => {
+          if (approveBtn) {
+            approveBtn.disabled = false;
+            approveBtn.textContent = 'Valider';
+          }
+          if (rejectBtn) {
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = 'Refuser';
+          }
+        };
+        if (isAdminUser) {
+          if (approveBtn) {
+            approveBtn.addEventListener('click', async () => {
+              setLoading(approveBtn, 'Validation...');
+              try {
+                await apiDecideMaintenance(req.id, 'approve');
+                await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
+                render();
+              } catch (err) {
+                resetButtons();
+                alert(err?.message || 'Validation impossible');
+              }
+            });
+          }
+          if (rejectBtn) {
+            rejectBtn.addEventListener('click', async () => {
+              setLoading(rejectBtn, 'Refus...');
+              try {
+                await apiDecideMaintenance(req.id, 'reject');
+                await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
+                render();
+              } catch (err) {
+                resetButtons();
+                alert(err?.message || 'Refus impossible');
+              }
+            });
+          }
+        }
+        block.appendChild(row);
+      });
+      maintenanceListEl.appendChild(block);
+    }
 
     maints.forEach((m) => {
       const severity = dueSeverity(m.due || m.start);
@@ -1170,8 +1278,8 @@ const API = {
       maintenanceListEl.appendChild(row);
     });
 
-    if (!maints.length) {
-      maintenanceListEl.innerHTML = '<p class="meta">Aucune maintenance planifiée.</p>';
+    if (!maints.length && !pendingRequests.length) {
+      maintenanceListEl.innerHTML = '<p class="meta">Aucune maintenance planifiée ou demande en attente.</p>';
     }
   }
 
