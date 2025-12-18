@@ -2,19 +2,29 @@
 
 Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP (PDO), base MySQL/MariaDB.
 
-## 🧭 Architecture rapide
+<details open>
+<summary><strong>🧭 Architecture rapide</strong></summary>
+
 - **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles.css` (UI).
 - **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations), `api/reset_state.php` (reset), `api/config.php` (DSN).
 - **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`).
 
-## 📌 Règles métier essentielles
+</details>
+
+<details open>
+<summary><strong>📌 Règles métier essentielles</strong></summary>
+
 - Pas de réservation dans le passé, durée max 14 jours, dates bloquées si déjà réservées/maintenance.
 - Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
 - Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
 - `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
 - Actions admin uniquement : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
 
-## 🔄 Flux principaux
+</details>
+
+<details open>
+<summary><strong>🔄 Flux principaux</strong></summary>
+
 1) **Auth** (`assets/login.js`) : login/register, mot secret prof, ripple, redirection (`POST /api/auth.php?action=login|register|logout`).
 2) **Catalogue** (`assets/app.js`) : recherche + tags, modale calendrier, réservation (`POST /api/equipment.php?action=reserve`), contrôle dates libres et non-passé.
 3) **Annulations** : user demande (`POST /api/dashboard.php?action=cancel_request`), admin valide ou supprime (`POST /api/dashboard.php?action=admin_cancel`).
@@ -22,12 +32,18 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 5) **Maintenance** (admin) : planif multi-jours (`POST /api/equipment.php?action=maintenance`), supprime chevauchements, bloque dates.
 6) **Stats** : user (`/api/dashboard.php` scope mine) et admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
 
-## 🧱 Guide de code (survol)
+</details>
+
+<details open>
+<summary><strong>🧱 Guide de code (survol)</strong></summary>
+
 - **assets/app.js** : état global, appels API (`api*`), rendus (catalogue, prêts user/admin, stats), modale + calendrier (blocage passé, 14j max, dates occupées), normalisation états (`normalizeCondition`, `conditionRank`, `buildBlockedDates`, `isoWeekKey`).
 - **assets/login.js** : bascule login/register, bouton œil mdp, `apiLogin`/`apiRegister`.
 - **api/auth.php** : sessions, rôles, LastLogin, CRUD users (admin).
 - **api/equipment.php** : catalogue + périodes actives, réservations (refus passé/conflits), maintenance (supprime réservations chevauchantes), CRUD matériel (admin).
 - **api/dashboard.php** : prêts + historique (garde matériel supprimé), rendus (contrôle état et dispo), annulations user/admin, stats retards/dégradations/maintenances.
+
+</details>
 
 ## 🔍 Détail des principales fonctions (logique interne)
 - **Frontend (`assets/app.js`)**
