@@ -462,6 +462,31 @@ main {
 .message.ok { color: var(--success); }
 .message.err { color: var(--danger); }
 
+.alert-stack { display: grid; gap: 8px; margin: 6px 0 4px; }
+.alert-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--accent-soft);
+  background: #fff6ed;
+  box-shadow: var(--shadow);
+}
+.alert-title { font-weight: 800; }
+.alert-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.alert-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 
 .small-title { font-weight: 800; font-size: 14px; color: var(--muted); }

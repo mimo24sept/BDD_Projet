@@ -257,8 +257,9 @@ function set_maintenance(PDO $pdo, int $userId): void
     try {
         // Supprime les réservations/emprunts qui chevauchent la maintenance (hors maintenances existantes).
         $overlaps = $pdo->prepare(
-            'SELECT e.IDemprunt
+            'SELECT e.IDemprunt, e.IDuser, e.DATEdebut, e.DATEfin, m.NOMmateriel
              FROM `Emprunt` e
+             LEFT JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
              WHERE e.IDmateriel = :id
                AND LOWER(e.ETATemprunt) <> "maintenance"
                AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
@@ -266,13 +267,27 @@ function set_maintenance(PDO $pdo, int $userId): void
                AND e.DATEfin >= :debut'
         );
         $overlaps->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
-        $toRemove = $overlaps->fetchAll(PDO::FETCH_COLUMN);
+        $toRemove = $overlaps->fetchAll(PDO::FETCH_ASSOC);
         if (!empty($toRemove)) {
             $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
             $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
-            foreach ($toRemove as $eid) {
-                $delRendu->execute([':eid' => (int) $eid]);
-                $del->execute([':eid' => (int) $eid]);
+            foreach ($toRemove as $row) {
+                $eid = (int) ($row['IDemprunt'] ?? 0);
+                $delRendu->execute([':eid' => $eid]);
+                $del->execute([':eid' => $eid]);
+                $userIdReservation = (int) ($row['IDuser'] ?? 0);
+                if ($userIdReservation > 0) {
+                    $startStr = $row['DATEdebut'] ?? '';
+                    $endStr = $row['DATEfin'] ?? $startStr;
+                    $materialName = trim((string) ($row['NOMmateriel'] ?? ''));
+                    $message = sprintf(
+                        'Votre réservation du %s au %s pour %s a été annulée suite à une maintenance planifiée.',
+                        format_date_fr($startStr),
+                        format_date_fr($endStr),
+                        $materialName !== '' ? $materialName : 'le matériel'
+                    );
+                    enqueue_notification($pdo, $userIdReservation, $message);
+                }
             }
         }
 
@@ -728,6 +743,33 @@ function iso_week_key(string $date): ?string
     $week = (int) date('W', $ts);
     $year = (int) date('o', $ts);
     return sprintf('%04d-W%02d', $year, $week);
+}
+
+// Enregistre une notification côté base pour informer l'utilisateur concerné.
+function enqueue_notification(PDO $pdo, int $userId, string $message): void
+{
+    if ($userId <= 0 || trim($message) === '') {
+        return;
+    }
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO `Notification` (IDuser, Message)
+             VALUES (:uid, :msg)'
+        );
+        $stmt->execute([':uid' => $userId, ':msg' => $message]);
+    } catch (Throwable $e) {
+        error_log('Notification insert failed: ' . $e->getMessage());
+    }
+}
+
+// Formate une date AAAA-MM-JJ en JJ/MM/AAAA (fallback brut si invalide).
+function format_date_fr(?string $date): string
+{
+    $ts = $date ? strtotime($date) : false;
+    if ($ts === false) {
+        return (string) ($date ?? '');
+    }
+    return date('d/m/Y', $ts);
 }
 
 // Indique si l'utilisateur en session est admin.

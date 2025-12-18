@@ -22,7 +22,7 @@
 
 - `apiSession` : GET session, met `state.user` ou null.
 - `apiFetchEquipment` : charge le catalogue, normalise catégories/tags, ordonne les réservations, ajoute placeholders/description.
-- `apiFetchLoans` : récupère prêts + stats, filtre les prêts non rendus, construit l’historique via `normalizeHistory`, gère les erreurs.
+- `apiFetchLoans` : récupère prêts + stats + notifications non lues (annulations admin/maintenance), filtre les prêts non rendus, construit l’historique via `normalizeHistory`, gère les erreurs.
 - `apiFetchAdminLoans` / `apiFetchAdminStats` : emprunts globaux et stats admin (si admin).
 - `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser` : comptes via `api/auth.php`.
 - `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel` : actions retour/annulation, puis rafraîchissement.
@@ -36,6 +36,7 @@
 - `setAuthUI` / `isAdmin` / `applyRoleVisibility` : UI selon rôle/session.
 - `render` : orchestrateur des sous-rendus (tabs, tags, catalogues, prêts, stats).
 - `updateTabs` : active l’onglet courant, cache les autres sections.
+- `renderNotifications` : affiche les alertes d’annulation en bannière (notifications non lues).
 - Tags : `renderTags`, `renderAdminTags`, `renderMaintenanceTags` (chips filtrants + “Tous”).
 - Catalogues : `renderAdminCatalog`, `renderMaintenanceCatalog`, `renderCatalog` (recherche, tags, tri, cartes).
 - Maintenance : `renderMaintenanceAgenda` (liste, sévérité, bouton fin de maintenance).
@@ -75,7 +76,7 @@
 | --- | --- |
 | `list_equipment` | Jointure matériel/catégorie, périodes actives (prêt/maintenance), tags, semaines bloquées. |
 | `reserve_equipment` | Vérifie ID, dates valides/ordonnées, conflit actif, refuse le passé, bloque dispo si période courante, insère emprunt. |
-| `set_maintenance` | Vérifie ID/dates, supprime emprunts chevauchants (hors maintenance), bloque dispo si période courante, insère emprunt maintenance. |
+| `set_maintenance` | Vérifie ID/dates, supprime les emprunts chevauchants (hors maintenance) en notifiant les utilisateurs impactés, bloque dispo si période courante, insère emprunt maintenance. |
 | `create_equipment` / `delete_equipment` | CRUD admin, génère référence, renvoie item/statut. |
 | Helpers | `fetch_active_loans`, `fetch_equipment_by_id`, `map_status`, `merge_tags`, `normalize_categories`, `generate_reference`, `build_reference_prefix`, `transliterate_to_ascii`, `weeks_between`, `period_is_current`, `iso_week_key`, `is_admin`. |
 
@@ -93,7 +94,8 @@
 | `build_admin_stats` | Retards/dégradations/maintenances de l’année, historique avec user + état de retour. |
 | `return_pret` | Admin-only : contrôle accès, empêche double rendu, borne l’état, remet `Dispo` si plus d’emprunt actif, insère rendu (flag dégradation). |
 | `request_cancel` | User/admin : vérifie accès + non-rendu, marque `Annulation demandee`. |
-| `admin_cancel` | Admin : supprime l’emprunt non rendu, remet `Dispo` si aucune autre résa active aujourd’hui. |
+| `admin_cancel` | Admin : supprime l’emprunt non rendu, notifie l’utilisateur, remet `Dispo` si aucune autre résa active aujourd’hui. |
+| `enqueue_notification` / `consume_notifications` | Stocke les notifications en base (annulation admin/maintenance) et renvoie les non lues en les marquant comme vues. |
 | Helpers | `normalize_condition`, `condition_rank`, `is_degradation`, `is_admin`. |
 
 </details>

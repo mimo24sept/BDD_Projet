@@ -95,6 +95,20 @@ CREATE TABLE `Rendu` (
 -- --------------------------------------------------------
 
 --
+-- Structure de la table `Notification`
+--
+
+CREATE TABLE `Notification` (
+  `IDnotification` int(11) NOT NULL,
+  `IDuser` int(11) NOT NULL,
+  `Message` text NOT NULL,
+  `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `Seen` tinyint(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Structure de la table `Role`
 --
 
@@ -163,6 +177,13 @@ ALTER TABLE `Rendu`
   ADD PRIMARY KEY (`IDrendu`);
 
 --
+-- Index pour la table `Notification`
+--
+ALTER TABLE `Notification`
+  ADD PRIMARY KEY (`IDnotification`),
+  ADD KEY `idx_notification_user_seen` (`IDuser`, `Seen`);
+
+--
 -- Index pour la table `Role`
 --
 ALTER TABLE `Role`
@@ -201,6 +222,12 @@ ALTER TABLE `Materiel`
 --
 ALTER TABLE `Rendu`
   MODIFY `IDrendu` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT pour la table `Notification`
+--
+ALTER TABLE `Notification`
+  MODIFY `IDnotification` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT pour la table `Role`

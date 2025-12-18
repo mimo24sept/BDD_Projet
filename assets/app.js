@@ -40,6 +40,7 @@ const API = {
     userStatsView: 'total',
     adminStats: null,
     loanSearch: '',
+    notifications: [],
   };
 
   // Sélecteurs DOM principaux.
@@ -47,6 +48,7 @@ const API = {
   const userChip = document.querySelector('#user-chip');
   const tabs = document.querySelectorAll('[data-tab]');
   const sections = document.querySelectorAll('[data-section]');
+  const notificationsEl = document.querySelector('#notifications');
   const catalogEl = document.querySelector('#catalog');
   const loansEl = document.querySelector('#loans');
   const adminLoansEl = document.querySelector('#admin-loans');
@@ -430,6 +432,7 @@ const API = {
       const history = normalizeHistory(rawHistory);
       state.loanHistory = history;
       state.stats = data.stats ? { ...data.stats, history } : { history };
+      state.notifications = Array.isArray(data.notifications) ? data.notifications : [];
       if (statsEls.msg) {
         statsEls.msg.textContent = '';
         statsEls.msg.className = 'message';
@@ -439,6 +442,7 @@ const API = {
       state.loans = [];
       state.stats = null;
       state.loanHistory = [];
+      state.notifications = [];
       if (statsEls.msg) {
         statsEls.msg.textContent = err?.message || 'Stats indisponibles';
         statsEls.msg.className = 'message err';
@@ -705,6 +709,7 @@ const API = {
   function render() {
     applyRoleVisibility();
     updateTabs();
+    renderNotifications();
     renderCatalog();
     renderAdminCatalog();
     renderLoans();
@@ -738,6 +743,30 @@ const API = {
         || (isAdminSection && !isAdmin())
         || ((isLoansSection || isBorrowSection || isStatsSection) && isAdmin());
     });
+  }
+
+  // Affiche les notifications système (annulations admin/maintenance) en haut de la page.
+  function renderNotifications() {
+    if (!notificationsEl) return;
+    const list = Array.isArray(state.notifications) ? state.notifications : [];
+    if (!list.length) {
+      notificationsEl.innerHTML = '';
+      notificationsEl.hidden = true;
+      return;
+    }
+    notificationsEl.hidden = false;
+    notificationsEl.innerHTML = list.map((n) => {
+      const received = formatDateTimeFr(n.created_at || '');
+      return `
+        <div class="alert-banner">
+          <div class="alert-icon" aria-hidden="true">!</div>
+          <div>
+            <div class="alert-title">${escapeHtml(n.message || '')}</div>
+            ${received ? `<div class="alert-meta">Reçu le ${escapeHtml(received)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 
   // Affiche et met à jour les tags filtres du catalogue utilisateur.
@@ -1678,6 +1707,15 @@ const API = {
       return `${d}/${m}/${y}`;
     }
     return dateStr;
+  }
+
+  // Formate une date/heure ISO ou SQL en libellé lisible français.
+  function formatDateTimeFr(dateStr) {
+    if (!dateStr) return '';
+    const normalized = String(dateStr).replace(' ', 'T');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return dateStr;
+    return date.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
   }
 
   // Retourne une date Date en chaîne locale AAAA-MM-JJ.

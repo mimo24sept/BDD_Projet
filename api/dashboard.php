@@ -79,7 +79,8 @@ try {
     $targetUser = ($scope === 'all' && is_admin()) ? null : (int) $_SESSION['user_id'];
     $loans = fetch_loans($pdo, $targetUser);
     $stats = build_stats($loans);
-    echo json_encode(['loans' => $loans, 'stats' => $stats]);
+    $notifications = consume_notifications($pdo, (int) $_SESSION['user_id']);
+    echo json_encode(['loans' => $loans, 'stats' => $stats, 'notifications' => $notifications]);
 } catch (Throwable $e) {
     http_response_code(500);
     echo json_encode(['error' => 'Lecture des données impossible', 'details' => $e->getMessage()]);
@@ -476,8 +477,10 @@ function admin_cancel(PDO $pdo): void
     $pdo->beginTransaction();
     try {
         $select = $pdo->prepare(
-            'SELECT IDmateriel FROM `Emprunt`
-             WHERE IDemprunt = :id
+            'SELECT e.IDmateriel, e.IDuser, e.DATEdebut, e.DATEfin, m.NOMmateriel
+             FROM `Emprunt` e
+             LEFT JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
+             WHERE e.IDemprunt = :id
              LIMIT 1'
         );
         $select->execute([':id' => $id]);
@@ -519,6 +522,20 @@ function admin_cancel(PDO $pdo): void
             }
         }
 
+        $userId = (int) ($row['IDuser'] ?? 0);
+        if ($userId > 0) {
+            $materialName = trim((string) ($row['NOMmateriel'] ?? ''));
+            $start = $row['DATEdebut'] ?? '';
+            $end = $row['DATEfin'] ?? $start;
+            $message = sprintf(
+                'Votre réservation du %s au %s pour %s a été annulée par un administrateur.',
+                format_date_fr($start),
+                format_date_fr($end),
+                $materialName !== '' ? $materialName : 'le matériel'
+            );
+            enqueue_notification($pdo, $userId, $message);
+        }
+
         $pdo->commit();
         echo json_encode(['status' => 'ok', 'canceled_id' => $id]);
     } catch (Throwable $e) {
@@ -528,11 +545,70 @@ function admin_cancel(PDO $pdo): void
     }
 }
 
+// Enregistre une notification pour un utilisateur (annulation par admin ou maintenance).
+function enqueue_notification(PDO $pdo, int $userId, string $message): void
+{
+    if ($userId <= 0 || trim($message) === '') {
+        return;
+    }
+    try {
+        $insert = $pdo->prepare(
+            'INSERT INTO `Notification` (IDuser, Message)
+             VALUES (:uid, :msg)'
+        );
+        $insert->execute([':uid' => $userId, ':msg' => $message]);
+    } catch (Throwable $e) {
+        error_log('Notification insert failed: ' . $e->getMessage());
+    }
+}
+
+// Récupère les notifications non lues d'un utilisateur puis les marque comme vues.
+function consume_notifications(PDO $pdo, int $userId): array
+{
+    if ($userId <= 0) {
+        return [];
+    }
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT IDnotification AS id, Message AS message, CreatedAt AS created_at
+             FROM `Notification`
+             WHERE IDuser = :uid AND Seen = 0
+             ORDER BY CreatedAt DESC'
+        );
+        $stmt->execute([':uid' => $userId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($rows)) {
+            $mark = $pdo->prepare('UPDATE `Notification` SET Seen = 1 WHERE IDuser = :uid AND Seen = 0');
+            $mark->execute([':uid' => $userId]);
+        }
+        return array_map(
+            static fn($row) => [
+                'id' => (int) ($row['id'] ?? 0),
+                'message' => $row['message'] ?? '',
+                'created_at' => $row['created_at'] ?? '',
+            ],
+            $rows
+        );
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 // Indique si l'utilisateur en session est admin.
 function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');
     return stripos($role, 'admin') !== false;
+}
+
+// Formate une date AAAA-MM-JJ en JJ/MM/AAAA (fallback brut si invalide).
+function format_date_fr(?string $date): string
+{
+    $ts = $date ? strtotime($date) : false;
+    if ($ts === false) {
+        return (string) ($date ?? '');
+    }
+    return date('d/m/Y', $ts);
 }
 
 // Normalise un libellé d'état de matériel.

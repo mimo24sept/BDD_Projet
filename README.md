@@ -11,7 +11,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 
 - **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles.css` (UI).
 - **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations), `api/reset_state.php` (reset), `api/config.php` (DSN).
-- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`).
+- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`).
 
 </details>
 
@@ -23,6 +23,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 - Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
 - `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
 - Actions <span style="color:#d9534f;font-weight:600;">admin uniquement</span> : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
+- Annulations par admin ou maintenance : l’utilisateur concerné reçoit une notification (bannière) au prochain chargement de l’application.
 
 </details>
 
@@ -31,7 +32,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 
 1) **Auth** (`assets/login.js`) : login/register, mot secret prof, ripple, redirection (`POST /api/auth.php?action=login|register|logout`).
 2) **Catalogue** (`assets/app.js`) : recherche + tags, modale calendrier, réservation (`POST /api/equipment.php?action=reserve`), contrôle dates libres et non-passé.
-3) **Annulations** : user demande (`POST /api/dashboard.php?action=cancel_request`), admin valide ou supprime (`POST /api/dashboard.php?action=admin_cancel`).
+3) **Annulations** : user demande (`POST /api/dashboard.php?action=cancel_request`), admin valide ou supprime (`POST /api/dashboard.php?action=admin_cancel`) ; les annulations admin/maintenance génèrent une notification livrée à l'utilisateur.
 4) **Rendus** (admin) : liste prêts en cours, état borné, rendu (`POST /api/dashboard.php?action=return`), maj dispo + rendu enregistré.
 5) **Maintenance** (admin) : planif multi-jours (`POST /api/equipment.php?action=maintenance`), supprime chevauchements, bloque dates.
 6) **Stats** : user (`/api/dashboard.php` scope mine) et admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
@@ -106,3 +107,4 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 - Annulation : demander une annulation côté user, valider côté admin.
 - Retour : marquer un prêt comme rendu en changeant l’état (ne pas pouvoir améliorer l’état initial).
 - Maintenance : planifier une maintenance qui chevauche une réservation et vérifier le blocage.
+- Notification : annuler une réservation côté admin ou via maintenance, se reconnecter en user et vérifier la bannière d’alerte.
