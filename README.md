@@ -1,51 +1,35 @@
-# Parc matériels GEII — Documentation
+# Parc matériels GEII — Documentation 🎛️
 
-Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP (PDO) et base MySQL/MariaDB.
+Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP (PDO), base MySQL/MariaDB.
 
-## Architecture rapide
-- **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique, rendu, état global), `assets/login.js` (auth), `assets/styles.css` (UI).
-- **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations), `api/reset_state.php` (remise à zéro), `api/config.php` (DSN).
-- **Données** : schéma SQL dans `BDD/Projet_BDD.sql`, tables clés `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`.
+## 🧭 Architecture rapide
+- **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles.css` (UI).
+- **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations), `api/reset_state.php` (reset), `api/config.php` (DSN).
+- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`).
 
-## Règles métier essentielles
-- Réservation impossible dans le passé, durée max 14 jours, blocage des dates déjà réservées/maintenance.
-- Statuts d’emprunt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
-- Etats matériel autorisés : `neuf`, `bon`, `passable`, `reparation nécessaire` (un retour ne peut pas améliorer l’état initial).
-- Disponibilité (`Materiel.Dispo`) mise à jour dès qu’une réservation couvre la date du jour.
-- Admin seul autorisé pour : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
+## 📌 Règles métier essentielles
+- Pas de réservation dans le passé, durée max 14 jours, dates bloquées si déjà réservées/maintenance.
+- Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
+- Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
+- `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
+- Actions admin uniquement : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
 
-## Flux principaux (fonctionnement)
-1. **Auth (`assets/login.js`)** : formulaire login/register, bascule rôle professeur par mot secret, ripple puis redirection vers `menu.html`. API : `POST /api/auth.php?action=login|register|logout`.
-2. **Catalogue (`assets/app.js`)** : recherche + tags, ouverture d’une modale avec calendrier. Réservation via `POST /api/equipment.php?action=reserve` (vérif dates libres, non passé).
-3. **Annulations** : utilisateur peut demander l’annulation d’un prêt futur (`POST /api/dashboard.php?action=cancel_request`). Admin peut valider/annuler directement (`POST /api/dashboard.php?action=admin_cancel`).
-4. **Rendus (admin)** : liste des prêts en cours, sélection d’état bornée, enregistrement via `POST /api/dashboard.php?action=return` (met à jour `Materiel` et insère un `Rendu`).
-5. **Maintenance (admin)** : planification multi-jours (`POST /api/equipment.php?action=maintenance`), supprime les réservations chevauchantes et bloque les dates.
-6. **Stats** : côté user (`/api/dashboard.php` scope mine) et côté admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
+## 🔄 Flux principaux
+1) **Auth** (`assets/login.js`) : login/register, mot secret prof, ripple, redirection (`POST /api/auth.php?action=login|register|logout`).
+2) **Catalogue** (`assets/app.js`) : recherche + tags, modale calendrier, réservation (`POST /api/equipment.php?action=reserve`), contrôle dates libres et non-passé.
+3) **Annulations** : user demande (`POST /api/dashboard.php?action=cancel_request`), admin valide ou supprime (`POST /api/dashboard.php?action=admin_cancel`).
+4) **Rendus** (admin) : liste prêts en cours, état borné, rendu (`POST /api/dashboard.php?action=return`), maj dispo + rendu enregistré.
+5) **Maintenance** (admin) : planif multi-jours (`POST /api/equipment.php?action=maintenance`), supprime chevauchements, bloque dates.
+6) **Stats** : user (`/api/dashboard.php` scope mine) et admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
 
-## Guide de code (points importants)
-- **assets/app.js**
-  - Etat global `state` (user, inventaire, prêts, filtres, stats).
-  - Fonctions `api*` : wrappers fetch pour auth, catalogue, prêts, stats.
-  - Rendus : `renderCatalog`, `renderLoans`, `renderAdminLoans` (deux colonnes : en cours vs annulations/réservations à venir), `renderStats`/`renderAdminStats`.
-  - Modale + calendrier : `openModal`, `renderCalendar`, `handleDayClick`, `updateAvailabilityMessage` (bloque passé, >14j, dates occupées).
-  - Normalisation : `normalizeCondition`, `conditionRank`, `buildBlockedDates`, `isoWeekKey`.
-- **assets/login.js**
-  - Bascule login/register, boutons œil pour les mots de passe, appels API `apiLogin`/`apiRegister`.
-- **api/auth.php**
-  - `login`/`register` (sessions PHP, lookup rôle, colonne `LastLogin`), `list_users` (admin), `set_role`, `delete_user`.
-  - `is_valid_password` accepte hash ou mot de passe en clair du dump initial.
-- **api/equipment.php**
-  - `list_equipment` renvoie catalogue + réservations actives.
-  - `reserve_equipment` vérifie dates, conflits, et refuse le passé.
-  - `set_maintenance` annule les réservations chevauchantes et bloque les dates.
-  - `create_equipment`/`delete_equipment` protégés admin.
-- **api/dashboard.php**
-  - `fetch_loans` renvoie prêts + historique (garde ceux dont le matériel a été supprimé).
-  - `return_pret` contrôle accès, enregistre rendu, remet dispo si plus d’emprunt actif.
-  - `request_cancel` (demande user) vs `admin_cancel` (suppression admin).
-  - `build_stats`/`build_admin_stats` calculent retards, dégradations, maintenances.
+## 🧱 Guide de code (survol)
+- **assets/app.js** : état global, appels API (`api*`), rendus (catalogue, prêts user/admin, stats), modale + calendrier (blocage passé, 14j max, dates occupées), normalisation états (`normalizeCondition`, `conditionRank`, `buildBlockedDates`, `isoWeekKey`).
+- **assets/login.js** : bascule login/register, bouton œil mdp, `apiLogin`/`apiRegister`.
+- **api/auth.php** : sessions, rôles, LastLogin, CRUD users (admin).
+- **api/equipment.php** : catalogue + périodes actives, réservations (refus passé/conflits), maintenance (supprime réservations chevauchantes), CRUD matériel (admin).
+- **api/dashboard.php** : prêts + historique (garde matériel supprimé), rendus (contrôle état et dispo), annulations user/admin, stats retards/dégradations/maintenances.
 
-## Détail des principales fonctions (logique interne)
+## 🔍 Détail des principales fonctions (logique interne)
 - **Frontend (`assets/app.js`)**
   - `renderAdminLoans` : split en deux colonnes (gauche = prêts en cours avec retour/état, droite = annulations à traiter + réservations à venir annulables). Génère dynamiquement les boutons, applique des styles d’alerte sur les demandes, et réactualise les listes après chaque action.
   - `renderCalendar` + `handleDayClick` : construit la grille du mois courant (précalcule les cellules, bloque les dates passées ou réservées, navigation mois ±1). Le clic choisit début/fin, vérifie longueur max (14j) et rejette les plages occupées.
