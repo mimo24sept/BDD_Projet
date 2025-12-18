@@ -1,5 +1,10 @@
 # Parc matériels GEII — Documentation 🎛️
 
+![Static Badge](https://img.shields.io/badge/Frontend-HTML%2FCSS%2FJS-orange?style=for-the-badge)
+![Static Badge](https://img.shields.io/badge/Backend-PHP%20%2B%20PDO-blue?style=for-the-badge)
+![Static Badge](https://img.shields.io/badge/Base-MySQL%2FMariaDB-green?style=for-the-badge)
+![Static Badge](https://img.shields.io/badge/Role-Admin%20%7C%20User-purple?style=for-the-badge)
+
 Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP (PDO), base MySQL/MariaDB.
 
 <details open>
@@ -18,7 +23,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 - Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
 - Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
 - `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
-- Actions admin uniquement : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
+- Actions <span style="color:#d9534f;font-weight:600;">admin uniquement</span> : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
 
 </details>
 
