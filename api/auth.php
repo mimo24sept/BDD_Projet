@@ -74,6 +74,7 @@ if ($method === 'POST' && $action === 'logout') {
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
+// Traite la connexion d'un utilisateur (vérifie identifiants et session).
 function login(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -105,10 +106,10 @@ function login(PDO $pdo): void
     ensure_last_login_column($pdo);
 
     try {
+        // Permet de tracer la dernière connexion ; ignore si la colonne manque.
         $upd = $pdo->prepare('UPDATE `User` SET LastLogin = NOW() WHERE IDuser = :id');
         $upd->execute([':id' => (int) $user['IDuser']]);
     } catch (Throwable $e) {
-        // Ignore update failure if column missing.
     }
 
     $_SESSION['user_id'] = (int) $user['IDuser'];
@@ -118,6 +119,7 @@ function login(PDO $pdo): void
     echo json_encode(current_user());
 }
 
+// Déconnecte l'utilisateur courant et détruit la session.
 function logout(): void
 {
     $_SESSION = [];
@@ -125,6 +127,7 @@ function logout(): void
     echo json_encode(['message' => 'Déconnecté']);
 }
 
+// Inscrit un nouvel utilisateur (avec option professeur) et ouvre la session.
 function register(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -192,6 +195,7 @@ function register(PDO $pdo): void
     echo json_encode(current_user());
 }
 
+// Retourne l'utilisateur courant en session (ou null).
 function current_user(): ?array
 {
     if (!isset($_SESSION['user_id'])) {
@@ -205,9 +209,10 @@ function current_user(): ?array
     ];
 }
 
+// Vérifie un mot de passe (hashé ou en clair issu du dump).
 function is_valid_password(string $input, string $stored): bool
 {
-    // Accept either hashed (password_hash) or clear-text values stored in the SQL dump.
+    // Accepte aussi bien les mots de passe hashés que les valeurs en clair issues du dump SQL.
     if ($stored === '') {
         return false;
     }
@@ -217,6 +222,7 @@ function is_valid_password(string $input, string $stored): bool
     return hash_equals($stored, $input);
 }
 
+// Récupère l'ID du rôle demandé ou un fallback.
 function lookup_role_id(PDO $pdo, string $roleName, int $fallback): int
 {
     $stmt = $pdo->prepare('SELECT IDrole FROM `Role` WHERE LOWER(`Role`) = LOWER(:r) LIMIT 1');
@@ -225,6 +231,7 @@ function lookup_role_id(PDO $pdo, string $roleName, int $fallback): int
     return $id > 0 ? $id : $fallback;
 }
 
+// Retourne la liste des utilisateurs (hors admins).
 function list_users(PDO $pdo): array
 {
     $hasLast = ensure_last_login_column($pdo);
@@ -235,6 +242,7 @@ function list_users(PDO $pdo): array
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+// Normalise un rôle fourni (admin/prof -> Administrateur, sinon Utilisateur).
 function normalize_role(string $input): string
 {
     $r = strtolower(trim($input));
@@ -244,6 +252,7 @@ function normalize_role(string $input): string
     return 'Utilisateur';
 }
 
+// Met à jour le rôle d'un utilisateur (contrôles inclus).
 function set_role(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -284,6 +293,7 @@ function set_role(PDO $pdo): void
     echo json_encode(['status' => 'ok', 'role' => $roleName, 'id' => $id]);
 }
 
+// Supprime un utilisateur (sauf administrateur).
 function delete_user(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -317,6 +327,7 @@ function delete_user(PDO $pdo): void
     }
 }
 
+// Récupère un utilisateur avec son rôle à partir de son ID.
 function fetch_user_with_role(PDO $pdo, int $id): ?array
 {
     $stmt = $pdo->prepare(
@@ -331,11 +342,13 @@ function fetch_user_with_role(PDO $pdo, int $id): ?array
     return $row ?: null;
 }
 
+// Vérifie si un libellé de rôle contient "admin".
 function is_role_admin(string $role): bool
 {
     return stripos($role, 'admin') !== false;
 }
 
+// S'assure que la colonne LastLogin existe, la crée si besoin.
 function ensure_last_login_column(PDO $pdo): bool
 {
     static $checked = false;
@@ -356,6 +369,7 @@ function ensure_last_login_column(PDO $pdo): bool
     return $has;
 }
 
+// Vérifie si l'utilisateur en session est admin.
 function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');

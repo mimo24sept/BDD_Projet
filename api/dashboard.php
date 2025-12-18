@@ -59,6 +59,16 @@ if ($method === 'POST' && $action === 'return') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'admin_cancel') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    admin_cancel($pdo);
+    exit;
+}
+
 if ($method === 'POST' && $action === 'cancel_request') {
     request_cancel($pdo, (int) $_SESSION['user_id']);
     exit;
@@ -75,6 +85,7 @@ try {
     echo json_encode(['error' => 'Lecture des données impossible', 'details' => $e->getMessage()]);
 }
 
+// Récupère la liste des emprunts (optionnellement filtrés par utilisateur).
 function fetch_loans(PDO $pdo, ?int $userId): array
 {
     $loans = [];
@@ -85,7 +96,7 @@ function fetch_loans(PDO $pdo, ?int $userId): array
                    r.DATErendu, r.ETATrendu,
                    u.NOMuser
             FROM `Emprunt` e
-            JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
+            LEFT JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
             LEFT JOIN `Rendu` r ON r.IDemprunt = e.IDemprunt
             LEFT JOIN `User` u ON u.IDuser = e.IDuser
             $where";
@@ -106,8 +117,8 @@ function fetch_loans(PDO $pdo, ?int $userId): array
         $loans[] = [
             'id' => (int) $row['IDemprunt'],
             'type' => $type,
-            'name' => $row['NOMmateriel'],
-            'material_id' => (int) $row['IDmateriel'],
+            'name' => $row['NOMmateriel'] ?? 'Matériel supprimé',
+            'material_id' => isset($row['IDmateriel']) ? (int) $row['IDmateriel'] : null,
             'start' => $start ?: compute_start_date($due),
             'due' => $due,
             'status' => $status,
@@ -123,6 +134,7 @@ function fetch_loans(PDO $pdo, ?int $userId): array
     return $loans;
 }
 
+// Calcule une date de début par défaut (7 jours avant la fin) si absente.
 function compute_start_date(?string $due): ?string
 {
     if (!$due) {
@@ -135,6 +147,7 @@ function compute_start_date(?string $due): ?string
     return date('Y-m-d', strtotime('-7 days', $dueTs));
 }
 
+// Calcule l'avancement d'un prêt en pourcentage.
 function progress_percent(?string $start, ?string $due): int
 {
     if (!$start || !$due) {
@@ -151,6 +164,7 @@ function progress_percent(?string $start, ?string $due): int
     return (int) round($ratio * 100);
 }
 
+// Construit les statistiques utilisateur et l'historique associé.
 function build_stats(array $loans): array
 {
     $today = date('Y-m-d');
@@ -229,6 +243,7 @@ function build_stats(array $loans): array
     ];
 }
 
+// Construit les statistiques globales côté administrateur.
 function build_admin_stats(PDO $pdo): array
 {
     $year = (int) date('Y');
@@ -303,6 +318,7 @@ function build_admin_stats(PDO $pdo): array
     ];
 }
 
+// Marque un prêt comme rendu : contrôle accès, insère le rendu, met à jour l'état matériel et la disponibilité.
 function return_pret(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -393,6 +409,7 @@ function return_pret(PDO $pdo, int $userId): void
     }
 }
 
+// Demande d'annulation initiée par un utilisateur (ou admin) en marquant l'emprunt.
 function request_cancel(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -445,12 +462,80 @@ function request_cancel(PDO $pdo, int $userId): void
     }
 }
 
+// Annulation directe d'une réservation par un administrateur (suppression + remise dispo si besoin).
+function admin_cancel(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant invalide']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $select = $pdo->prepare(
+            'SELECT IDmateriel FROM `Emprunt`
+             WHERE IDemprunt = :id
+             LIMIT 1'
+        );
+        $select->execute([':id' => $id]);
+        $row = $select->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Réservation introuvable']);
+            return;
+        }
+
+        $alreadyReturned = $pdo->prepare('SELECT 1 FROM `Rendu` WHERE IDemprunt = :id LIMIT 1');
+        $alreadyReturned->execute([':id' => $id]);
+        if ($alreadyReturned->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Déjà rendu']);
+            return;
+        }
+
+        $delete = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :id');
+        $delete->execute([':id' => $id]);
+
+        $materielId = (int) ($row['IDmateriel'] ?? 0);
+        if ($materielId > 0) {
+            $hasActive = $pdo->prepare(
+                'SELECT 1
+                 FROM `Emprunt` e
+                 WHERE e.IDmateriel = :mid
+                   AND e.DATEdebut <= CURDATE()
+                   AND e.DATEfin >= CURDATE()
+                   AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+                 LIMIT 1'
+            );
+            $hasActive->execute([':mid' => $materielId]);
+            if (!$hasActive->fetchColumn()) {
+                $updateMat = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Oui" WHERE IDmateriel = :mid');
+                $updateMat->execute([':mid' => $materielId]);
+            }
+        }
+
+        $pdo->commit();
+        echo json_encode(['status' => 'ok', 'canceled_id' => $id]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Annulation admin impossible', 'details' => $e->getMessage()]);
+    }
+}
+
+// Indique si l'utilisateur en session est admin.
 function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');
     return stripos($role, 'admin') !== false;
 }
 
+// Normalise un libellé d'état de matériel.
 function normalize_condition(string $value): string
 {
     $value = strtolower(trim($value));
@@ -465,6 +550,7 @@ function normalize_condition(string $value): string
     return $map[$value] ?? $value;
 }
 
+// Retourne un score numérique pour comparer deux états.
 function condition_rank(string $value): int
 {
     $value = normalize_condition($value);
@@ -472,6 +558,7 @@ function condition_rank(string $value): int
     return $order[$value] ?? 1;
 }
 
+// Détecte si un état de retour traduit une dégradation.
 function is_degradation(string $etatRendu): bool
 {
     if (str_starts_with((string) $etatRendu, 'degrade:')) {

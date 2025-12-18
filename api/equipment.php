@@ -76,6 +76,7 @@ if ($method === 'POST' && $action === 'maintenance') {
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
+// Liste le matériel avec statut (dispo/maintenance) et plages occupées.
 function list_equipment(PDO $pdo): void
 {
     $activeLoans = fetch_active_loans($pdo);
@@ -140,6 +141,7 @@ function list_equipment(PDO $pdo): void
     echo json_encode(array_values($items));
 }
 
+// Crée une réservation pour un matériel : vérifie conflits, dates valides et non-passé.
 function reserve_equipment(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -163,12 +165,10 @@ function reserve_equipment(PDO $pdo, int $userId): void
         echo json_encode(['error' => 'Dates invalides']);
         return;
     }
-    // Normalize order if end < start.
     if (strtotime($end) !== false && strtotime($start) !== false && strtotime($end) < strtotime($start)) {
         [$start, $end] = [$end, $start];
     }
 
-    // Check overlapping loan for the chosen period (only active loans without return).
     $conflict = $pdo->prepare(
         'SELECT 1
          FROM `Emprunt` e
@@ -184,6 +184,12 @@ function reserve_equipment(PDO $pdo, int $userId): void
     if ($conflict->fetchColumn()) {
         http_response_code(409);
         echo json_encode(['error' => 'Déjà réservé sur cette période']);
+        return;
+    }
+    $today = date('Y-m-d');
+    if ($start < $today) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Impossible de réserver dans le passé']);
         return;
     }
 
@@ -219,6 +225,7 @@ function reserve_equipment(PDO $pdo, int $userId): void
     echo json_encode(['status' => 'ok', 'equipment' => $updated]);
 }
 
+// Planifie une maintenance sur un matériel (et annule les réservations chevauchantes).
 function set_maintenance(PDO $pdo, int $userId): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -318,6 +325,7 @@ function set_maintenance(PDO $pdo, int $userId): void
     echo json_encode(['status' => 'ok', 'equipment' => $updated]);
 }
 
+// Crée un nouvel équipement dans la base (admin).
 function create_equipment(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -389,6 +397,7 @@ function create_equipment(PDO $pdo): void
     }
 }
 
+// Supprime un équipement (admin) et renvoie les stats mises à jour.
 function delete_equipment(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -446,6 +455,7 @@ function delete_equipment(PDO $pdo): void
     }
 }
 
+// Récupère les prêts/maintenances en cours pour chaque matériel.
 function fetch_active_loans(PDO $pdo): array
 {
     $today = date('Y-m-d');
@@ -500,6 +510,7 @@ function fetch_active_loans(PDO $pdo): array
     return $active;
 }
 
+// Récupère un équipement par ID, avec info de maintenance.
 function fetch_equipment_by_id(PDO $pdo, int $id): ?array
 {
     $activeLoans = fetch_active_loans($pdo);
@@ -558,6 +569,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
     return $mapped;
 }
 
+// Convertit les états d'activité/maintenance en statut lisible.
 function map_status(bool $hasActiveLoan, bool $hasMaintenance = false): string
 {
     if ($hasMaintenance) {
@@ -569,12 +581,14 @@ function map_status(bool $hasActiveLoan, bool $hasMaintenance = false): string
     return 'disponible';
 }
 
+// Fusionne et déduplique deux listes de tags.
 function merge_tags(array $existing, array $candidates): array
 {
     $cleaned = array_filter(array_map(static fn($t) => $t !== null ? strtolower((string) $t) : null, $candidates));
     return array_values(array_unique(array_merge($existing, $cleaned)));
 }
 
+// Décompose/normalise une chaîne de catégories en tableau.
 function normalize_categories(string $value): array
 {
     $parts = array_map(
@@ -584,6 +598,7 @@ function normalize_categories(string $value): array
     return array_values(array_filter(array_unique($parts), static fn($c) => $c !== ''));
 }
 
+// Génère une référence unique pour un matériel.
 function generate_reference(PDO $pdo, string $name, array $categories = []): string
 {
     // Base : 3 premières lettres du nom (translittérées), complétées en X si besoin.
@@ -606,6 +621,7 @@ function generate_reference(PDO $pdo, string $name, array $categories = []): str
     return sprintf('%s-%03d', $base, $next);
 }
 
+// Construit le préfixe de référence à partir du nom.
 function build_reference_prefix(string $name): string
 {
     $asciiName = transliterate_to_ascii($name);
@@ -622,6 +638,7 @@ function build_reference_prefix(string $name): string
     return $base;
 }
 
+// Translitère une chaîne en ASCII (sans accents).
 function transliterate_to_ascii(string $value): string
 {
     $map = [
@@ -652,6 +669,7 @@ function transliterate_to_ascii(string $value): string
     return strtr($ascii, $map);
 }
 
+// Liste les numéros de semaines entre deux dates.
 function weeks_between(string $start, string $end): array
 {
     if ($start === '') {
@@ -679,6 +697,7 @@ function weeks_between(string $start, string $end): array
     return $weeks;
 }
 
+// Vérifie si une période englobe la date du jour.
 function period_is_current(string $start, string $end, string $today): bool
 {
     if ($start === '') {
@@ -699,6 +718,7 @@ function period_is_current(string $start, string $end, string $today): bool
     return $startDate <= $todayDate && $todayDate <= $endDate;
 }
 
+// Retourne la clé ISO de semaine pour une date.
 function iso_week_key(string $date): ?string
 {
     $ts = strtotime($date);
@@ -710,6 +730,7 @@ function iso_week_key(string $date): ?string
     return sprintf('%04d-W%02d', $year, $week);
 }
 
+// Indique si l'utilisateur en session est admin.
 function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');

@@ -251,6 +251,12 @@ const API = {
         modalMsg.className = 'message err';
         return;
       }
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (range.start < todayStr) {
+        modalMsg.textContent = 'Impossible de reserver dans le passe.';
+        modalMsg.className = 'message err';
+        return;
+      }
       if (!isRangeFree(range.start, range.end)) {
         modalMsg.textContent = 'Periode deja reservee';
         modalMsg.className = 'message err';
@@ -355,6 +361,7 @@ const API = {
 
   // --- API : session, catalogue, emprunts, stats, CRUD matériel/prêts ---
 
+  // Récupère l'utilisateur en session auprès de l'API d'authentification.
   async function apiSession() {
     try {
       const res = await fetch(API.auth, { credentials: 'include' });
@@ -365,6 +372,7 @@ const API = {
     }
   }
 
+  // Charge le catalogue des matériels et normalise les catégories/tags.
   async function apiFetchEquipment() {
     try {
       const res = await fetch(API.equipment, { credentials: 'include' });
@@ -411,6 +419,7 @@ const API = {
     }
   }
 
+  // Récupère les emprunts de l'utilisateur (ou tous) et calcule l'historique.
   async function apiFetchLoans() {
     try {
       const res = await fetch(API.dashboard, { credentials: 'include' });
@@ -437,6 +446,7 @@ const API = {
     }
   }
 
+  // Récupère la liste des emprunts côté admin.
   async function apiFetchAdminLoans() {
     try {
       const res = await fetch(`${API.dashboard}?scope=all`, { credentials: 'include' });
@@ -451,6 +461,7 @@ const API = {
     }
   }
 
+  // Récupère les statistiques côté admin.
   async function apiFetchAdminStats() {
     if (!isAdmin()) return;
     try {
@@ -470,6 +481,7 @@ const API = {
     }
   }
 
+  // Normalise l'historique des prêts (retards, dégradations).
   function normalizeHistory(list = []) {
     const today = new Date();
     return (Array.isArray(list) ? list : [])
@@ -493,6 +505,7 @@ const API = {
       });
   }
 
+  // Charge la liste des comptes utilisateurs.
   async function apiFetchUsers() {
     try {
       const res = await fetch(`${API.auth}?action=users`, { credentials: 'include' });
@@ -504,6 +517,7 @@ const API = {
     }
   }
 
+  // Met à jour le rôle d'un utilisateur.
   async function apiSetUserRole(id, role) {
     const res = await fetch(`${API.auth}?action=set_role`, {
       method: 'POST',
@@ -518,6 +532,7 @@ const API = {
     return data;
   }
 
+  // Supprime un utilisateur via l'API.
   async function apiDeleteUser(id) {
     const res = await fetch(`${API.auth}?action=delete_user`, {
       method: 'POST',
@@ -532,6 +547,7 @@ const API = {
     return data;
   }
 
+  // Marque un prêt comme rendu avec l'état du matériel.
   async function apiReturnLoan(id, condition = '') {
     const res = await fetch(`${API.dashboard}?action=return`, {
       method: 'POST',
@@ -546,6 +562,22 @@ const API = {
     await apiFetchLoans();
   }
 
+  // Annule une réservation côté admin.
+  async function apiAdminCancelLoan(id) {
+    const res = await fetch(`${API.dashboard}?action=admin_cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Annulation impossible');
+    }
+    await apiFetchLoans();
+  }
+
+  // Demande d'annulation initiée par l'utilisateur.
   async function apiRequestCancel(id) {
     const res = await fetch(`${API.dashboard}?action=cancel_request`, {
       method: 'POST',
@@ -560,12 +592,14 @@ const API = {
     await apiFetchLoans();
   }
 
+  // Déconnecte l'utilisateur côté backend.
   async function apiLogout() {
     try {
       await fetch(`${API.auth}?action=logout`, { method: 'POST', credentials: 'include' });
     } catch (e) {}
   }
 
+  // Crée un équipement depuis le formulaire admin.
   async function apiCreateEquipment(payload) {
     const res = await fetch(`${API.equipment}?action=create`, {
       method: 'POST',
@@ -582,6 +616,7 @@ const API = {
     return data?.equipment;
   }
 
+  // Supprime un équipement depuis l'admin.
   async function apiDeleteEquipment(id) {
     const res = await fetch(`${API.equipment}?action=delete`, {
       method: 'POST',
@@ -598,6 +633,7 @@ const API = {
     return data;
   }
 
+  // Planifie une maintenance sur un équipement.
   async function apiSetMaintenance(payload) {
     const res = await fetch(`${API.equipment}?action=maintenance`, {
       method: 'POST',
@@ -614,6 +650,7 @@ const API = {
     return data?.equipment;
   }
 
+  // Met à jour l'affichage du chip utilisateur selon la session.
   function setAuthUI() {
     if (userChip) {
       const login = state.user?.login || 'profil';
@@ -622,10 +659,12 @@ const API = {
     }
   }
 
+  // Indique si l'utilisateur courant possède un rôle admin.
   function isAdmin() {
     return (state.user?.role || '').toLowerCase().includes('admin');
   }
 
+  // Affiche ou masque les onglets/sections en fonction du rôle.
   function applyRoleVisibility() {
     const adminEnabled = isAdmin();
     tabs.forEach((tab) => {
@@ -662,6 +701,7 @@ const API = {
     }
   }
 
+  // Rafraîchit toutes les vues de l'application.
   function render() {
     applyRoleVisibility();
     updateTabs();
@@ -680,6 +720,7 @@ const API = {
     renderAdminStats();
   }
 
+  // Active l'onglet courant et affiche la section associée.
   function updateTabs() {
     tabs.forEach((tab) => {
       if (tab.dataset.role === 'admin' && !isAdmin()) {
@@ -699,6 +740,7 @@ const API = {
     });
   }
 
+  // Affiche et met à jour les tags filtres du catalogue utilisateur.
   function renderTags() {
     const allTags = BASE_TAGS.filter((tag) => state.inventory.some((item) => (item.tags || []).includes(tag)));
     tagBar.innerHTML = '';
@@ -721,6 +763,7 @@ const API = {
     });
   }
 
+  // Affiche et met à jour les tags filtres du catalogue admin.
   function renderAdminTags() {
     if (!adminTagBar) return;
     if (!isAdmin()) {
@@ -743,6 +786,7 @@ const API = {
     });
   }
 
+  // Rendu du catalogue admin (filtres + tri).
   function renderAdminCatalog() {
     if (!adminInventoryEl) return;
     adminInventoryEl.innerHTML = '';
@@ -831,6 +875,7 @@ const API = {
     });
   }
 
+  // Rendu du catalogue de maintenance filtré.
   function renderMaintenanceCatalog() {
     if (!maintenanceCatalogEl) return;
     maintenanceCatalogEl.innerHTML = '';
@@ -874,6 +919,7 @@ const API = {
     }
   }
 
+  // Affiche la barre de tags pour la vue maintenance.
   function renderMaintenanceTags() {
     if (!maintenanceTagBar) return;
     const allTags = Array.from(new Set(state.inventory.flatMap((item) => item.tags)));
@@ -892,6 +938,7 @@ const API = {
     });
   }
 
+  // Liste les maintenances programmées et les supprime au besoin.
   function renderMaintenanceAgenda() {
     if (!maintenanceListEl) return;
     maintenanceListEl.innerHTML = '';
@@ -904,7 +951,6 @@ const API = {
       .filter((l) => l.status !== 'rendu');
 
     maints.forEach((m) => {
-      // Use end date to judge lateness; fallback to start if missing.
       const severity = dueSeverity(m.due || m.start);
       const barColor = severityColor(severity);
       const row = document.createElement('div');
@@ -943,6 +989,7 @@ const API = {
     }
   }
 
+  // Rendu de la liste des comptes utilisateurs côté admin.
   function renderAccounts() {
     if (!accountsListEl) return;
     accountsListEl.innerHTML = '';
@@ -993,6 +1040,7 @@ const API = {
   }
 
   // Catalogue public (recherche + tags) et cartes de réservation.
+  // Rendu du catalogue pour les utilisateurs.
   function renderCatalog() {
     if (!catalogEl) return;
     catalogEl.innerHTML = '';
@@ -1032,6 +1080,7 @@ const API = {
   }
 
   // Bloc "Mes emprunts" côté utilisateur (retours ou annulations).
+  // Rendu des emprunts de l'utilisateur (retours/annulations).
   function renderLoans() {
     loansEl.innerHTML = '';
     const isAdmin = (state.user?.role || '').toLowerCase().includes('admin');
@@ -1142,6 +1191,7 @@ const API = {
   }
 
   // Vue admin des prêts en cours/à venir + actions de rendu/annulation.
+  // Deux colonnes : à gauche les réservations en cours (retours), à droite les demandes/annulations.
   function renderAdminLoans() {
     if (!adminLoansEl) return;
     adminLoansEl.innerHTML = '';
@@ -1149,6 +1199,12 @@ const API = {
       adminLoansEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
       return;
     }
+    const layout = document.createElement('div');
+    layout.className = 'admin-bubble-columns';
+    const activeCol = document.createElement('div');
+    activeCol.className = 'admin-bubble-col';
+    const priorityCol = document.createElement('div');
+    priorityCol.className = 'admin-bubble-col';
     const today = new Date().toISOString().slice(0, 10);
     const active = [];
     const upcoming = [];
@@ -1193,14 +1249,24 @@ const API = {
         const conditionLabel = formatConditionLabel(baseCondition);
         const optionsHtml = buildReturnOptions(baseCondition);
         const isUpcoming = opts.variant === 'upcoming';
-        const statusText = isUpcoming
-          ? (loan._cancelRequested ? 'Demande d’annulation' : 'Réservation à venir')
-          : loan.status;
-        const severityText = isUpcoming ? '' : severityLabel(severity);
-        const showActions = !isUpcoming || loan._cancelRequested;
-        const showCondition = showActions && !loan._cancelRequested;
+        const isCancelRequest = Boolean(loan._cancelRequested);
+        const allowCancel = (isUpcoming && opts.cancelable) || isCancelRequest;
+        const statusText = isCancelRequest
+          ? 'Annulation demande'
+          : isUpcoming
+            ? 'Réservation à venir'
+            : loan.status;
+        const severityText = (!isUpcoming && !isCancelRequest) ? severityLabel(severity) : '';
+        const showActions = !isUpcoming || allowCancel;
+        const showCondition = showActions && !allowCancel && !isCancelRequest;
+        const actionLabel = isCancelRequest
+          ? (opts.actionLabel || 'Valider annulation')
+          : allowCancel
+            ? (opts.actionLabel || 'Supprimer la réservation')
+            : (opts.actionLabel || 'Marquer rendu');
         const row = document.createElement('div');
-        row.className = `loan-item loan-${severity}`;
+        const cancelClass = isCancelRequest ? ' loan-cancel' : '';
+        row.className = `loan-item loan-${severity}${cancelClass}`;
         row.innerHTML = `
           <div>
             <div class="small-title">${escapeHtml(statusText)}${severityText ? ' - ' + escapeHtml(severityText) : ''}</div>
@@ -1217,7 +1283,7 @@ const API = {
               ${optionsHtml}
             </select>
             ` : ''}
-            <button type="button" class="ghost" data-id="${loan.id}">${opts.actionLabel || 'Marquer rendu'}</button>
+            <button type="button" class="ghost" data-id="${loan.id}">${actionLabel}</button>
           </div>` : ''}
         `;
         const btn = row.querySelector('button');
@@ -1225,15 +1291,19 @@ const API = {
         if (btn) {
           btn.addEventListener('click', async () => {
             btn.disabled = true;
-            btn.textContent = opts.actionLabel || 'Retour...';
+            btn.textContent = allowCancel ? 'Annulation...' : (opts.actionLabel || 'Retour...');
             try {
-              const condition = cond ? cond.value : '';
-              await apiReturnLoan(loan.id, condition);
+              if (allowCancel) {
+                await apiAdminCancelLoan(loan.id);
+              } else {
+                const condition = cond ? cond.value : '';
+                await apiReturnLoan(loan.id, condition);
+              }
               await Promise.all([apiFetchAdminLoans(), apiFetchLoans()]);
               render();
             } catch (err) {
               btn.disabled = false;
-              btn.textContent = opts.actionLabel || 'Marquer rendu';
+              btn.textContent = actionLabel;
             }
           });
         }
@@ -1262,26 +1332,36 @@ const API = {
     if (active.length) {
       const bubble = buildBubble('Réservations en cours', '', 'current');
       renderList(bubble, active, '', { variant: 'current' });
-      adminLoansEl.appendChild(bubble);
+      activeCol.appendChild(bubble);
       hasContent = true;
     }
 
     const cancels = upcoming.filter((l) => l._cancelRequested);
     const future = upcoming.filter((l) => !l._cancelRequested);
-    if (future.length || cancels.length) {
+    if (cancels.length) {
+      const bubble = buildBubble('Annulations à traiter', '', 'alert');
+      renderList(bubble, cancels, '', { actionLabel: 'Valider annulation', variant: 'alert', cancelable: true });
+      priorityCol.appendChild(bubble);
+      hasContent = true;
+    }
+    if (future.length) {
       const bubble = buildBubble('Réservations à venir', '', 'upcoming');
-      if (future.length) renderList(bubble, future, '', { variant: 'upcoming' });
-      if (cancels.length) renderList(bubble, cancels, '', { actionLabel: 'Annuler réservation', variant: 'alert' });
-      adminLoansEl.appendChild(bubble);
+      renderList(bubble, future, '', { variant: 'upcoming', cancelable: true, actionLabel: 'Supprimer la réservation' });
+      priorityCol.appendChild(bubble);
       hasContent = true;
     }
 
     if (!hasContent) {
       adminLoansEl.innerHTML = '<p class="meta">Aucune réservation en cours ou à venir.</p>';
+    } else {
+      if (activeCol.childElementCount) layout.appendChild(activeCol);
+      if (priorityCol.childElementCount) layout.appendChild(priorityCol);
+      adminLoansEl.appendChild(layout);
     }
   }
 
   // Stats côté utilisateur (cartes synthèse).
+  // Rendu des cartes de statistiques côté utilisateur.
   function renderStats() {
     if (!statsEls.total) return;
     const history = Array.isArray(state.stats?.history)
@@ -1312,6 +1392,7 @@ const API = {
     });
   }
 
+  // Liste détaillée de l'historique utilisateur selon le filtre stats.
   function renderUserStatsList() {
     if (!statsEls.list) return;
     const history = Array.isArray(state.stats?.history)
@@ -1361,6 +1442,7 @@ const API = {
   }
 
   // Stats côté admin (retards / dégradations / maintenances).
+  // Rendu des cartes de statistiques côté administrateur.
   function renderAdminStats() {
     if (!adminStatsEls.total) return;
     if (!isAdmin()) {
@@ -1382,6 +1464,7 @@ const API = {
   }
 
   // Historique détaillé pour les filtres de stats admin.
+  // Liste détaillée des stats admin filtrées par vue/recherche.
   function renderAdminStatsList() {
     if (!adminStatsEls.list) return;
     adminStatsEls.list.innerHTML = '';
@@ -1440,6 +1523,7 @@ const API = {
   }
 
   // --- Normalisation et bornage des états matériels ---
+  // Normalise un libellé d'état matériel.
   function normalizeCondition(value = '') {
     const cleaned = String(value || '')
       .toLowerCase()
@@ -1453,18 +1537,21 @@ const API = {
     return '';
   }
 
+  // Retourne un score de priorité selon l'état (pour comparer).
   function conditionRank(value = '') {
     const norm = normalizeCondition(value);
     const maxRank = Math.max(...Object.values(CONDITION_RANKS));
     return norm && norm in CONDITION_RANKS ? CONDITION_RANKS[norm] : maxRank;
   }
 
+  // Calcule les états possibles pour un rendu donné l'état initial.
   function allowedReturnConditions(baseCondition = '') {
     const rank = conditionRank(baseCondition);
     const ordered = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
     return ordered.filter((c) => conditionRank(c) <= rank);
   }
 
+  // Formate un état matériel pour l'affichage.
   function formatConditionLabel(value = '') {
     const norm = normalizeCondition(value);
     if (norm === 'reparation nécessaire') return 'Réparation nécessaire';
@@ -1474,6 +1561,7 @@ const API = {
     return value || 'N/C';
   }
 
+  // Construit le HTML des options d'état de retour.
   function buildReturnOptions(baseCondition = '') {
     const allowed = allowedReturnConditions(baseCondition);
     return allowed
@@ -1485,6 +1573,7 @@ const API = {
   }
 
   // --- Modale de réservation / maintenance et calendrier custom ---
+  // Ouvre la modale de réservation ou de maintenance pour un item.
   function openModal(item, mode = 'reserve') {
     modalMode = mode;
     state.modalItem = item;
@@ -1542,6 +1631,7 @@ const API = {
     reserveBtn.textContent = modalMode === 'maintenance' ? 'Planifier maintenance' : 'Reserver';
   }
 
+  // Ferme la modale de réservation/maintenance et réinitialise l'état.
   function closeModal() {
     state.modalItem = null;
     modalMode = 'reserve';
@@ -1552,6 +1642,7 @@ const API = {
   }
 
   // Helpers d'affichage (badges, échappement, formatage dates).
+  // Retourne un badge HTML en fonction du statut prêt/rendu.
   function statusBadge(status = '') {
     const norm = status.toLowerCase();
     let cls = 'status-ok';
@@ -1568,6 +1659,7 @@ const API = {
     return `<span class="badge ${cls}">${label}</span>`;
   }
 
+  // Echappe une chaîne pour affichage HTML.
   function escapeHtml(str = '') {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -1577,6 +1669,7 @@ const API = {
       .replace(/'/g, '&#039;');
   }
 
+  // Formate une date AAAA-MM-JJ en JJ/MM/AAAA.
   function formatDisplayDate(dateStr) {
     if (!dateStr) return 'N/C';
     const parts = String(dateStr).split('-');
@@ -1587,6 +1680,7 @@ const API = {
     return dateStr;
   }
 
+  // Retourne une date Date en chaîne locale AAAA-MM-JJ.
   function formatDateLocal(dateObj) {
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -1594,6 +1688,7 @@ const API = {
     return `${y}-${m}-${d}`;
   }
 
+  // Normalise un nom de catégorie (trim + casse).
   function canonicalCategory(cat) {
     const lower = String(cat || '').toLowerCase();
     if (lower.startsWith('info')) return 'Info';
@@ -1603,18 +1698,21 @@ const API = {
     return null;
   }
 
+  // Indique si un item nécessite réparation selon son état.
   function needsRepair(item) {
     const cond = String(item?.condition || '').toLowerCase();
     const plain = cond.normalize ? cond.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : cond;
     return plain.includes('reparation necessaire');
   }
 
+  // Génère une URL d'image de placeholder pseudo-aléatoire.
   function placeholderImage(seed) {
     const s = encodeURIComponent(seed.toLowerCase());
     return `https://source.unsplash.com/collection/190727/600x400?sig=${s}`;
   }
 
   // Outils calendrier (semaines, dates bloquées, rendu grille).
+  // Calcule la clé de semaine ISO (AAAA-Wxx) pour une date.
   function isoWeekKey(dateStr) {
     if (!dateStr) return null;
     const d = new Date(`${dateStr}T00:00:00`);
@@ -1627,6 +1725,7 @@ const API = {
     return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
   }
 
+  // Liste les clés de semaines entre deux dates.
   function weeksBetween(start, end) {
     const s = new Date(`${start}T00:00:00`);
     const e = new Date(`${end || start}T00:00:00`);
@@ -1642,6 +1741,7 @@ const API = {
     return weeks;
   }
 
+  // Vérifie si une plage de dates est libre (pas bloquée).
   function isRangeFree(start, end) {
     if (!start || !end) return false;
     const dates = datesBetween(start, end);
@@ -1651,13 +1751,13 @@ const API = {
     return dates.every((d) => !blockedDates[d]);
   }
 
+  // Construit la map des dates bloquées (réserves/maintenance).
   function buildBlockedDates(periods) {
     const dates = {};
     periods.forEach((p) => {
       const list = datesBetween(p.start, p.end || p.start);
       const type = (p.type || '').toLowerCase();
       list.forEach((d) => {
-        // Prioritize maintenance if overlaps.
         if (type === 'maintenance') {
           dates[d] = 'maintenance';
         } else if (!dates[d]) {
@@ -1668,6 +1768,7 @@ const API = {
     return dates;
   }
 
+  // Retourne toutes les dates incluses entre start et end.
   function datesBetween(start, end) {
     if (!start) return [];
     const s = new Date(`${start}T00:00:00`);
@@ -1683,6 +1784,7 @@ const API = {
     return dates;
   }
 
+  // Génère le calendrier de sélection de dates dans la modale.
   function renderCalendar() {
     const grid = modalBody.querySelector('#calendar-grid');
     const titleEl = modalBody.querySelector('#cal-title');
@@ -1707,7 +1809,7 @@ const API = {
       };
     }
     const first = new Date(Date.UTC(year, month, 1));
-    const startDay = (first.getUTCDay() || 7) - 1; // Monday=0
+    const startDay = (first.getUTCDay() || 7) - 1;
     const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
     const cells = [];
     for (let i = 0; i < startDay; i += 1) {
@@ -1720,6 +1822,7 @@ const API = {
       cells.push(null);
     }
     grid.innerHTML = '';
+    const todayStr = new Date().toISOString().slice(0, 10);
     cells.forEach((cell) => {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -1731,9 +1834,10 @@ const API = {
         return;
       }
       const dateStr = cell.toISOString().slice(0, 10);
+      const isPast = dateStr < todayStr;
       const blockedType = blockedDates[dateStr];
       const canOverride = modalMode === 'maintenance' && blockedType && blockedType !== 'maintenance';
-      const blocked = Boolean(blockedType) && !canOverride;
+      const blocked = (Boolean(blockedType) && !canOverride) || isPast;
       const selected = isDateSelected(dateStr);
       const inRange = isDateInSelection(dateStr);
       btn.textContent = String(cell.getUTCDate());
@@ -1741,6 +1845,7 @@ const API = {
       if (blockedType === 'maintenance') btn.classList.add('blocked-maint');
       if (canOverride && blockedType !== 'maintenance') btn.classList.add('busy-loan');
       else if (blockedType && blockedType !== 'maintenance') btn.classList.add('blocked-loan');
+      if (isPast) btn.disabled = true;
       if (selected) btn.classList.add('selected');
       if (inRange && !selected) btn.classList.add('in-range');
       btn.onclick = () => handleDayClick(dateStr);
@@ -1749,7 +1854,11 @@ const API = {
   }
 
   // Gestion de la sélection de plage sur le calendrier (avec blocage max 14 jours et dates occupées).
+  // Logique : on ignore les dates passées, on borne la plage à 14 jours,
+  // et on réinitialise la sélection si la plage choisie est déjà bloquée.
   function handleDayClick(dateStr) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (dateStr < todayStr) return;
     if (blockedDates[dateStr] && !(modalMode === 'maintenance' && blockedDates[dateStr] !== 'maintenance')) return;
     if (!selectedStartDate || (selectedStartDate && selectedEndDate)) {
       selectedStartDate = dateStr;
@@ -1775,10 +1884,12 @@ const API = {
     updateAvailabilityMessage();
   }
 
+  // Indique si la date est une extrémité de sélection.
   function isDateSelected(dateStr) {
     return dateStr === selectedStartDate || dateStr === selectedEndDate;
   }
 
+  // Indique si la date appartient à la plage sélectionnée.
   function isDateInSelection(dateStr) {
     const range = selectionRange();
     if (!range) return false;
@@ -1786,6 +1897,7 @@ const API = {
     return list.includes(dateStr);
   }
 
+  // Retourne la plage sélectionnée (start/end) si complète.
   function selectionRange() {
     if (!selectedStartDate) return null;
     if (!selectedEndDate) return null;
@@ -1794,6 +1906,7 @@ const API = {
     return { start, end };
   }
 
+  // Calcule le nombre de jours inclus entre deux dates.
   function dateDiffDays(a, b) {
     const da = new Date(`${a}T00:00:00`);
     const db = new Date(`${b}T00:00:00`);
@@ -1801,6 +1914,7 @@ const API = {
     return Math.abs(Math.round((db - da) / (1000 * 60 * 60 * 24))) + 1;
   }
 
+  // Cherche la prochaine semaine non bloquée pour pré-sélection.
   function nextAvailableDate() {
     let cursor = new Date();
     for (let i = 0; i < 52; i += 1) {
@@ -1813,13 +1927,15 @@ const API = {
     return formatDateLocal(new Date());
   }
 
+  // Retourne le lundi de la semaine de la date donnée.
   function weekStartFromDate(dateObj) {
     const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
     const day = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 1 - day); // move to Monday
+    d.setUTCDate(d.getUTCDate() + 1 - day);
     return d.toISOString().slice(0, 10);
   }
 
+  // Ajoute un nombre de jours à une date au format AAAA-MM-JJ.
   function addDays(dateStr, days) {
     const d = new Date(`${dateStr}T00:00:00`);
     if (Number.isNaN(d.getTime())) return dateStr;
@@ -1827,6 +1943,7 @@ const API = {
     return formatDateLocal(d);
   }
 
+  // Convertit une saisie JJ/MM/AAAA ou AAAA-MM-JJ en format normalisé.
   function parseManualInput(value) {
     const raw = String(value || '').trim();
     if (!raw) return null;
@@ -1850,6 +1967,7 @@ const API = {
     return formatDateLocal(date);
   }
 
+  // Convertit une date AAAA-MM-JJ en JJ/MM/AAAA pour les inputs texte.
   function formatManualInput(value) {
     if (!value) return '';
     const parts = String(value).split('-');
@@ -1858,18 +1976,20 @@ const API = {
     return `${d}/${m}/${y}`;
   }
 
+  // Synchronise l'état interne à partir des champs date saisis.
   function handleManualDateInput() {
     const startRaw = dateStartInput ? dateStartInput.value : '';
     const endRaw = dateEndInput ? dateEndInput.value : '';
     const start = parseManualInput(startRaw);
     const end = parseManualInput(endRaw);
+    const todayStr = new Date().toISOString().slice(0, 10);
     if (start) {
-      selectedStartDate = start;
+      selectedStartDate = start < todayStr ? todayStr : start;
     } else if (startRaw.trim() === '') {
       selectedStartDate = null;
     }
     if (end) {
-      selectedEndDate = end;
+      selectedEndDate = end < todayStr ? todayStr : end;
     } else if (endRaw.trim() === '') {
       selectedEndDate = null;
     }
@@ -1884,6 +2004,7 @@ const API = {
     updateAvailabilityMessage();
   }
 
+  // Met à jour les inputs texte selon la sélection courante.
   function syncManualInputs() {
     if (dateStartInput) {
       dateStartInput.value = selectedStartDate ? formatManualInput(selectedStartDate) : '';
@@ -1893,12 +2014,20 @@ const API = {
     }
   }
 
+  // Met à jour le message et l'état du bouton selon la plage choisie.
   function updateAvailabilityMessage() {
     const range = selectionRange();
     if (!range) {
       reserveBtn.disabled = true;
       modalMsg.textContent = 'Choisissez un debut puis une fin.';
       modalMsg.className = 'message';
+      return;
+    }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (range.start < todayStr) {
+      reserveBtn.disabled = true;
+      modalMsg.textContent = 'Impossible de reserver dans le passe.';
+      modalMsg.className = 'message err';
       return;
     }
     const diff = dateDiffDays(range.start, range.end);
@@ -1915,6 +2044,7 @@ const API = {
     modalMsg.className = label;
   }
 
+  // Détermine la sévérité temporelle d'un prêt selon la date de fin.
   function dueSeverity(due) {
     const dueDate = new Date(due);
     if (Number.isNaN(dueDate.getTime())) return 'ok';
@@ -1925,6 +2055,7 @@ const API = {
     return 'ok';
   }
 
+  // Renvoie la couleur associée à un niveau de sévérité.
   function severityColor(severity) {
     if (severity === 'urgent') return '#f97316';
     if (severity === 'overdue') return '#ef4444';
@@ -1932,6 +2063,7 @@ const API = {
     return 'linear-gradient(120deg, var(--accent), var(--accent-strong))';
   }
 
+  // Renvoie le libellé lisible d'un niveau de sévérité.
   function severityLabel(severity) {
     if (severity === 'overdue') return 'En retard';
     if (severity === 'urgent') return 'Retour proche';

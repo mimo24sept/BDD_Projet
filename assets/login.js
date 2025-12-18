@@ -1,5 +1,4 @@
-﻿// Login-only script used on index.html. Redirects to menu.html after auth.
-// Rôle : gérer la connexion/inscription côté front, puis lancer l'animation ripple avant de rediriger.
+﻿// Rôle : gérer la connexion/inscription côté front, puis lancer l'animation ripple avant de rediriger.
 
 const API = { auth: './api/auth.php' };
 
@@ -15,6 +14,23 @@ const loginBlock = document.querySelector('#login-block');
 const registerBlock = document.querySelector('#register-block');
 const rippleOverlay = document.querySelector('#ripple-overlay');
 const rippleCircles = rippleOverlay ? rippleOverlay.querySelectorAll('.ripple-circle') : [];
+
+// Active le bouton œil sur chaque champ mot de passe pour basculer texte/masqué.
+function initPasswordToggles() {
+  document.querySelectorAll('.password-field').forEach((wrapper) => {
+    const input = wrapper.querySelector('input');
+    const toggle = wrapper.querySelector('.password-toggle');
+    if (!input || !toggle) return;
+    toggle.setAttribute('aria-pressed', 'false');
+    toggle.addEventListener('click', () => {
+      const reveal = input.type === 'password';
+      input.type = reveal ? 'text' : 'password';
+      toggle.classList.toggle('revealed', reveal);
+      toggle.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+      toggle.setAttribute('aria-label', reveal ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+    });
+  });
+}
 
 // Animation ripple puis redirection vers le tableau de bord après succès.
 function playRippleAndRedirect() {
@@ -67,6 +83,7 @@ function switchMode(mode) {
 if (toggleRegisterBtn) toggleRegisterBtn.addEventListener('click', () => switchMode('register'));
 if (backToLoginBtn) backToLoginBtn.addEventListener('click', () => switchMode('login'));
 switchMode('login');
+initPasswordToggles();
 
 // Soumission du formulaire de connexion.
 loginForm.addEventListener('submit', async (e) => {
@@ -113,6 +130,7 @@ if (registerForm) {
 }
 
 // Appels API bas niveau.
+// Envoie les identifiants au backend et renvoie la réponse JSON.
 async function apiLogin(payload) {
   const res = await fetch(`${API.auth}?action=login`, {
     method: 'POST',
@@ -134,6 +152,7 @@ async function apiLogin(payload) {
   return data;
 }
 
+// Crée un compte via l’API d’authentification et renvoie la réponse JSON.
 async function apiRegister(payload) {
   const res = await fetch(`${API.auth}?action=register`, {
     method: 'POST',

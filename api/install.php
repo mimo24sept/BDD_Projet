@@ -36,6 +36,7 @@ try {
     echo json_encode(['error' => 'Import SQL échoué', 'details' => $e->getMessage()]);
 }
 
+// Vérifie l'existence d'une table dans la base cible.
 function table_exists(PDO $pdo, string $table): bool
 {
     $stmt = $pdo->prepare('SHOW TABLES LIKE :table');
