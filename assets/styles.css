@@ -324,6 +324,11 @@ main {
   border: 2px solid rgba(255, 68, 68, 0.4);
   box-shadow: 0 12px 30px rgba(255, 68, 68, 0.15);
 }
+.card.card-urgent {
+  background: linear-gradient(180deg, #fff1f2, #fff5f5);
+  border-color: #dc2626;
+  box-shadow: 0 16px 38px rgba(220, 38, 38, 0.25);
+}
 
 .card img {
   width: 100%;

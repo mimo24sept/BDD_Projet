@@ -25,7 +25,7 @@
 - `apiFetchLoans` : récupère prêts + stats + notifications non lues (annulations admin/maintenance), filtre les prêts non rendus, construit l’historique via `normalizeHistory`, gère les erreurs.
 - `apiFetchAdminLoans` / `apiFetchAdminStats` : emprunts globaux et stats admin (si admin).
 - `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser` : comptes via `api/auth.php`.
-- `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel` : actions retour/annulation, puis rafraîchissement.
+- `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel`, `apiRequestExtension`, `apiDecideExtension` : actions retour/annulation/prolongation, puis rafraîchissement.
 - `apiCreateEquipment`, `apiDeleteEquipment`, `apiSetMaintenance` : CRUD/maintenance matériel, lèvent si erreur HTTP.
 
 </details>
@@ -41,8 +41,8 @@
 - Catalogues : `renderAdminCatalog`, `renderMaintenanceCatalog`, `renderCatalog` (recherche, tags, tri, cartes).
 - Maintenance : `renderMaintenanceAgenda` (liste, sévérité, bouton fin de maintenance).
 - Comptes : `renderAccounts` (login/email/rôle + actions).
-- Prêts user : `renderLoans` (tri sévérité/date, progression, actions rendre/annuler).
-- Prêts admin : `renderAdminLoans` (2 colonnes : en cours vs annulations/résas à venir).
+- Prêts user : `renderLoans` (tri sévérité/date, progression, actions rendre/annuler/prolonger).
+- Prêts admin : `renderAdminLoans` (2 colonnes : en cours vs annulations/résas à venir + bulle dédiée aux demandes de prolongation).
 - Stats user/admin : `renderStats`, `renderUserStatsList`, `renderAdminStats`, `renderAdminStatsList`.
 - Etats matériel : `normalizeCondition`, `conditionRank`, `allowedReturnConditions`, `formatConditionLabel`, `buildReturnOptions`.
 - Modale/réservation : `openModal`, `closeModal`, `statusBadge`, `escapeHtml`, `formatDisplayDate`, `formatDateLocal`, `canonicalCategory`, `needsRepair`, `placeholderImage`.
@@ -76,7 +76,7 @@
 | --- | --- |
 | `list_equipment` | Jointure matériel/catégorie, périodes actives (prêt/maintenance), tags, semaines bloquées. |
 | `reserve_equipment` | Vérifie ID, dates valides/ordonnées, conflit actif, refuse le passé, bloque dispo si période courante, insère emprunt. |
-| `set_maintenance` | Vérifie ID/dates, supprime les emprunts chevauchants (hors maintenance) en notifiant les utilisateurs impactés, bloque dispo si période courante, insère emprunt maintenance. |
+| `set_maintenance` | Vérifie ID/dates, (admin ou technicien) supprime les emprunts chevauchants uniquement côté admin en notifiant les utilisateurs impactés, bloque dispo si période courante, insère emprunt maintenance. |
 | `create_equipment` / `delete_equipment` | CRUD admin, génère référence, renvoie item/statut. |
 | Helpers | `fetch_active_loans`, `fetch_equipment_by_id`, `map_status`, `merge_tags`, `normalize_categories`, `generate_reference`, `build_reference_prefix`, `transliterate_to_ascii`, `weeks_between`, `period_is_current`, `iso_week_key`, `is_admin`. |
 
@@ -92,10 +92,12 @@
 | `progress_percent` | Ratio temps écoulé / durée totale. |
 | `build_stats` | (hors maintenance) retards (due < aujourd’hui ou rendu tardif), dégradations, totaux annuels, historique trié. |
 | `build_admin_stats` | Retards/dégradations/maintenances de l’année, historique avec user + état de retour. |
-| `return_pret` | Admin-only : contrôle accès, empêche double rendu, borne l’état, remet `Dispo` si plus d’emprunt actif, insère rendu (flag dégradation). |
+| `request_extension` / `decide_extension` | Crée une demande de prolongation côté user, puis validation/refus admin (contrôle durée max selon rôle, conflits, notification user). |
+| `return_pret` | Admin-only (technicien autorisé pour les maintenances) : contrôle accès, empêche double rendu, borne l’état, remet `Dispo` si plus d’emprunt actif, insère rendu (flag dégradation). |
 | `request_cancel` | User/admin : vérifie accès + non-rendu, marque `Annulation demandee`. |
 | `admin_cancel` | Admin : supprime l’emprunt non rendu, notifie l’utilisateur, remet `Dispo` si aucune autre résa active aujourd’hui. |
 | `enqueue_notification` / `consume_notifications` | Stocke les notifications en base (annulation admin/maintenance) et renvoie les non lues en les marquant comme vues. |
+| `ensure_prolongation_table` | Crée la table `Prolongation` si absente (lazy). |
 | Helpers | `normalize_condition`, `condition_rank`, `is_degradation`, `is_admin`. |
 
 </details>

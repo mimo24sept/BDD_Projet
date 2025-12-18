@@ -115,6 +115,7 @@ const API = {
   let calendarMonth = null;
   let selectedStartDate = null;
   let selectedEndDate = null;
+  let extensionContext = null;
 
   // Gestion logout.
   if (logoutBtn) {
@@ -238,18 +239,56 @@ const API = {
   if (reserveBtn) {
     reserveBtn.addEventListener('click', async () => {
       const range = selectionRange();
+      if (!range) {
+        modalMsg.textContent = 'Choisissez un debut et une fin';
+        modalMsg.className = 'message err';
+        return;
+      }
+      if (modalMode === 'extend') {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const baseDue = extensionContext?.due || '';
+        if (!extensionContext?.loanId) {
+          modalMsg.textContent = 'Prêt introuvable pour prolongation.';
+          modalMsg.className = 'message err';
+          return;
+        }
+        if (range.end < todayStr) {
+          modalMsg.textContent = 'La nouvelle date doit être future.';
+          modalMsg.className = 'message err';
+          return;
+        }
+        if (baseDue && range.end <= baseDue) {
+          modalMsg.textContent = 'Choisissez une date après la fin actuelle.';
+          modalMsg.className = 'message err';
+          return;
+        }
+        if (!isRangeFree(range.start, range.end)) {
+          modalMsg.textContent = 'Periode deja reservee';
+          modalMsg.className = 'message err';
+          return;
+        }
+        modalMsg.textContent = 'Prolongation en cours...';
+        modalMsg.className = 'message';
+        try {
+          await apiRequestExtension(extensionContext.loanId, range.end);
+          modalMsg.textContent = 'Prolongation demandée';
+          modalMsg.className = 'message ok';
+          closeModal();
+          await Promise.all([apiFetchEquipment(), apiFetchLoans(), apiFetchAdminLoans()]);
+          render();
+        } catch (err) {
+          modalMsg.textContent = err?.message || 'Prolongation impossible';
+          modalMsg.className = 'message err';
+        }
+        return;
+      }
       if (modalMode === 'reserve' && !state.user) {
         modalMsg.textContent = 'Connectez-vous pour reserver';
         modalMsg.className = 'message err';
         return;
       }
-      if (modalMode === 'maintenance' && !isAdmin()) {
-        modalMsg.textContent = 'Réservé aux administrateurs';
-        modalMsg.className = 'message err';
-        return;
-      }
-      if (!range) {
-        modalMsg.textContent = 'Choisissez un debut et une fin';
+      if (modalMode === 'maintenance' && !hasMaintenanceAccess()) {
+        modalMsg.textContent = 'Réservé aux administrateurs ou techniciens';
         modalMsg.className = 'message err';
         return;
       }
@@ -275,6 +314,11 @@ const API = {
         if (modalMode === 'maintenance') {
           const dates = datesBetween(range.start, range.end);
           const overrides = dates.filter((d) => blockedDates[d] && blockedDates[d] !== 'maintenance').length;
+          if (overrides > 0 && isTechnician() && !isAdmin()) {
+            modalMsg.textContent = 'Conflit avec des réservations : validation administrateur requise.';
+            modalMsg.className = 'message err';
+            return;
+          }
           if (overrides > 0) {
             const ok = window.confirm(`Cette maintenance écrasera ${overrides} réservation(s). Continuer ?`);
             if (!ok) {
@@ -467,7 +511,7 @@ const API = {
 
   // Récupère les statistiques côté admin.
   async function apiFetchAdminStats() {
-    if (!isAdmin()) return;
+    if (!canViewAdminStats()) return;
     try {
       const res = await fetch(`${API.dashboard}?action=admin_stats`, { credentials: 'include' });
       const data = await res.json();
@@ -596,6 +640,38 @@ const API = {
     await apiFetchLoans();
   }
 
+  // Demande de prolongation côté utilisateur.
+  async function apiRequestExtension(id, newDue) {
+    const res = await fetch(`${API.dashboard}?action=extend_request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id, new_due: newDue }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Prolongation impossible');
+    }
+    await apiFetchLoans();
+    return data;
+  }
+
+  // Validation/refus d'une prolongation côté administrateur.
+  async function apiDecideExtension(id, decision) {
+    const res = await fetch(`${API.dashboard}?action=extend_decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id, decision }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Traitement impossible');
+    }
+    await Promise.all([apiFetchLoans(), apiFetchAdminLoans()]);
+    return data;
+  }
+
   // Déconnecte l'utilisateur côté backend.
   async function apiLogout() {
     try {
@@ -668,16 +744,61 @@ const API = {
     return (state.user?.role || '').toLowerCase().includes('admin');
   }
 
+  // Indique si l'utilisateur courant est technicien.
+  function isTechnician() {
+    return (state.user?.role || '').toLowerCase().includes('technicien');
+  }
+
+  // Indique si l'utilisateur courant est professeur.
+  function isProfessor() {
+    return (state.user?.role || '').toLowerCase().includes('prof');
+  }
+
+  // Accès maintenance (admin ou technicien).
+  function hasMaintenanceAccess() {
+    return isTechnician();
+  }
+
+  // Durée max d'une réservation/prolongation selon le rôle.
+  function maxReservationDays() {
+    return isProfessor() ? 21 : 14;
+  }
+
+  function canViewAdminStats() {
+    return isAdmin() || isTechnician();
+  }
+
+  function allowedAdminStatsViews() {
+    if (isAdmin()) return ['total', 'delays', 'degrades', 'maint'];
+    if (isTechnician()) return ['degrades', 'maint'];
+    return [];
+  }
+
   // Affiche ou masque les onglets/sections en fonction du rôle.
   function applyRoleVisibility() {
     const adminEnabled = isAdmin();
+    const techEnabled = isTechnician();
+    const maintenanceAccess = hasMaintenanceAccess();
+    const techOnly = techEnabled && !adminEnabled;
     tabs.forEach((tab) => {
       const isAdminTab = tab.dataset.role === 'admin';
       const isUserLoansTab = tab.dataset.tab === 'loans';
       const isBorrowTab = tab.dataset.tab === 'borrow';
       const isStatsTab = tab.dataset.tab === 'stats';
+      const isMaintenanceTab = tab.dataset.tab === 'admin-maintenance';
+      const isAdminStatsTab = tab.dataset.tab === 'admin-stats';
+      if (techOnly && !isAdminTab && !isMaintenanceTab) {
+        tab.style.display = 'none';
+        return;
+      }
       if (isAdminTab) {
-        tab.style.display = adminEnabled ? '' : 'none';
+        if (isMaintenanceTab) {
+          tab.style.display = maintenanceAccess ? '' : 'none';
+        } else if (isAdminStatsTab && canViewAdminStats()) {
+          tab.style.display = '';
+        } else {
+          tab.style.display = adminEnabled ? '' : 'none';
+        }
       } else if (isUserLoansTab || isBorrowTab || isStatsTab) {
         tab.style.display = adminEnabled ? 'none' : '';
       } else {
@@ -689,18 +810,36 @@ const API = {
       const isUserLoans = sec.dataset.section === 'loans';
       const isBorrow = sec.dataset.section === 'borrow';
       const isStats = sec.dataset.section === 'stats';
+      const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
+      const isAdminStatsSection = sec.dataset.section === 'admin-stats';
+      if (techOnly && !isMaintenanceSection && !isAdminStatsSection) {
+        sec.hidden = true;
+        return;
+      }
       if (isAdminSection) {
-        sec.hidden = !adminEnabled;
+        if (isMaintenanceSection) {
+          sec.hidden = !maintenanceAccess;
+        } else if (isAdminStatsSection) {
+          sec.hidden = !canViewAdminStats();
+        } else {
+          sec.hidden = !adminEnabled;
+        }
       } else if ((isUserLoans || isBorrow || isStats) && adminEnabled) {
         sec.hidden = true;
       } else {
         sec.hidden = false;
       }
     });
-    if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow' || state.activeTab === 'stats')) {
+    if (techOnly) {
+      const allowedTabs = ['admin-maintenance', 'admin-stats'];
+      if (!allowedTabs.includes(state.activeTab)) {
+        state.activeTab = 'admin-maintenance';
+      }
+    } else if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow' || state.activeTab === 'stats')) {
       state.activeTab = 'admin-add';
-    }
-    if (!adminEnabled && state.activeTab.startsWith('admin')) {
+    } else if (!maintenanceAccess && state.activeTab === 'admin-maintenance') {
+      state.activeTab = adminEnabled ? 'admin-add' : 'borrow';
+    } else if (!maintenanceAccess && !adminEnabled && state.activeTab.startsWith('admin')) {
       state.activeTab = 'borrow';
     }
   }
@@ -728,9 +867,20 @@ const API = {
   // Active l'onglet courant et affiche la section associée.
   function updateTabs() {
     tabs.forEach((tab) => {
-      if (tab.dataset.role === 'admin' && !isAdmin()) {
+      const isMaintenanceTab = tab.dataset.tab === 'admin-maintenance';
+      if (isMaintenanceTab && !hasMaintenanceAccess()) {
         tab.classList.remove('active');
+        tab.style.display = 'none';
         return;
+      }
+      if (tab.dataset.role === 'admin' && !isAdmin()) {
+        const isAdminStatsTab = tab.dataset.tab === 'admin-stats';
+        const allowed = (isMaintenanceTab && hasMaintenanceAccess()) || (isAdminStatsTab && canViewAdminStats());
+        if (!allowed) {
+          tab.classList.remove('active');
+          tab.style.display = tab.style.display || 'none';
+          return;
+        }
       }
       tab.classList.toggle('active', tab.dataset.tab === state.activeTab);
     });
@@ -739,8 +889,13 @@ const API = {
       const isLoansSection = sec.dataset.section === 'loans';
       const isBorrowSection = sec.dataset.section === 'borrow';
       const isStatsSection = sec.dataset.section === 'stats';
+      const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
+      const isAdminStatsSection = sec.dataset.section === 'admin-stats';
+      const allowAdminSection = isAdmin()
+        || (isMaintenanceSection && hasMaintenanceAccess())
+        || (isAdminStatsSection && canViewAdminStats());
       sec.hidden = sec.dataset.section !== state.activeTab
-        || (isAdminSection && !isAdmin())
+        || (isAdminSection && !allowAdminSection)
         || ((isLoansSection || isBorrowSection || isStatsSection) && isAdmin());
     });
   }
@@ -908,8 +1063,8 @@ const API = {
   function renderMaintenanceCatalog() {
     if (!maintenanceCatalogEl) return;
     maintenanceCatalogEl.innerHTML = '';
-    if (!isAdmin()) {
-      maintenanceCatalogEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+    if (!hasMaintenanceAccess()) {
+      maintenanceCatalogEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs ou techniciens.</p>';
       return;
     }
     const filtered = state.inventory.filter((item) => {
@@ -922,8 +1077,9 @@ const API = {
     const sorted = filtered.slice().sort((a, b) => Number(needsRepair(b)) - Number(needsRepair(a)));
 
     sorted.forEach((item) => {
+      const urgent = needsRepair(item);
       const card = document.createElement('article');
-      card.className = 'card' + (needsRepair(item) ? ' card-alert' : '');
+      card.className = 'card' + (urgent ? ' card-alert card-urgent' : '');
       card.innerHTML = `
         <img src="${item.picture}" alt="" loading="lazy" />
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
@@ -934,6 +1090,7 @@ const API = {
           ${statusBadge(item.status)}
         </div>
         <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
+        ${urgent ? '<div class="badge status-maint">Urgence : réparation nécessaire</div>' : ''}
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
           <div class="tags" style="margin:0;">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
           <button type="button" class="ghost" data-id="${item.id}">Planifier maintenance</button>
@@ -971,8 +1128,8 @@ const API = {
   function renderMaintenanceAgenda() {
     if (!maintenanceListEl) return;
     maintenanceListEl.innerHTML = '';
-    if (!isAdmin()) {
-      maintenanceListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
+    if (!hasMaintenanceAccess()) {
+      maintenanceListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs ou techniciens.</p>';
       return;
     }
     const maints = state.adminLoans
@@ -1157,17 +1314,43 @@ const API = {
         && loan.status !== 'rendu'
         && loan.status !== 'annulation demandee'
         && !hasStarted;
-      const actionHtml = canReturn
-        ? '<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>'
-        : canRequestCancel
-          ? '<button type="button" class="ghost" data-cancel="' + loan.id + '">Demander annulation</button>'
-          : isAdmin
-            ? '<button type="button" class="ghost" disabled>' +
-                (loan.status === 'rendu' ? 'Déjà rendu' : 'Réservé') +
-              '</button>'
-            : (loan.status === 'annulation demandee'
-              ? '<span class="meta">Annulation demandée</span>'
-              : '');
+      const extension = loan.extension || null;
+      const extensionStatus = (extension?.status || '').toLowerCase();
+      const extensionPending = extensionStatus === 'pending';
+      const extensionRejected = extensionStatus === 'rejected';
+      const extensionApproved = extensionStatus === 'approved';
+      const requestedDue = extension?.requested_due || loan.due;
+      const canRequestExtension = !isAdmin
+        && loan.type === 'pret'
+        && loan.status !== 'rendu'
+        && statusLower !== 'annulation demandee'
+        && hasStarted
+        && !extensionPending;
+
+      const actions = [];
+      if (canReturn) {
+        actions.push('<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>');
+      }
+      if (canRequestCancel) {
+        actions.push('<button type="button" class="ghost" data-cancel="' + loan.id + '">Demander annulation</button>');
+      }
+      if (canRequestExtension) {
+        actions.push('<button type="button" class="ghost" data-extend="' + loan.id + '">Prolonger</button>');
+      }
+      const actionHtml = actions.length
+        ? '<div class="loan-actions" style="display:flex;gap:8px;flex-wrap:wrap;">' + actions.join('') + '</div>'
+        : (loan.status === 'annulation demandee'
+          ? '<span class="meta">Annulation demandée</span>'
+          : '');
+
+      let extensionMsg = '';
+      if (extensionPending) {
+        extensionMsg = `Prolongation demandée jusqu'au ${formatDisplayDate(requestedDue)}`;
+      } else if (extensionApproved && requestedDue) {
+        extensionMsg = `Prolongé jusqu'au ${formatDisplayDate(requestedDue)}`;
+      } else if (extensionRejected) {
+        extensionMsg = 'Prolongation refusée';
+      }
 
       const row = document.createElement('div');
       row.className = `loan-item loan-${severity}`;
@@ -1176,12 +1359,14 @@ const API = {
             <div class="small-title">${escapeHtml(userStateLabel)}</div>
             <div style="font-weight:800">${escapeHtml(loan.name)}</div>
             <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
+            ${extensionMsg ? `<div class="loan-meta">${escapeHtml(extensionMsg)}</div>` : ''}
             <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
           </div>
         ${actionHtml}
       `;
       const returnBtn = canReturn ? row.querySelector('button') : null;
       const cancelBtn = !canReturn ? row.querySelector('button[data-cancel]') : null;
+      const extendBtn = row.querySelector('button[data-extend]');
       if (canReturn && returnBtn) {
         returnBtn.addEventListener('click', async () => {
           returnBtn.disabled = true;
@@ -1211,6 +1396,11 @@ const API = {
           }
         });
       }
+      if (extendBtn) {
+        extendBtn.addEventListener('click', async () => {
+          openExtendModal(loan);
+        });
+      }
       loansEl.appendChild(row);
     });
 
@@ -1237,6 +1427,7 @@ const API = {
     const today = new Date().toISOString().slice(0, 10);
     const active = [];
     const upcoming = [];
+    const extensionRequests = [];
     state.adminLoans
       .filter((l) => l.type !== 'maintenance')
       .filter((l) => l.status !== 'rendu')
@@ -1251,6 +1442,11 @@ const API = {
         const due = loan.due || loan.start;
         const startOk = start && start <= today;
         const dueOk = due && due >= today;
+        const hasPendingExtension = (loan.extension?.status || '').toLowerCase() === 'pending';
+        if (hasPendingExtension) {
+          extensionRequests.push(loan);
+          return;
+        }
         if (statusNorm === 'annulation demandee') {
           upcoming.push({ ...loan, _cancelRequested: true });
           return;
@@ -1367,6 +1563,79 @@ const API = {
 
     const cancels = upcoming.filter((l) => l._cancelRequested);
     const future = upcoming.filter((l) => !l._cancelRequested);
+    if (extensionRequests.length) {
+      const bubble = buildBubble('Prolongations à traiter', '', 'alert');
+      const block = document.createElement('div');
+      block.className = 'admin-subblock admin-alert';
+      extensionRequests.forEach((loan) => {
+        const severity = dueSeverity(loan.due);
+        const barColor = severityColor(severity);
+        const userLabel = escapeHtml(loan.user || 'Inconnu');
+        const requested = loan.extension?.requested_due || loan.due;
+        const row = document.createElement('div');
+        row.className = 'loan-item loan-cancel';
+        row.innerHTML = `
+          <div>
+            <div class="small-title">Prolongation demandée</div>
+            <div style="font-weight:800">${escapeHtml(loan.name)}</div>
+            <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
+            <div class="loan-meta">Actuel: ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
+            <div class="loan-meta">Demandé: ${formatDisplayDate(loan.start)} au ${formatDisplayDate(requested)}</div>
+            <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
+          </div>
+          <div class="admin-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="ghost" data-approve="${loan.id}">Valider</button>
+            <button type="button" class="ghost danger" data-reject="${loan.id}">Refuser</button>
+          </div>
+        `;
+        const approveBtn = row.querySelector('button[data-approve]');
+        const rejectBtn = row.querySelector('button[data-reject]');
+        const setLoading = (btn, label) => {
+          btn.disabled = true;
+          btn.textContent = label;
+          if (approveBtn && approveBtn !== btn) approveBtn.disabled = true;
+          if (rejectBtn && rejectBtn !== btn) rejectBtn.disabled = true;
+        };
+        const resetButtons = () => {
+          if (approveBtn) {
+            approveBtn.disabled = false;
+            approveBtn.textContent = 'Valider';
+          }
+          if (rejectBtn) {
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = 'Refuser';
+          }
+        };
+        if (approveBtn) {
+          approveBtn.addEventListener('click', async () => {
+            setLoading(approveBtn, 'Validation...');
+            try {
+              await apiDecideExtension(loan.id, 'approve');
+              render();
+            } catch (err) {
+              resetButtons();
+              alert(err?.message || 'Validation impossible');
+            }
+          });
+        }
+        if (rejectBtn) {
+          rejectBtn.addEventListener('click', async () => {
+            setLoading(rejectBtn, 'Refus...');
+            try {
+              await apiDecideExtension(loan.id, 'reject');
+              render();
+            } catch (err) {
+              resetButtons();
+              alert(err?.message || 'Refus impossible');
+            }
+          });
+        }
+        block.appendChild(row);
+      });
+      bubble.appendChild(block);
+      priorityCol.appendChild(bubble);
+      hasContent = true;
+    }
     if (cancels.length) {
       const bubble = buildBubble('Annulations à traiter', '', 'alert');
       renderList(bubble, cancels, '', { actionLabel: 'Valider annulation', variant: 'alert', cancelable: true });
@@ -1474,12 +1743,16 @@ const API = {
   // Rendu des cartes de statistiques côté administrateur.
   function renderAdminStats() {
     if (!adminStatsEls.total) return;
-    if (!isAdmin()) {
+    if (!canViewAdminStats()) {
       adminStatsEls.total.textContent = '0';
       adminStatsEls.delays.textContent = '0';
       adminStatsEls.degrades.textContent = '0';
       if (adminStatsEls.maint) adminStatsEls.maint.textContent = '0';
       return;
+    }
+    const allowedViews = allowedAdminStatsViews();
+    if (!allowedViews.includes(state.adminStatsView)) {
+      state.adminStatsView = allowedViews[0] || 'degrades';
     }
     const stats = state.adminStats || { total_year: 0, delays: 0, degrades: 0, maints: 0 };
     adminStatsEls.total.textContent = String(stats.total_year ?? 0);
@@ -1488,7 +1761,9 @@ const API = {
     if (adminStatsEls.maint) adminStatsEls.maint.textContent = String(stats.maints ?? 0);
     Object.entries(adminStatsEls.cards).forEach(([key, el]) => {
       if (!el) return;
-      el.classList.toggle('active', state.adminStatsView === key.replace('card-', ''));
+      const viewKey = key.replace('card-', '');
+      el.style.display = allowedViews.includes(viewKey) ? '' : 'none';
+      el.classList.toggle('active', state.adminStatsView === viewKey);
     });
   }
 
@@ -1497,11 +1772,13 @@ const API = {
   function renderAdminStatsList() {
     if (!adminStatsEls.list) return;
     adminStatsEls.list.innerHTML = '';
-    if (!isAdmin()) {
-      adminStatsEls.list.innerHTML = '<p class="meta">Réservé aux administrateurs.</p>';
+    if (!canViewAdminStats()) {
+      adminStatsEls.list.innerHTML = '<p class="meta">Réservé aux administrateurs ou techniciens.</p>';
       return;
     }
-    const view = state.adminStatsView;
+    const allowedViews = allowedAdminStatsViews();
+    const view = allowedViews.includes(state.adminStatsView) ? state.adminStatsView : (allowedViews[0] || 'degrades');
+    state.adminStatsView = view;
     const all = Array.isArray(state.adminHistory) ? state.adminHistory : [];
     const filtered = all.filter((item) => {
       const matchesView = view === 'total'
@@ -1602,16 +1879,49 @@ const API = {
   }
 
   // --- Modale de réservation / maintenance et calendrier custom ---
+  // Ouvre la modale en mode prolongation pour un prêt existant.
+  function openExtendModal(loan) {
+    if (!loan || !loan.material_id || !loan.start || !loan.due) {
+      alert('Matériel introuvable pour cette prolongation.');
+      return;
+    }
+    const item = state.inventory.find((i) => i.id === loan.material_id);
+    if (!item) {
+      alert('Matériel introuvable pour cette prolongation.');
+      return;
+    }
+    extensionContext = {
+      loanId: loan.id,
+      start: loan.start,
+      due: loan.due,
+    };
+    openModal(item, 'extend');
+  }
+
   // Ouvre la modale de réservation ou de maintenance pour un item.
   function openModal(item, mode = 'reserve') {
     modalMode = mode;
+    if (modalMode !== 'extend') {
+      extensionContext = null;
+    }
     state.modalItem = item;
     blockedWeeks = Array.isArray(item.reserved_weeks) ? item.reserved_weeks : [];
     reservationPeriods = Array.isArray(item.reservations) ? item.reservations : [];
     blockedDates = buildBlockedDates(reservationPeriods);
-    selectedStartDate = null;
-    selectedEndDate = null;
-    calendarMonth = new Date();
+    if (modalMode === 'extend' && extensionContext?.start) {
+      const ownSpan = datesBetween(extensionContext.start, extensionContext.due || extensionContext.start);
+      ownSpan.forEach((d) => {
+        delete blockedDates[d];
+      });
+      selectedStartDate = extensionContext.start;
+      selectedEndDate = null;
+      const baseMonth = extensionContext.due || extensionContext.start;
+      calendarMonth = baseMonth ? new Date(`${baseMonth}T00:00:00`) : new Date();
+    } else {
+      selectedStartDate = null;
+      selectedEndDate = null;
+      calendarMonth = new Date();
+    }
     modalTitle.textContent = item.name;
     const picture = item.picture || placeholderImage(item.name);
     const categoriesLabel = (item.categories && item.categories.length)
@@ -1651,13 +1961,23 @@ const API = {
       `;
     dateStartInput = modalBody.querySelector('#manual-start');
     dateEndInput = modalBody.querySelector('#manual-end');
-    if (dateStartInput) dateStartInput.addEventListener('input', handleManualDateInput);
-    if (dateEndInput) dateEndInput.addEventListener('input', handleManualDateInput);
+    if (dateStartInput) {
+      dateStartInput.addEventListener('input', handleManualDateInput);
+      dateStartInput.disabled = modalMode === 'extend';
+    }
+    if (dateEndInput) {
+      dateEndInput.addEventListener('input', handleManualDateInput);
+      dateEndInput.disabled = false;
+    }
     renderCalendar();
-    modalMsg.textContent = '';
+    syncManualInputs();
+    modalMsg.textContent = modalMode === 'extend' ? 'Choisissez une nouvelle date de fin.' : '';
+    modalMsg.className = 'message';
     updateAvailabilityMessage();
     modalBackdrop.classList.add('show');
-    reserveBtn.textContent = modalMode === 'maintenance' ? 'Planifier maintenance' : 'Reserver';
+    reserveBtn.textContent = modalMode === 'maintenance'
+      ? 'Planifier maintenance'
+      : (modalMode === 'extend' ? 'Prolonger' : 'Reserver');
   }
 
   // Ferme la modale de réservation/maintenance et réinitialise l'état.
@@ -1667,6 +1987,7 @@ const API = {
     selectedStartDate = null;
     selectedEndDate = null;
     calendarMonth = null;
+    extensionContext = null;
     modalBackdrop.classList.remove('show');
   }
 
@@ -1896,6 +2217,27 @@ const API = {
   // et on réinitialise la sélection si la plage choisie est déjà bloquée.
   function handleDayClick(dateStr) {
     const todayStr = new Date().toISOString().slice(0, 10);
+    if (modalMode === 'extend') {
+      if (!extensionContext?.start) return;
+      if (dateStr < extensionContext.start) return;
+      selectedStartDate = extensionContext.start;
+      selectedEndDate = dateStr;
+      const maxDays = maxReservationDays();
+      const range = selectionRange();
+      if (range && dateDiffDays(range.start, range.end) > maxDays) {
+        selectedEndDate = null;
+        modalMsg.textContent = `Sélection limitée à ${maxDays} jours.`;
+        modalMsg.className = 'message err';
+      } else if (range && !isRangeFree(range.start, range.end)) {
+        selectedEndDate = null;
+        modalMsg.textContent = 'Periode deja reservee';
+        modalMsg.className = 'message err';
+      }
+      renderCalendar();
+      syncManualInputs();
+      updateAvailabilityMessage();
+      return;
+    }
     if (dateStr < todayStr) return;
     if (blockedDates[dateStr] && !(modalMode === 'maintenance' && blockedDates[dateStr] !== 'maintenance')) return;
     if (!selectedStartDate || (selectedStartDate && selectedEndDate)) {
@@ -1909,7 +2251,8 @@ const API = {
         selectedEndDate = dateStr;
       }
       const range = selectionRange();
-      if (range && dateDiffDays(range.start, range.end) > 14) {
+      const maxDays = modalMode === 'maintenance' ? 365 : maxReservationDays();
+      if (range && modalMode !== 'maintenance' && dateDiffDays(range.start, range.end) > maxDays) {
         selectedStartDate = dateStr;
         selectedEndDate = null;
       } else if (range && !isRangeFree(range.start, range.end)) {
@@ -2021,6 +2364,20 @@ const API = {
     const start = parseManualInput(startRaw);
     const end = parseManualInput(endRaw);
     const todayStr = new Date().toISOString().slice(0, 10);
+    if (modalMode === 'extend') {
+      selectedStartDate = extensionContext?.start || null;
+      if (end) {
+        selectedEndDate = end;
+        if (selectedStartDate && selectedEndDate < selectedStartDate) {
+          selectedEndDate = null;
+        }
+      } else if (endRaw.trim() === '') {
+        selectedEndDate = null;
+      }
+      renderCalendar();
+      updateAvailabilityMessage();
+      return;
+    }
     if (start) {
       selectedStartDate = start < todayStr ? todayStr : start;
     } else if (startRaw.trim() === '') {
@@ -2057,21 +2414,38 @@ const API = {
     const range = selectionRange();
     if (!range) {
       reserveBtn.disabled = true;
-      modalMsg.textContent = 'Choisissez un debut puis une fin.';
+      modalMsg.textContent = modalMode === 'extend' ? 'Choisissez une nouvelle date de fin.' : 'Choisissez un debut puis une fin.';
       modalMsg.className = 'message';
       return;
     }
     const todayStr = new Date().toISOString().slice(0, 10);
-    if (range.start < todayStr) {
-      reserveBtn.disabled = true;
-      modalMsg.textContent = 'Impossible de reserver dans le passe.';
-      modalMsg.className = 'message err';
-      return;
+    if (modalMode !== 'extend') {
+      if (range.start < todayStr) {
+        reserveBtn.disabled = true;
+        modalMsg.textContent = 'Impossible de reserver dans le passe.';
+        modalMsg.className = 'message err';
+        return;
+      }
+    } else {
+      if (range.end < todayStr) {
+        reserveBtn.disabled = true;
+        modalMsg.textContent = 'La nouvelle date doit être future.';
+        modalMsg.className = 'message err';
+        return;
+      }
+      const baseDue = extensionContext?.due || '';
+      if (baseDue && range.end <= baseDue) {
+        reserveBtn.disabled = true;
+        modalMsg.textContent = 'Choisissez une date après la fin actuelle.';
+        modalMsg.className = 'message err';
+        return;
+      }
     }
+    const maxDays = modalMode === 'maintenance' ? 365 : maxReservationDays();
     const diff = dateDiffDays(range.start, range.end);
-    if (diff > 14) {
+    if (modalMode !== 'maintenance' && diff > maxDays) {
       reserveBtn.disabled = true;
-      modalMsg.textContent = 'Sélection limitée à 14 jours.';
+      modalMsg.textContent = `Sélection limitée à ${maxDays} jours.`;
       modalMsg.className = 'message err';
       return;
     }
@@ -2115,10 +2489,19 @@ const API = {
       window.location.href = 'index.html';
       return;
     }
+    if (isTechnician() && !isAdmin()) {
+      state.adminStatsView = 'degrades';
+      state.activeTab = 'admin-maintenance';
+    }
     setAuthUI();
     await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
+    if (hasMaintenanceAccess() || isAdmin()) {
+      await apiFetchAdminLoans();
+    }
     if (isAdmin()) {
-      await Promise.all([apiFetchAdminLoans(), apiFetchUsers(), apiFetchAdminStats()]);
+      await Promise.all([apiFetchUsers(), apiFetchAdminStats()]);
+    } else if (isTechnician()) {
+      await apiFetchAdminStats();
     }
     render();
   })();

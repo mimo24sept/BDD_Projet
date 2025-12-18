@@ -59,6 +59,20 @@ CREATE TABLE `Emprunt` (
 -- --------------------------------------------------------
 
 --
+-- Structure de la table `Prolongation`
+--
+
+CREATE TABLE `Prolongation` (
+  `IDprolongation` int(11) NOT NULL,
+  `IDemprunt` int(11) NOT NULL,
+  `DATEfinDemande` date NOT NULL,
+  `Status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Structure de la table `Materiel`
 --
 
@@ -122,8 +136,10 @@ CREATE TABLE `Role` (
 --
 
 INSERT INTO `Role` (`IDrole`, `Role`) VALUES
-(1, 'Utilisateur'),
-(2, 'Administrateur');
+(1, 'Eleve'),
+(2, 'Professeur'),
+(3, 'Technicien'),
+(4, 'Administrateur');
 
 -- --------------------------------------------------------
 
@@ -146,7 +162,7 @@ CREATE TABLE `User` (
 
 INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `IDrole`, `DATEcreation`) VALUES
 (1, 'test.test@gmail.com', '1234', 'testtruc', 1, '2025-11-24'),
-(2, 'admin@geii.fr', 'admin', 'admin', 2, '2025-11-24');
+(2, 'admin@geii.fr', 'admin', 'admin', 4, '2025-11-24');
 
 --
 -- Index pour les tables déchargées
@@ -163,6 +179,19 @@ ALTER TABLE `Categorie`
 --
 ALTER TABLE `Emprunt`
   ADD PRIMARY KEY (`IDemprunt`);
+
+--
+-- Index pour la table `Prolongation`
+--
+ALTER TABLE `Prolongation`
+  ADD PRIMARY KEY (`IDprolongation`),
+  ADD KEY `idx_prolongation_emprunt` (`IDemprunt`);
+
+--
+-- Contraintes pour la table `Prolongation`
+--
+ALTER TABLE `Prolongation`
+  ADD CONSTRAINT `fk_prolongation_emprunt` FOREIGN KEY (`IDemprunt`) REFERENCES `Emprunt` (`IDemprunt`) ON DELETE CASCADE;
 
 --
 -- Index pour la table `Materiel`
@@ -212,6 +241,12 @@ ALTER TABLE `Emprunt`
   MODIFY `IDemprunt` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT pour la table `Prolongation`
+--
+ALTER TABLE `Prolongation`
+  MODIFY `IDprolongation` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT pour la table `Materiel`
 --
 ALTER TABLE `Materiel`
@@ -233,7 +268,7 @@ ALTER TABLE `Notification`
 -- AUTO_INCREMENT pour la table `Role`
 --
 ALTER TABLE `Role`
-  MODIFY `IDrole` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `IDrole` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT pour la table `User`

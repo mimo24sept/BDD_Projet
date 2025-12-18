@@ -114,7 +114,7 @@ function login(PDO $pdo): void
 
     $_SESSION['user_id'] = (int) $user['IDuser'];
     $_SESSION['login'] = $user['NOMuser'] ?: $user['Couriel'];
-    $_SESSION['role'] = $user['Role'] ?? 'Utilisateur';
+    $_SESSION['role'] = $user['Role'] ?? 'Eleve';
 
     echo json_encode(current_user());
 }
@@ -127,7 +127,7 @@ function logout(): void
     echo json_encode(['message' => 'Déconnecté']);
 }
 
-// Inscrit un nouvel utilisateur (avec option professeur) et ouvre la session.
+// Inscrit un nouvel utilisateur (avec rôles multiples) et ouvre la session.
 function register(PDO $pdo): void
 {
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
@@ -135,8 +135,8 @@ function register(PDO $pdo): void
     $login = trim((string) ($data['login'] ?? ''));
     $password = (string) ($data['password'] ?? '');
     $confirm = (string) ($data['confirm'] ?? '');
-    $roleChoice = strtolower(trim((string) ($data['role'] ?? 'etudiant')));
-    $profSecret = (string) ($data['secret'] ?? '');
+    $roleChoice = strtolower(trim((string) ($data['role'] ?? 'eleve')));
+    $secret = (string) ($data['secret'] ?? '');
 
     if ($email === '' || $login === '' || $password === '' || $confirm === '') {
         http_response_code(400);
@@ -154,10 +154,17 @@ function register(PDO $pdo): void
         return;
     }
 
-    $isProf = $roleChoice === 'professeur' || $roleChoice === 'prof';
-    if ($isProf && $profSecret !== 'truite') {
+    $roleName = normalize_role_label($roleChoice);
+    if ($roleName === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Rôle invalide']);
+        return;
+    }
+    $needsSecret = in_array($roleName, ['Professeur', 'Technicien', 'Administrateur'], true);
+    $expectedSecret = $roleName === 'Professeur' ? 'prof' : ($roleName === 'Technicien' ? 'tech' : 'admin');
+    if ($needsSecret && $secret !== $expectedSecret) {
         http_response_code(403);
-        echo json_encode(['error' => 'Mot de passe professeur invalide']);
+        echo json_encode(['error' => 'Mot de passe secret invalide']);
         return;
     }
 
@@ -170,8 +177,13 @@ function register(PDO $pdo): void
         return;
     }
 
-    $roleName = $isProf ? 'Administrateur' : 'Utilisateur';
-    $roleId = lookup_role_id($pdo, $roleName, $isProf ? 2 : 1);
+    $fallbackId = match ($roleName) {
+        'Administrateur' => 4,
+        'Professeur' => 2,
+        'Technicien' => 3,
+        default => 1,
+    };
+    $roleId = lookup_role_id($pdo, $roleName, $fallbackId);
     $hash = password_hash($password, PASSWORD_DEFAULT);
 
     ensure_last_login_column($pdo);
@@ -237,19 +249,28 @@ function list_users(PDO $pdo): array
     $hasLast = ensure_last_login_column($pdo);
     $select = 'SELECT u.IDuser AS id, u.Couriel AS email, u.NOMuser AS login, u.DATEcreation AS created, r.Role AS role';
     $select .= $hasLast ? ', u.LastLogin AS last_login' : ', NULL AS last_login';
-    $select .= ' FROM `User` u LEFT JOIN `Role` r ON r.IDrole = u.IDrole WHERE r.Role NOT LIKE "%admin%" ORDER BY u.IDuser DESC';
+    $select .= ' FROM `User` u LEFT JOIN `Role` r ON r.IDrole = u.IDrole WHERE LOWER(r.Role) NOT LIKE "%admin%" ORDER BY u.IDuser DESC';
     $stmt = $pdo->query($select);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// Normalise un rôle fourni (admin/prof -> Administrateur, sinon Utilisateur).
+// Normalise un rôle fourni vers un libellé connu.
 function normalize_role(string $input): string
 {
+    return normalize_role_label($input) ?: 'Eleve';
+}
+
+// Retourne un libellé de rôle propre ou chaîne vide si inconnu.
+function normalize_role_label(string $input): string
+{
     $r = strtolower(trim($input));
-    if (in_array($r, ['admin', 'administrateur', 'professeur', 'prof'], true)) {
-        return 'Administrateur';
-    }
-    return 'Utilisateur';
+    return match (true) {
+        in_array($r, ['admin', 'administrateur'], true) => 'Administrateur',
+        in_array($r, ['technicien', 'tech'], true) => 'Technicien',
+        in_array($r, ['prof', 'professeur'], true) => 'Professeur',
+        in_array($r, ['eleve', 'etudiant', 'utilisateur'], true) => 'Eleve',
+        default => '',
+    };
 }
 
 // Met à jour le rôle d'un utilisateur (contrôles inclus).
@@ -273,7 +294,13 @@ function set_role(PDO $pdo): void
     }
 
     $roleName = normalize_role($roleRaw);
-    $roleId = lookup_role_id($pdo, $roleName, $roleName === 'Administrateur' ? 2 : 1);
+    $fallbackId = match ($roleName) {
+        'Administrateur' => 4,
+        'Professeur' => 2,
+        'Technicien' => 3,
+        default => 1,
+    };
+    $roleId = lookup_role_id($pdo, $roleName, $fallbackId);
 
     if (is_role_admin($target['role'] ?? '') && $roleName !== 'Administrateur') {
         http_response_code(403);
@@ -372,6 +399,12 @@ function ensure_last_login_column(PDO $pdo): bool
 // Vérifie si l'utilisateur en session est admin.
 function is_admin(): bool
 {
-    $role = (string) ($_SESSION['role'] ?? '');
-    return stripos($role, 'admin') !== false;
+    return is_role_admin((string) ($_SESSION['role'] ?? ''));
+}
+
+// Indique si l'utilisateur courant est technicien.
+function is_technician(): bool
+{
+    $role = strtolower((string) ($_SESSION['role'] ?? ''));
+    return str_contains($role, 'technicien');
 }

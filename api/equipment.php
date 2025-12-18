@@ -64,9 +64,9 @@ if ($method === 'POST' && $action === 'delete') {
 }
 
 if ($method === 'POST' && $action === 'maintenance') {
-    if (!is_admin()) {
+    if (!is_admin() && !is_technician()) {
         http_response_code(403);
-        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        echo json_encode(['error' => 'Réservé aux administrateurs ou techniciens']);
         exit;
     }
     set_maintenance($pdo, (int) $_SESSION['user_id']);
@@ -169,6 +169,14 @@ function reserve_equipment(PDO $pdo, int $userId): void
         [$start, $end] = [$end, $start];
     }
 
+    $maxDays = max_reservation_days_for_role((string) ($_SESSION['role'] ?? ''));
+    $duration = days_between_inclusive($start, $end);
+    if ($duration > $maxDays) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Durée maximale de ' . $maxDays . ' jours dépassée']);
+        return;
+    }
+
     $conflict = $pdo->prepare(
         'SELECT 1
          FROM `Emprunt` e
@@ -261,7 +269,7 @@ function set_maintenance(PDO $pdo, int $userId): void
              FROM `Emprunt` e
              LEFT JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
              WHERE e.IDmateriel = :id
-               AND LOWER(e.ETATemprunt) <> "maintenance"
+               AND LOWER(e.ETATemprunt) NOT LIKE "maintenance%"
                AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
                AND e.DATEdebut <= :fin
                AND e.DATEfin >= :debut'
@@ -269,6 +277,12 @@ function set_maintenance(PDO $pdo, int $userId): void
         $overlaps->execute([':id' => $id, ':debut' => $start, ':fin' => $end]);
         $toRemove = $overlaps->fetchAll(PDO::FETCH_ASSOC);
         if (!empty($toRemove)) {
+            if (!is_admin()) {
+                $pdo->rollBack();
+                http_response_code(403);
+                echo json_encode(['error' => 'Conflit avec des réservations : autorisation administrateur requise']);
+                return;
+            }
             $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
             $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
             foreach ($toRemove as $row) {
@@ -296,7 +310,7 @@ function set_maintenance(PDO $pdo, int $userId): void
             'SELECT 1
              FROM `Emprunt` e
              WHERE e.IDmateriel = :id
-               AND LOWER(e.ETATemprunt) = "maintenance"
+               AND LOWER(e.ETATemprunt) LIKE "maintenance%"
                AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
                AND e.DATEdebut <= :fin
                AND e.DATEfin >= :debut
@@ -514,7 +528,7 @@ function fetch_active_loans(PDO $pdo): array
             $active[$id]['hasActiveNow'] = true;
         }
 
-        if ($kind === 'maintenance') {
+        if (str_contains($kind, 'maintenance')) {
             $active[$id]['hasMaintenanceAny'] = true;
             if ($isCurrent) {
                 $active[$id]['hasMaintenanceNow'] = true;
@@ -777,4 +791,42 @@ function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');
     return stripos($role, 'admin') !== false;
+}
+
+// Indique si l'utilisateur en session est technicien.
+function is_technician(): bool
+{
+    $role = strtolower((string) ($_SESSION['role'] ?? ''));
+    return str_contains($role, 'technicien');
+}
+
+// Indique si l'utilisateur en session est professeur.
+function is_professor(): bool
+{
+    $role = strtolower((string) ($_SESSION['role'] ?? ''));
+    return str_contains($role, 'professeur');
+}
+
+// Retourne la durée max autorisée pour une réservation selon le rôle.
+function max_reservation_days_for_role(string $role): int
+{
+    $role = strtolower(trim($role));
+    if (str_contains($role, 'prof')) {
+        return 21;
+    }
+    return 14;
+}
+
+// Nombre de jours (inclus) entre deux dates AAAA-MM-JJ.
+function days_between_inclusive(string $start, string $end): int
+{
+    $startTs = strtotime($start);
+    $endTs = strtotime($end);
+    if ($startTs === false || $endTs === false) {
+        return 0;
+    }
+    if ($endTs < $startTs) {
+        [$startTs, $endTs] = [$endTs, $startTs];
+    }
+    return (int) floor(($endTs - $startTs) / 86400) + 1;
 }

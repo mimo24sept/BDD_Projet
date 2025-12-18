@@ -24,6 +24,8 @@ try {
     exit;
 }
 
+ensure_prolongation_table($pdo);
+
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Connectez-vous pour voir vos emprunts']);
@@ -34,9 +36,9 @@ $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
 if ($method === 'GET' && $action === 'admin_stats') {
-    if (!is_admin()) {
+    if (!is_admin() && !is_technician()) {
         http_response_code(403);
-        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        echo json_encode(['error' => 'Réservé aux administrateurs ou techniciens']);
         exit;
     }
     try {
@@ -50,9 +52,9 @@ if ($method === 'GET' && $action === 'admin_stats') {
 }
 
 if ($method === 'POST' && $action === 'return') {
-    if (!is_admin()) {
+    if (!is_admin() && !is_technician()) {
         http_response_code(403);
-        echo json_encode(['error' => 'Retour réservé aux administrateurs']);
+        echo json_encode(['error' => 'Retour réservé aux administrateurs ou techniciens']);
         exit;
     }
     return_pret($pdo, (int) $_SESSION['user_id']);
@@ -74,9 +76,24 @@ if ($method === 'POST' && $action === 'cancel_request') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'extend_request') {
+    request_extension($pdo, (int) $_SESSION['user_id']);
+    exit;
+}
+
+if ($method === 'POST' && $action === 'extend_decide') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    decide_extension($pdo);
+    exit;
+}
+
 try {
     $scope = $_GET['scope'] ?? 'mine';
-    $targetUser = ($scope === 'all' && is_admin()) ? null : (int) $_SESSION['user_id'];
+    $targetUser = ($scope === 'all' && (is_admin() || is_technician())) ? null : (int) $_SESSION['user_id'];
     $loans = fetch_loans($pdo, $targetUser);
     $stats = build_stats($loans);
     $notifications = consume_notifications($pdo, (int) $_SESSION['user_id']);
@@ -113,8 +130,9 @@ function fetch_loans(PDO $pdo, ?int $userId): array
         $returnedAt = $row['DATErendu'] ?? null;
         $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
         $returnState = $row['ETATrendu'] ?? '';
-        $type = $kind === 'maintenance' ? 'maintenance' : 'pret';
+        $type = is_maintenance_kind($kind) ? 'maintenance' : 'pret';
         $status = $returnedAt ? 'rendu' : ($kind ?: 'en cours');
+        $extension = fetch_extension_for_loan($pdo, (int) $row['IDemprunt']);
         $loans[] = [
             'id' => (int) $row['IDemprunt'],
             'type' => $type,
@@ -128,6 +146,7 @@ function fetch_loans(PDO $pdo, ?int $userId): array
             'condition' => $row['EtatMateriel'] ?? '',
             'returned' => $returnedAt,
             'return_state' => $returnState,
+            'extension' => $extension,
         ];
     }
 
@@ -267,15 +286,17 @@ function build_admin_stats(PDO $pdo): array
     $history = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
-        $isMaintenance = $kind === 'maintenance';
+        $isMaintenance = is_maintenance_kind($kind);
+        $returned = $row['DATErendu'] ?? null;
         if ($isMaintenance) {
-            $maints += 1;
+            if ($returned) {
+                $maints += 1;
+            }
         } else {
             $total += 1;
         }
         $start = $row['DATEdebut'] ?? null;
         $due = $row['DATEfin'] ?? null;
-        $returned = $row['DATErendu'] ?? null;
         $etatRendu = $row['ETATrendu'] ?? '';
         $isDelay = false;
         if ($due) {
@@ -319,6 +340,57 @@ function build_admin_stats(PDO $pdo): array
     ];
 }
 
+// S'assure que la table des prolongations existe (création lazy si absente).
+function ensure_prolongation_table(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `Prolongation` (
+            `IDprolongation` int(11) NOT NULL AUTO_INCREMENT,
+            `IDemprunt` int(11) NOT NULL,
+            `DATEfinDemande` date NOT NULL,
+            `Status` enum("pending","approved","rejected") NOT NULL DEFAULT "pending",
+            `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`IDprolongation`),
+            KEY `idx_prolongation_emprunt` (`IDemprunt`),
+            CONSTRAINT `fk_prolongation_emprunt` FOREIGN KEY (`IDemprunt`) REFERENCES `Emprunt` (`IDemprunt`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    );
+    $done = true;
+}
+
+// Récupère la dernière demande de prolongation associée à un prêt.
+function fetch_extension_for_loan(PDO $pdo, int $loanId): ?array
+{
+    if ($loanId <= 0) {
+        return null;
+    }
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT DATEfinDemande, Status, CreatedAt
+             FROM `Prolongation`
+             WHERE IDemprunt = :id
+             ORDER BY CreatedAt DESC, IDprolongation DESC
+             LIMIT 1'
+        );
+        $stmt->execute([':id' => $loanId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        return [
+            'requested_due' => $row['DATEfinDemande'] ?? '',
+            'status' => $row['Status'] ?? '',
+            'created_at' => $row['CreatedAt'] ?? '',
+        ];
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 // Marque un prêt comme rendu : contrôle accès, insère le rendu, met à jour l'état matériel et la disponibilité.
 function return_pret(PDO $pdo, int $userId): void
 {
@@ -343,10 +415,15 @@ function return_pret(PDO $pdo, int $userId): void
             'SELECT IDmateriel, ETATemprunt
              FROM `Emprunt`
              WHERE IDemprunt = :id
-               AND (:uid = IDuser OR :isAdmin = 1)
+               AND (:uid = IDuser OR :isAdmin = 1 OR :isTech = 1)
              LIMIT 1'
         );
-        $select->execute([':id' => $id, ':uid' => $userId, ':isAdmin' => is_admin() ? 1 : 0]);
+        $select->execute([
+            ':id' => $id,
+            ':uid' => $userId,
+            ':isAdmin' => is_admin() ? 1 : 0,
+            ':isTech' => is_technician() ? 1 : 0,
+        ]);
         $row = $select->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
             $pdo->rollBack();
@@ -355,7 +432,13 @@ function return_pret(PDO $pdo, int $userId): void
             return;
         }
         $materielId = (int) $row['IDmateriel'];
-        $isMaintenanceLoan = strtolower((string) ($row['ETATemprunt'] ?? '')) === 'maintenance';
+        $isMaintenanceLoan = is_maintenance_kind((string) ($row['ETATemprunt'] ?? ''));
+        if (is_technician() && !$isMaintenanceLoan) {
+            $pdo->rollBack();
+            http_response_code(403);
+            echo json_encode(['error' => 'Un technicien ne peut clôturer que les maintenances']);
+            return;
+        }
 
         $alreadyReturned = $pdo->prepare('SELECT 1 FROM `Rendu` WHERE IDemprunt = :id LIMIT 1');
         $alreadyReturned->execute([':id' => $id]);
@@ -366,12 +449,13 @@ function return_pret(PDO $pdo, int $userId): void
             return;
         }
 
+        $newStatus = $isMaintenanceLoan ? 'Maintenance terminee' : 'Terminé';
         $updatePret = $pdo->prepare(
             'UPDATE `Emprunt`
-             SET ETATemprunt = "Terminé"
+             SET ETATemprunt = :etat
              WHERE IDemprunt = :id'
         );
-        $updatePret->execute([':id' => $id]);
+        $updatePret->execute([':id' => $id, ':etat' => $newStatus]);
 
         $currentMat = $pdo->prepare('SELECT Etat FROM `Materiel` WHERE IDmateriel = :mid LIMIT 1');
         $currentMat->execute([':mid' => $materielId]);
@@ -463,6 +547,146 @@ function request_cancel(PDO $pdo, int $userId): void
     }
 }
 
+// Demande de prolongation initiée par un utilisateur (soumise à validation admin).
+function request_extension(PDO $pdo, int $userId): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $requested = normalize_date_input((string) ($data['new_due'] ?? ''));
+
+    if ($id <= 0 || $requested === null) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant ou date invalide']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $select = $pdo->prepare(
+            'SELECT IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt
+             FROM `Emprunt`
+             WHERE IDemprunt = :id
+             LIMIT 1'
+        );
+        $select->execute([':id' => $id]);
+        $row = $select->fetch(PDO::FETCH_ASSOC);
+        if (!$row || ((int) ($row['IDuser'] ?? 0) !== $userId && !is_admin())) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Prêt introuvable']);
+            return;
+        }
+
+        $alreadyReturned = $pdo->prepare('SELECT 1 FROM `Rendu` WHERE IDemprunt = :id LIMIT 1');
+        $alreadyReturned->execute([':id' => $id]);
+        if ($alreadyReturned->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Déjà rendu']);
+            return;
+        }
+
+        $status = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        if (is_maintenance_kind($status)) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Prolongation impossible sur une maintenance']);
+            return;
+        }
+        if ($status === 'annulation demandee') {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Annulation en cours : prolongation impossible']);
+            return;
+        }
+
+        $start = $row['DATEdebut'] ?? '';
+        $due = $row['DATEfin'] ?? $start;
+        $borrowerRole = fetch_user_role($pdo, (int) ($row['IDuser'] ?? 0));
+        $maxDays = max_reservation_days_for_role($borrowerRole);
+        if ($start === '' || $due === '' || $requested === null) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Dates manquantes ou invalides']);
+            return;
+        }
+        if (strtotime($requested) <= strtotime($due)) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'La nouvelle date doit dépasser la date actuelle']);
+            return;
+        }
+        if ($requested < date('Y-m-d')) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Impossible de prolonger dans le passé']);
+            return;
+        }
+        $duration = days_between_inclusive($start, $requested);
+        if ($duration > $maxDays) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Durée maximale de ' . $maxDays . ' jours dépassée']);
+            return;
+        }
+
+        $conflict = $pdo->prepare(
+            'SELECT 1
+             FROM `Emprunt` e
+             WHERE e.IDmateriel = :mid
+               AND e.IDemprunt <> :id
+               AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+               AND e.DATEdebut <= :newEnd
+               AND e.DATEfin >= :start
+             LIMIT 1'
+        );
+        $conflict->execute([
+            ':mid' => (int) ($row['IDmateriel'] ?? 0),
+            ':id' => $id,
+            ':newEnd' => $requested,
+            ':start' => $start,
+        ]);
+        if ($conflict->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Déjà réservé sur la période demandée']);
+            return;
+        }
+
+        $existing = $pdo->prepare(
+            'SELECT IDprolongation
+             FROM `Prolongation`
+             WHERE IDemprunt = :id AND Status = "pending"
+             ORDER BY CreatedAt DESC
+             LIMIT 1'
+        );
+        $existing->execute([':id' => $id]);
+        $pendingId = (int) ($existing->fetchColumn() ?: 0);
+
+        if ($pendingId > 0) {
+            $update = $pdo->prepare(
+                'UPDATE `Prolongation`
+                 SET DATEfinDemande = :due, Status = "pending", CreatedAt = CURRENT_TIMESTAMP
+                 WHERE IDprolongation = :pid'
+            );
+            $update->execute([':due' => $requested, ':pid' => $pendingId]);
+        } else {
+            $insert = $pdo->prepare(
+                'INSERT INTO `Prolongation` (IDemprunt, DATEfinDemande, Status)
+                 VALUES (:id, :due, "pending")'
+            );
+            $insert->execute([':id' => $id, ':due' => $requested]);
+        }
+
+        $pdo->commit();
+        echo json_encode(['status' => 'ok', 'requested_due' => $requested]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Impossible de demander la prolongation', 'details' => $e->getMessage()]);
+    }
+}
+
 // Annulation directe d'une réservation par un administrateur (suppression + remise dispo si besoin).
 function admin_cancel(PDO $pdo): void
 {
@@ -545,6 +769,177 @@ function admin_cancel(PDO $pdo): void
     }
 }
 
+// Validation/refus d'une prolongation par un administrateur (met à jour la date de fin du prêt).
+function decide_extension(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $decision = strtolower((string) ($data['decision'] ?? ''));
+    $decision = in_array($decision, ['approve', 'reject'], true) ? $decision : '';
+
+    if ($id <= 0 || $decision === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Requête invalide']);
+        return;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $pending = $pdo->prepare(
+            'SELECT IDprolongation, DATEfinDemande
+             FROM `Prolongation`
+             WHERE IDemprunt = :id AND Status = "pending"
+             ORDER BY CreatedAt DESC, IDprolongation DESC
+             LIMIT 1'
+        );
+        $pending->execute([':id' => $id]);
+        $req = $pending->fetch(PDO::FETCH_ASSOC);
+        if (!$req) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Aucune prolongation en attente']);
+            return;
+        }
+
+        $loanStmt = $pdo->prepare(
+            'SELECT e.IDmateriel, e.IDuser, e.DATEdebut, e.DATEfin, e.ETATemprunt, m.NOMmateriel, r.Role
+             FROM `Emprunt` e
+             LEFT JOIN `Materiel` m ON m.IDmateriel = e.IDmateriel
+             LEFT JOIN `User` u ON u.IDuser = e.IDuser
+             LEFT JOIN `Role` r ON r.IDrole = u.IDrole
+             WHERE e.IDemprunt = :id
+             LIMIT 1'
+        );
+        $loanStmt->execute([':id' => $id]);
+        $loan = $loanStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$loan) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Prêt introuvable']);
+            return;
+        }
+
+        $alreadyReturned = $pdo->prepare('SELECT 1 FROM `Rendu` WHERE IDemprunt = :id LIMIT 1');
+        $alreadyReturned->execute([':id' => $id]);
+        if ($alreadyReturned->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Déjà rendu']);
+            return;
+        }
+
+        $start = $loan['DATEdebut'] ?? '';
+        $due = $loan['DATEfin'] ?? $start;
+        $requested = normalize_date_input((string) ($req['DATEfinDemande'] ?? ''));
+        $borrowerRole = $loan['Role'] ?? '';
+        $maxDays = max_reservation_days_for_role($borrowerRole);
+        if ($requested === null) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Date demandée invalide']);
+            return;
+        }
+        $status = strtolower((string) ($loan['ETATemprunt'] ?? ''));
+        if (is_maintenance_kind($status)) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Maintenance : prolongation impossible']);
+            return;
+        }
+        if ($status === 'annulation demandee') {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Annulation en cours : impossible de prolonger']);
+            return;
+        }
+
+        if ($decision === 'approve') {
+            if (strtotime($requested) <= strtotime($due)) {
+                $pdo->rollBack();
+                http_response_code(400);
+                echo json_encode(['error' => 'La nouvelle date doit dépasser la date actuelle']);
+                return;
+            }
+            $duration = days_between_inclusive($start, $requested);
+            if ($duration > $maxDays) {
+                $pdo->rollBack();
+                http_response_code(400);
+                echo json_encode(['error' => 'Durée maximale de ' . $maxDays . ' jours dépassée']);
+                return;
+            }
+            $conflict = $pdo->prepare(
+                'SELECT 1
+                 FROM `Emprunt` e
+                 WHERE e.IDmateriel = :mid
+                   AND e.IDemprunt <> :id
+                   AND NOT EXISTS (SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt)
+                   AND e.DATEdebut <= :newEnd
+                   AND e.DATEfin >= :start
+                 LIMIT 1'
+            );
+            $conflict->execute([
+                ':mid' => (int) ($loan['IDmateriel'] ?? 0),
+                ':id' => $id,
+                ':newEnd' => $requested,
+                ':start' => $start,
+            ]);
+            if ($conflict->fetchColumn()) {
+                $pdo->rollBack();
+                http_response_code(409);
+                echo json_encode(['error' => 'Conflit avec une autre réservation']);
+                return;
+            }
+
+            $updateLoan = $pdo->prepare(
+                'UPDATE `Emprunt`
+                 SET DATEfin = :due
+                 WHERE IDemprunt = :id'
+            );
+            $updateLoan->execute([':due' => $requested, ':id' => $id]);
+
+            $shouldBlockNow = period_is_current($start, $requested, date('Y-m-d'));
+            if ($shouldBlockNow) {
+                $block = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :mid');
+                $block->execute([':mid' => (int) ($loan['IDmateriel'] ?? 0)]);
+            }
+        }
+
+        $newStatus = $decision === 'approve' ? 'approved' : 'rejected';
+        $updateReq = $pdo->prepare(
+            'UPDATE `Prolongation`
+             SET Status = :st
+             WHERE IDprolongation = :pid'
+        );
+        $updateReq->execute([':st' => $newStatus, ':pid' => (int) $req['IDprolongation']]);
+
+        $userId = (int) ($loan['IDuser'] ?? 0);
+        if ($userId > 0) {
+            $materialName = trim((string) ($loan['NOMmateriel'] ?? 'le matériel'));
+            if ($decision === 'approve') {
+                $message = sprintf(
+                    'Votre emprunt pour %s est prolongé jusqu\'au %s.',
+                    $materialName !== '' ? $materialName : 'le matériel',
+                    format_date_fr($requested)
+                );
+            } else {
+                $message = sprintf(
+                    'Votre demande de prolongation pour %s a été refusée (date demandée : %s).',
+                    $materialName !== '' ? $materialName : 'le matériel',
+                    format_date_fr($requested)
+                );
+            }
+            enqueue_notification($pdo, $userId, $message);
+        }
+
+        $pdo->commit();
+        echo json_encode(['status' => 'ok', 'decision' => $newStatus, 'new_due' => $decision === 'approve' ? $requested : null]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Traitement impossible', 'details' => $e->getMessage()]);
+    }
+}
+
 // Enregistre une notification pour un utilisateur (annulation par admin ou maintenance).
 function enqueue_notification(PDO $pdo, int $userId, string $message): void
 {
@@ -594,11 +989,99 @@ function consume_notifications(PDO $pdo, int $userId): array
     }
 }
 
+// Normalise une chaîne de date AAAA-MM-JJ (retourne null si invalide).
+function normalize_date_input(string $value): ?string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+    $dt = DateTime::createFromFormat('Y-m-d', $value);
+    if (!$dt || $dt->format('Y-m-d') !== $value) {
+        return null;
+    }
+    return $dt->format('Y-m-d');
+}
+
+// Calcule le nombre de jours inclus entre deux dates.
+function days_between_inclusive(string $start, string $end): int
+{
+    $startTs = strtotime($start);
+    $endTs = strtotime($end);
+    if ($startTs === false || $endTs === false) {
+        return 0;
+    }
+    if ($endTs < $startTs) {
+        [$startTs, $endTs] = [$endTs, $startTs];
+    }
+    return (int) floor(($endTs - $startTs) / 86400) + 1;
+}
+
+// Détecte si un statut correspond à une maintenance.
+function is_maintenance_kind(string $value): bool
+{
+    return str_contains(strtolower($value), 'maintenance');
+}
+
+// Retourne la durée max autorisée pour un emprunt selon le rôle.
+function max_reservation_days_for_role(string $role): int
+{
+    $role = strtolower(trim($role));
+    if (str_contains($role, 'prof')) {
+        return 21;
+    }
+    return 14;
+}
+
+// Récupère le rôle d'un utilisateur.
+function fetch_user_role(PDO $pdo, int $userId): string
+{
+    if ($userId <= 0) {
+        return '';
+    }
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT r.Role
+             FROM `User` u
+             LEFT JOIN `Role` r ON r.IDrole = u.IDrole
+             WHERE u.IDuser = :id
+             LIMIT 1'
+        );
+        $stmt->execute([':id' => $userId]);
+        $role = $stmt->fetchColumn();
+        return is_string($role) ? $role : '';
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
+// Indique si une période englobe la date fournie.
+function period_is_current(string $start, string $end, string $today): bool
+{
+    $startTs = strtotime($start);
+    $endTs = strtotime($end);
+    $todayTs = strtotime($today);
+    if ($startTs === false || $endTs === false || $todayTs === false) {
+        return false;
+    }
+    if ($endTs < $startTs) {
+        [$startTs, $endTs] = [$endTs, $startTs];
+    }
+    return $startTs <= $todayTs && $todayTs <= $endTs;
+}
+
 // Indique si l'utilisateur en session est admin.
 function is_admin(): bool
 {
     $role = (string) ($_SESSION['role'] ?? '');
     return stripos($role, 'admin') !== false;
+}
+
+// Indique si l'utilisateur en session est technicien.
+function is_technician(): bool
+{
+    $role = strtolower((string) ($_SESSION['role'] ?? ''));
+    return str_contains($role, 'technicien');
 }
 
 // Formate une date AAAA-MM-JJ en JJ/MM/AAAA (fallback brut si invalide).

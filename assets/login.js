@@ -48,11 +48,20 @@ function playRippleAndRedirect() {
 // Affiche le champ "mot secret" uniquement si le rôle professeur est choisi.
 function updateSecretVisibility() {
   if (!roleSelect || !secretRow) return;
-  const wantsProf = roleSelect.value === 'professeur';
-  secretRow.hidden = !wantsProf;
-  secretRow.style.display = wantsProf ? 'block' : 'none';
-  if (!wantsProf && secretRow.querySelector('input')) {
-    secretRow.querySelector('input').value = '';
+  const needsSecret = ['professeur', 'technicien', 'administrateur'].includes(roleSelect.value);
+  secretRow.hidden = !needsSecret;
+  secretRow.style.display = needsSecret ? 'block' : 'none';
+  const secretInput = secretRow.querySelector('input');
+  if (secretInput) {
+    const label = roleSelect.value === 'professeur'
+      ? 'Mot de passe professeur (prof)'
+      : roleSelect.value === 'technicien'
+        ? 'Mot de passe technicien (tech)'
+        : 'Mot de passe administrateur (admin)';
+    secretInput.placeholder = label;
+  }
+  if (!needsSecret && secretInput) {
+    secretInput.value = '';
   }
 }
 

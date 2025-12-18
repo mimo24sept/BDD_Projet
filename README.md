@@ -10,19 +10,21 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 <summary><strong>🧭 Architecture rapide</strong></summary>
 
 - **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles.css` (UI).
-- **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations), `api/reset_state.php` (reset), `api/config.php` (DSN).
-- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`).
+- **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations/prolongations), `api/reset_state.php` (reset), `api/config.php` (DSN).
+- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`, `Prolongation`).
 
 </details>
 
 <details open>
 <summary><strong>📌 Règles métier essentielles</strong></summary>
 
-- Pas de réservation dans le passé, durée max 14 jours, dates bloquées si déjà réservées/maintenance.
+- Rôles : `Eleve` (utilisateur), `Professeur` (réservation jusqu’à 3 semaines, secret `prof`), `Technicien` (maintenance uniquement, secret `tech`), `Administrateur` (secret `admin`).
+- Réservation : pas de passé, durée max 14 jours (21 jours pour professeur), dates bloquées si déjà réservées/maintenance.
+- Prolongation : demande utilisateur, validation admin obligatoire, limite de durée selon le rôle et sans chevauchement avec une autre réservation/maintenance.
 - Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
 - Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
 - `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
-- Actions <span style="color:#d9534f;font-weight:600;">admin uniquement</span> : création/suppression matériel, maintenance, rendus, annulations directes, stats globales.
+- Actions <span style="color:#d9534f;font-weight:600;">admin uniquement</span> : création/suppression matériel, rendus/annulations directes, stats globales, comptes. Maintenance : administrateur ou technicien (sans supprimer de réservation pour un technicien).
 - Annulations par admin ou maintenance : l’utilisateur concerné reçoit une notification (bannière) au prochain chargement de l’application.
 
 </details>
@@ -30,19 +32,20 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 <details open>
 <summary><strong>🔄 Flux principaux</strong></summary>
 
-1) **Auth** (`assets/login.js`) : login/register, mot secret prof, ripple, redirection (`POST /api/auth.php?action=login|register|logout`).
-2) **Catalogue** (`assets/app.js`) : recherche + tags, modale calendrier, réservation (`POST /api/equipment.php?action=reserve`), contrôle dates libres et non-passé.
+1) **Auth** (`assets/login.js`) : login/register, choix rôle + mot secret prof/tech/admin, ripple, redirection (`POST /api/auth.php?action=login|register|logout`).
+2) **Catalogue** (`assets/app.js`) : recherche + tags, modale calendrier, réservation (`POST /api/equipment.php?action=reserve`), contrôle dates libres, durée max selon rôle.
 3) **Annulations** : user demande (`POST /api/dashboard.php?action=cancel_request`), admin valide ou supprime (`POST /api/dashboard.php?action=admin_cancel`) ; les annulations admin/maintenance génèrent une notification livrée à l'utilisateur.
-4) **Rendus** (admin) : liste prêts en cours, état borné, rendu (`POST /api/dashboard.php?action=return`), maj dispo + rendu enregistré.
-5) **Maintenance** (admin) : planif multi-jours (`POST /api/equipment.php?action=maintenance`), supprime chevauchements, bloque dates.
-6) **Stats** : user (`/api/dashboard.php` scope mine) et admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
+4) **Prolongation** : user demande depuis sa liste d'emprunts (`POST /api/dashboard.php?action=extend_request`), l'admin valide ou refuse (`POST /api/dashboard.php?action=extend_decide`) après contrôle de conflits et durée (role-based).
+5) **Rendus** (admin) : liste prêts en cours, état borné, rendu (`POST /api/dashboard.php?action=return`), maj dispo + rendu enregistré.
+6) **Maintenance** (admin/technicien) : planif multi-jours (`POST /api/equipment.php?action=maintenance`), suppression des réservations chevauchantes uniquement par admin, blocage des dates. Clôture de maintenance possible par admin/technicien.
+7) **Stats** : user (`/api/dashboard.php` scope mine) et admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
 
 </details>
 
 <details open>
 <summary><strong>🧱 Guide de code (survol)</strong></summary>
 
-- **assets/app.js** : état global, appels API (`api*`), rendus (catalogue, prêts user/admin, stats), modale + calendrier (blocage passé, 14j max, dates occupées), normalisation états (`normalizeCondition`, `conditionRank`, `buildBlockedDates`, `isoWeekKey`).
+- **assets/app.js** : état global, appels API (`api*`), rendus (catalogue, prêts user/admin, stats), modale + calendrier (blocage passé, durée max selon rôle, dates occupées), normalisation états (`normalizeCondition`, `conditionRank`, `buildBlockedDates`, `isoWeekKey`).
 - **assets/login.js** : bascule login/register, bouton œil mdp, `apiLogin`/`apiRegister`.
 - **api/auth.php** : sessions, rôles, LastLogin, CRUD users (admin).
 - **api/equipment.php** : catalogue + périodes actives, réservations (refus passé/conflits), maintenance (supprime réservations chevauchantes), CRUD matériel (admin).
@@ -53,8 +56,8 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 ## 🔍 Détail des principales fonctions (logique interne)
 - **Frontend (`assets/app.js`)**
   - `renderAdminLoans` : split en deux colonnes (gauche = prêts en cours avec retour/état, droite = annulations à traiter + réservations à venir annulables). Génère dynamiquement les boutons, applique des styles d’alerte sur les demandes, et réactualise les listes après chaque action.
-  - `renderCalendar` + `handleDayClick` : construit la grille du mois courant (précalcule les cellules, bloque les dates passées ou réservées, navigation mois ±1). Le clic choisit début/fin, vérifie longueur max (14j) et rejette les plages occupées.
-  - `updateAvailabilityMessage` : vérifie plage sélectionnée (non passée, <=14j, libre via `isRangeFree`) et met à jour le bouton/modale avec message ok/erreur.
+  - `renderCalendar` + `handleDayClick` : construit la grille du mois courant (précalcule les cellules, bloque les dates passées ou réservées, navigation mois ±1). Le clic choisit début/fin, vérifie longueur max (14/21j selon rôle) et rejette les plages occupées.
+  - `updateAvailabilityMessage` : vérifie plage sélectionnée (non passée si réservation, durée dans la limite du rôle, libre via `isRangeFree`) et met à jour le bouton/modale avec message ok/erreur.
   - `apiReturnLoan` / `apiAdminCancelLoan` / `apiRequestCancel` : envoient l’action au backend, rafraîchissent ensuite les listes (`apiFetchLoans` + re-render) pour garder l’UI cohérente.
   - `normalizeCondition` / `conditionRank` / `buildReturnOptions` : bornent les états disponibles à la baisse (impossible d’améliorer un état au retour), et formattent les options du select de retour.
   - `buildBlockedDates` / `isRangeFree` : transforment les périodes d’emprunt/maintenance en map de dates bloquées (maintenance prioritaire), utilisées par le calendrier et la validation.
@@ -93,7 +96,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
    php -S 127.0.0.1:8000 -t .
    ```
    Ouvrir `http://127.0.0.1:8000/index.html`.
-5. Comptes de test (dump) : admin `admin/admin`, user `testtruc/1234`.
+5. Comptes de test (dump) : admin `admin/admin`, user `testtruc/1234`. Secrets de création : prof=`prof`, technicien=`tech`, admin=`admin`.
 
 ## Dépannage
 - **401/403** : session expirée ou rôle insuffisant (admin requis). Reconnexion ou vérifier cookies.
@@ -103,7 +106,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 
 ## Tests rapides manuels
 - Auth : connexion et création d’un compte test.
-- Réservation : sélectionner une plage future (<=14j), vérifier grisé des dates passées.
+- Réservation : sélectionner une plage future (<=14j ou 21j pour un professeur), vérifier grisé des dates passées.
 - Annulation : demander une annulation côté user, valider côté admin.
 - Retour : marquer un prêt comme rendu en changeant l’état (ne pas pouvoir améliorer l’état initial).
 - Maintenance : planifier une maintenance qui chevauche une réservation et vérifier le blocage.
