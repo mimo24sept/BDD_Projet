@@ -75,11 +75,12 @@
 | Fonction | Logique |
 | --- | --- |
 | `list_equipment` | Jointure matériel/catégorie, périodes actives (prêt/maintenance), tags, semaines bloquées. |
-| `reserve_equipment` | Vérifie ID, dates valides/ordonnées, conflit actif, refuse le passé, bloque dispo si période courante, insère emprunt. |
+| `reserve_equipment` | Vérifie ID, dates valides/ordonnées, blocage si ≥3 retards pour élève/prof (hors admin/tech), conflit actif, refuse le passé, bloque dispo si période courante, insère emprunt. |
 | `set_maintenance` | Vérifie ID/dates, (admin ou technicien) : si chevauchement et technicien → enregistre une `MaintenanceRequest` “pending”; côté admin, supprime les emprunts chevauchants en notifiant les utilisateurs impactés, bloque dispo si période courante, insère l’emprunt maintenance. |
-| `decide_maintenance_request` | Admin : approuve/refuse une `MaintenanceRequest`, supprime les réservations impactées et notifie les utilisateurs si validation, insère l’emprunt maintenance. |
+| `set_maintenance` | Vérifie ID/dates, (admin ou technicien) : si chevauchement et technicien → enregistre une `MaintenanceRequest` “pending”; côté admin, écourte les réservations chevauchées (fin la veille de la maintenance quand c’est possible, annule sinon) avec notification, bloque dispo si période courante, insère l’emprunt maintenance. |
+| `decide_maintenance_request` | Admin : approuve/refuse une `MaintenanceRequest`, applique le même raccourcissement/annulation sur les réservations impactées et notifie les utilisateurs, insère l’emprunt maintenance. |
 | `create_equipment` / `delete_equipment` | CRUD admin, génère référence, renvoie item/statut. |
-| Helpers | `fetch_active_loans`, `fetch_equipment_by_id`, `map_status`, `merge_tags`, `normalize_categories`, `generate_reference`, `build_reference_prefix`, `transliterate_to_ascii`, `weeks_between`, `period_is_current`, `iso_week_key`, `ensure_maintenance_request_table`, `is_admin`. |
+| Helpers | `fetch_active_loans`, `fetch_equipment_by_id`, `map_status`, `merge_tags`, `normalize_categories`, `generate_reference`, `build_reference_prefix`, `transliterate_to_ascii`, `weeks_between`, `period_is_current`, `iso_week_key`, `adjust_overlapping_reservations`, `count_user_delays`, `ensure_maintenance_request_table`, `is_admin`. |
 
 </details>
 

@@ -930,7 +930,10 @@ const API = {
   // Affiche les notifications système (annulations admin/maintenance) en haut de la page.
   function renderNotifications() {
     if (!notificationsEl) return;
-    const list = Array.isArray(state.notifications) ? state.notifications : [];
+    const base = Array.isArray(state.notifications) ? state.notifications : [];
+    const overdue = buildOverdueAlerts();
+    const lastDay = buildLastDayAlerts();
+    const list = [...lastDay, ...overdue, ...base];
     if (!list.length) {
       notificationsEl.innerHTML = '';
       notificationsEl.hidden = true;
@@ -1245,16 +1248,18 @@ const API = {
     }
 
     maints.forEach((m) => {
+      const progress = progressPercentWithTime(m.start, m.due);
       const severity = dueSeverity(m.due || m.start);
-      const barColor = severityColor(severity);
+      const visualSeverity = severityVisual(severity);
+      const barColor = barColorForProgress(progress, visualSeverity);
       const row = document.createElement('div');
-      row.className = `loan-item loan-${severity}`;
+      row.className = `loan-item loan-${visualSeverity}`;
       row.innerHTML = `
        <div>
          <div class="small-title">Maintenance planifiée - ${escapeHtml(severityLabel(severity))}</div>
          <div style="font-weight:800">${escapeHtml(m.name)}</div>
          <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
-         <div class="progress" aria-hidden="true"><div style="width:${m.progress}%; background:${barColor}"></div></div>
+         <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
        </div>
         <div class="admin-actions">
           <button type="button" class="ghost" data-id="${m.id}">Fin de maintenance</button>
@@ -1378,14 +1383,17 @@ const API = {
   function renderLoans() {
     loansEl.innerHTML = '';
     const isAdmin = (state.user?.role || '').toLowerCase().includes('admin');
-    const today = new Date().toISOString().slice(0, 10);
+    const today = normalizeDateOnly(new Date());
     const filteredLoans = state.loans.filter((loan) => {
       if (!state.loanSearch) return true;
       const haystack = `${loan.name || ''} ${loan.status || ''}`.toLowerCase();
       return haystack.includes(state.loanSearch);
     });
     const sortedLoans = filteredLoans.sort((a, b) => {
-      const started = (loan) => loan.start && loan.start <= today;
+      const started = (loan) => {
+        const startStr = normalizeDateOnly(loan.start);
+        return startStr && today && startStr <= today;
+      };
       const severityKey = (loan) => {
         if (!started(loan)) return 'future';
         return dueSeverity(loan.due);
@@ -1404,17 +1412,23 @@ const API = {
     });
 
     sortedLoans.forEach((loan) => {
-      const hasStarted = loan.start ? loan.start <= today : false;
+      const startStr = normalizeDateOnly(loan.start);
+      const dueStr = normalizeDateOnly(loan.due);
+      const hasStarted = Boolean(startStr && today && startStr <= today);
+      const progress = progressPercentWithTime(loan.start, loan.due);
       const severity = hasStarted ? dueSeverity(loan.due) : 'ok';
-      const barColor = hasStarted ? severityColor(severity) : '#e5e7eb';
+      const visualSeverity = severityVisual(severity);
+      const barColor = hasStarted ? barColorForProgress(progress, visualSeverity) : '#e5e7eb';
       const statusLower = (loan.status || '').toLowerCase();
       const isOngoing = hasStarted && statusLower === 'en cours';
       const userStateLabel = isOngoing
         ? (severity === 'overdue'
           ? 'Retard'
-          : severity === 'urgent' || severity === 'soon'
-            ? 'Retour proche'
-            : 'A jour')
+          : severity === 'lastday'
+            ? 'Dernier jour'
+            : (severity === 'urgent' || severity === 'soon')
+              ? 'Retour proche'
+              : 'A jour')
         : 'A venir';
       const canReturn = isAdmin && loan.type === 'pret' && loan.status !== 'rendu';
       const canRequestCancel = !isAdmin
@@ -1461,14 +1475,14 @@ const API = {
       }
 
       const row = document.createElement('div');
-      row.className = `loan-item loan-${severity}`;
+      row.className = `loan-item loan-${visualSeverity}`;
       row.innerHTML = `
           <div>
             <div class="small-title">${escapeHtml(userStateLabel)}</div>
             <div style="font-weight:800">${escapeHtml(loan.name)}</div>
             <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
             ${extensionMsg ? `<div class="loan-meta">${escapeHtml(extensionMsg)}</div>` : ''}
-            <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
+            <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
           </div>
         ${actionHtml}
       `;
@@ -1575,8 +1589,10 @@ const API = {
       if (opts.variant) block.classList.add(`admin-${opts.variant}`);
       block.innerHTML = '';
       list.forEach((loan) => {
+        const progress = progressPercentWithTime(loan.start, loan.due);
         const severity = dueSeverity(loan.due);
-        const barColor = severityColor(severity);
+        const visualSeverity = severityVisual(severity);
+        const barColor = barColorForProgress(progress, visualSeverity);
         const userLabel = escapeHtml(loan.user || 'Inconnu');
         const baseCondition = loan.condition || '';
         const conditionLabel = formatConditionLabel(baseCondition);
@@ -1599,7 +1615,7 @@ const API = {
             : (opts.actionLabel || 'Marquer rendu');
         const row = document.createElement('div');
         const cancelClass = isCancelRequest ? ' loan-cancel' : '';
-        row.className = `loan-item loan-${severity}${cancelClass}`;
+        row.className = `loan-item loan-${visualSeverity}${cancelClass}`;
         row.innerHTML = `
           <div>
             <div class="small-title">${escapeHtml(statusText)}${severityText ? ' - ' + escapeHtml(severityText) : ''}</div>
@@ -1607,7 +1623,7 @@ const API = {
             <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
             <div class="loan-meta">Etat prêt: ${escapeHtml(conditionLabel)}</div>
             <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
-            <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
+            <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
           </div>
           ${showActions ? `
           <div class="admin-actions">
@@ -2155,6 +2171,20 @@ const API = {
     return `${y}-${m}-${d}`;
   }
 
+  // Normalise une valeur de date (Date ou string) en AAAA-MM-JJ si possible.
+  function normalizeDateOnly(value) {
+    if (value instanceof Date) {
+      return formatDateLocal(value);
+    }
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const m = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return formatDateLocal(parsed);
+  }
+
   // Normalise un nom de catégorie (trim + casse).
   function canonicalCategory(cat) {
     const lower = String(cat || '').toLowerCase();
@@ -2566,9 +2596,16 @@ const API = {
 
   // Détermine la sévérité temporelle d'un prêt selon la date de fin.
   function dueSeverity(due) {
-    const dueDate = new Date(due);
-    if (Number.isNaN(dueDate.getTime())) return 'ok';
-    const diffDays = Math.floor((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const match = String(due || '').match(/(\d{4}-\d{2}-\d{2})/);
+    const dueStr = match ? match[1] : normalizeDateOnly(due);
+    if (!dueStr) return 'ok';
+    if (dueStr === todayStr) return 'lastday';
+    const toUtc = (str) => {
+      const [y, m, d] = str.split('-').map((v) => parseInt(v, 10));
+      return Date.UTC(y, (m || 1) - 1, d || 1);
+    };
+    const diffDays = Math.floor((toUtc(dueStr) - toUtc(todayStr)) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) return 'overdue';
     if (diffDays <= 2) return 'urgent';
     if (diffDays <= 5) return 'soon';
@@ -2577,6 +2614,7 @@ const API = {
 
   // Renvoie la couleur associée à un niveau de sévérité.
   function severityColor(severity) {
+    if (severity === 'lastday') return '#f59e0b';
     if (severity === 'urgent') return '#f97316';
     if (severity === 'overdue') return '#ef4444';
     if (severity === 'soon') return '#f59e0b';
@@ -2585,10 +2623,69 @@ const API = {
 
   // Renvoie le libellé lisible d'un niveau de sévérité.
   function severityLabel(severity) {
+    if (severity === 'lastday') return 'Dernier jour';
     if (severity === 'overdue') return 'En retard';
     if (severity === 'urgent') return 'Retour proche';
     if (severity === 'soon') return 'Retour proche';
     return 'A jour';
+  }
+
+  // Normalise une sévérité pour l'affichage (lastday traité comme overdue visuellement).
+  function severityVisual(severity) {
+    if (severity === 'lastday') return 'overdue';
+    return severity;
+  }
+
+  // Couleur de barre basée sur la progression : vert si <50% et pas en retard.
+  function barColorForProgress(progress, visualSeverity) {
+    if (visualSeverity !== 'overdue' && progress < 50) return '#22c55e';
+    return severityColor(visualSeverity);
+  }
+
+  // Calcule une progression temporelle en incluant l'heure (utile pour les réservations d'une journée).
+  function progressPercentWithTime(start, due) {
+    const startStr = normalizeDateOnly(start);
+    const dueStr = normalizeDateOnly(due);
+    if (!startStr || !dueStr) return 0;
+    const startDate = new Date(`${startStr}T00:00:00`);
+    const endDate = new Date(`${dueStr}T23:59:59`);
+    const now = Date.now();
+    const total = endDate.getTime() - startDate.getTime();
+    if (total <= 0) {
+      return now >= endDate.getTime() ? 100 : 0;
+    }
+    const ratio = Math.max(0, Math.min(1, (now - startDate.getTime()) / total));
+    return Math.round(ratio * 100);
+  }
+
+  // Construit des alertes locales pour les réservations en retard (utilisateur non admin).
+  function buildOverdueAlerts() {
+    if (isAdmin()) return [];
+    const overdueLoans = (state.loans || []).filter((loan) => {
+      if ((loan.type || 'pret') !== 'pret') return false;
+      if ((loan.status || '').toLowerCase() === 'rendu') return false;
+      return dueSeverity(loan.due) === 'overdue';
+    });
+    return overdueLoans.map((loan) => ({
+      id: `overdue-${loan.id}`,
+      message: `Votre réservation pour ${loan.name || 'un matériel'} est en retard depuis le ${formatDisplayDate(loan.due)}.`,
+      created_at: loan.due || '',
+    }));
+  }
+
+  // Construit des alertes locales pour les réservations à rendre aujourd'hui.
+  function buildLastDayAlerts() {
+    if (isAdmin()) return [];
+    const lastDayLoans = (state.loans || []).filter((loan) => {
+      if ((loan.type || 'pret') !== 'pret') return false;
+      if ((loan.status || '').toLowerCase() === 'rendu') return false;
+      return dueSeverity(loan.due) === 'lastday';
+    });
+    return lastDayLoans.map((loan) => ({
+      id: `lastday-${loan.id}`,
+      message: `Dernier jour pour rendre ${loan.name || 'un matériel'} (retour attendu le ${formatDisplayDate(loan.due)}).`,
+      created_at: loan.due || '',
+    }));
   }
 
   (async function start() {

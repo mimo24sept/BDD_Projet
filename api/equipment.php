@@ -165,6 +165,15 @@ function reserve_equipment(PDO $pdo, int $userId): void
         $end = $start;
     }
 
+    if (!is_admin() && !is_technician()) {
+        $delayCount = count_user_delays($pdo, $userId);
+        if ($delayCount >= 3) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Trop de retards (3 ou plus) : réservation soumise à accord administrateur.']);
+            return;
+        }
+    }
+
     if ($id <= 0) {
         http_response_code(400);
         echo json_encode(['error' => 'Identifiant manquant ou invalide']);
@@ -275,7 +284,7 @@ function set_maintenance(PDO $pdo, int $userId): void
 
     $pdo->beginTransaction();
     try {
-        // Supprime les réservations/emprunts qui chevauchent la maintenance (hors maintenances existantes).
+        // Prépare les réservations/emprunts qui chevauchent la maintenance (hors maintenances existantes).
         $overlaps = $pdo->prepare(
             'SELECT e.IDemprunt, e.IDuser, e.DATEdebut, e.DATEfin, m.NOMmateriel
              FROM `Emprunt` e
@@ -299,26 +308,7 @@ function set_maintenance(PDO $pdo, int $userId): void
             return;
         }
         if (!empty($toRemove)) {
-            $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
-            $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
-            foreach ($toRemove as $row) {
-                $eid = (int) ($row['IDemprunt'] ?? 0);
-                $delRendu->execute([':eid' => $eid]);
-                $del->execute([':eid' => $eid]);
-                $userIdReservation = (int) ($row['IDuser'] ?? 0);
-                if ($userIdReservation > 0) {
-                    $startStr = $row['DATEdebut'] ?? '';
-                    $endStr = $row['DATEfin'] ?? $startStr;
-                    $materialName = trim((string) ($row['NOMmateriel'] ?? ''));
-                    $message = sprintf(
-                        'Votre réservation du %s au %s pour %s a été annulée suite à une maintenance planifiée.',
-                        format_date_fr($startStr),
-                        format_date_fr($endStr),
-                        $materialName !== '' ? $materialName : 'le matériel'
-                    );
-                    enqueue_notification($pdo, $userIdReservation, $message);
-                }
-            }
+            adjust_overlapping_reservations($pdo, $toRemove, $start);
         }
 
         // Vérifie qu'il ne reste pas de maintenance conflictuelle active.
@@ -449,26 +439,7 @@ function decide_maintenance_request(PDO $pdo): void
         $overlaps->execute([':id' => $materialId, ':debut' => $start, ':fin' => $end]);
         $toRemove = $overlaps->fetchAll(PDO::FETCH_ASSOC);
         if (!empty($toRemove)) {
-            $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
-            $del = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
-            foreach ($toRemove as $rowRm) {
-                $eid = (int) ($rowRm['IDemprunt'] ?? 0);
-                $delRendu->execute([':eid' => $eid]);
-                $del->execute([':eid' => $eid]);
-                $userIdReservation = (int) ($rowRm['IDuser'] ?? 0);
-                if ($userIdReservation > 0) {
-                    $startStr = $rowRm['DATEdebut'] ?? '';
-                    $endStr = $rowRm['DATEfin'] ?? $startStr;
-                    $materialName = trim((string) ($rowRm['NOMmateriel'] ?? ''));
-                    $message = sprintf(
-                        'Votre réservation du %s au %s pour %s a été annulée suite à une maintenance planifiée.',
-                        format_date_fr($startStr),
-                        format_date_fr($endStr),
-                        $materialName !== '' ? $materialName : 'le matériel'
-                    );
-                    enqueue_notification($pdo, $userIdReservation, $message);
-                }
-            }
+            adjust_overlapping_reservations($pdo, $toRemove, $start);
         }
 
         $conflictMaint = $pdo->prepare(
@@ -1046,6 +1017,90 @@ function is_professor(): bool
 {
     $role = strtolower((string) ($_SESSION['role'] ?? ''));
     return str_contains($role, 'professeur');
+}
+
+// Raccourcit ou annule les réservations chevauchées par une maintenance et notifie l'utilisateur.
+function adjust_overlapping_reservations(PDO $pdo, array $overlaps, string $maintenanceStart): void
+{
+    $cutoffTs = strtotime($maintenanceStart . ' -1 day');
+    $updateEnd = $pdo->prepare('UPDATE `Emprunt` SET DATEfin = :fin WHERE IDemprunt = :eid');
+    $delRendu = $pdo->prepare('DELETE FROM `Rendu` WHERE IDemprunt = :eid');
+    $delLoan = $pdo->prepare('DELETE FROM `Emprunt` WHERE IDemprunt = :eid');
+    foreach ($overlaps as $row) {
+        $eid = (int) ($row['IDemprunt'] ?? 0);
+        $userIdReservation = (int) ($row['IDuser'] ?? 0);
+        $startStr = $row['DATEdebut'] ?? '';
+        $endStr = $row['DATEfin'] ?? $startStr;
+        $materialName = trim((string) ($row['NOMmateriel'] ?? ''));
+        $materialLabel = $materialName !== '' ? $materialName : 'le matériel';
+        $startTs = strtotime($startStr);
+        $newEnd = ($cutoffTs !== false) ? date('Y-m-d', $cutoffTs) : $endStr;
+        $canShorten = $startTs !== false && $cutoffTs !== false && $startTs <= $cutoffTs;
+
+        if ($canShorten) {
+            $updateEnd->execute([':fin' => $newEnd, ':eid' => $eid]);
+            if ($userIdReservation > 0) {
+                $message = sprintf(
+                    'Votre réservation pour %s est écourtée : elle se terminera le %s en raison d’une maintenance.',
+                    $materialLabel,
+                    format_date_fr($newEnd)
+                );
+                enqueue_notification($pdo, $userIdReservation, $message);
+            }
+        } else {
+            $delRendu->execute([':eid' => $eid]);
+            $delLoan->execute([':eid' => $eid]);
+            if ($userIdReservation > 0) {
+                $message = sprintf(
+                    'Votre réservation du %s au %s pour %s a été annulée suite à une maintenance planifiée.',
+                    format_date_fr($startStr),
+                    format_date_fr($endStr),
+                    $materialLabel
+                );
+                enqueue_notification($pdo, $userIdReservation, $message);
+            }
+        }
+    }
+}
+
+// Compte les retards d'un utilisateur (retours tardifs ou prêts non rendus en retard).
+function count_user_delays(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+    $today = date('Y-m-d');
+    $stmt = $pdo->prepare(
+        'SELECT e.DATEfin, r.DATErendu, e.ETATemprunt
+         FROM `Emprunt` e
+         LEFT JOIN `Rendu` r ON r.IDemprunt = e.IDemprunt
+         WHERE e.IDuser = :uid'
+    );
+    $stmt->execute([':uid' => $userId]);
+    $delays = 0;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        if (str_contains($kind, 'maintenance')) {
+            continue;
+        }
+        $due = $row['DATEfin'] ?? null;
+        $returned = $row['DATErendu'] ?? null;
+        if ($due === null) {
+            continue;
+        }
+        $dueTs = strtotime($due);
+        $returnedTs = $returned ? strtotime($returned) : false;
+        $isDelay = false;
+        if ($returnedTs !== false && $dueTs !== false && $returnedTs > $dueTs) {
+            $isDelay = true;
+        } elseif ($returnedTs === false && $dueTs !== false && strtotime($today) > $dueTs) {
+            $isDelay = true;
+        }
+        if ($isDelay) {
+            $delays += 1;
+        }
+    }
+    return $delays;
 }
 
 // Retourne la durée max autorisée pour une réservation selon le rôle.

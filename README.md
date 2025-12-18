@@ -24,6 +24,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 - Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
 - Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
 - `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
+- Blocage retards : si un élève/professeur cumule 3 retards (prêts rendus en retard ou en retard non rendus), toute nouvelle réservation est refusée tant qu’un administrateur ne l’autorise pas.
 - Actions <span style="color:#d9534f;font-weight:600;">admin uniquement</span> : création/suppression matériel, rendus/annulations directes, stats globales, comptes. Maintenance : administrateur ou technicien ; si une maintenance technicien chevauche des réservations, elle part en demande “en attente” pour validation admin (sans suppression tant que non validée).
 - Annulations par admin ou maintenance : l’utilisateur concerné reçoit une notification (bannière) au prochain chargement de l’application.
 
@@ -37,7 +38,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 3) **Annulations** : user demande (`POST /api/dashboard.php?action=cancel_request`), admin valide ou supprime (`POST /api/dashboard.php?action=admin_cancel`) ; les annulations admin/maintenance génèrent une notification livrée à l'utilisateur.
 4) **Prolongation** : user demande depuis sa liste d'emprunts (`POST /api/dashboard.php?action=extend_request`), l'admin valide ou refuse (`POST /api/dashboard.php?action=extend_decide`) après contrôle de conflits et durée (role-based).
 5) **Rendus** (admin) : liste prêts en cours, état borné, rendu (`POST /api/dashboard.php?action=return`), maj dispo + rendu enregistré.
-6) **Maintenance** (admin/technicien) : planif multi-jours (`POST /api/equipment.php?action=maintenance`). Si un technicien chevauche des réservations, une demande est créée (`MaintenanceRequest`) et visible dans l’onglet maintenance ; un admin la valide ou la refuse via `POST /api/equipment.php?action=maintenance_decide`. La validation supprime les réservations impactées et notifie les utilisateurs ; la clôture de maintenance reste possible par admin/technicien.
+6) **Maintenance** (admin/technicien) : planif multi-jours (`POST /api/equipment.php?action=maintenance`). Si un technicien chevauche des réservations, une demande est créée (`MaintenanceRequest`) et visible dans l’onglet maintenance ; un admin la valide ou la refuse via `POST /api/equipment.php?action=maintenance_decide`. La validation écourte les réservations chevauchées (fin la veille du début de maintenance) quand c’est possible ou les annule si elles démarrent pendant la maintenance, avec notification utilisateur ; la clôture de maintenance reste possible par admin/technicien.
 7) **Stats** : user (`/api/dashboard.php` scope mine) et admin (`/api/dashboard.php?action=admin_stats`), historiques filtrables.
 
 </details>
