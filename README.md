@@ -4,7 +4,7 @@
 ![Static Badge](https://img.shields.io/badge/PHP-Backend-blue?style=for-the-badge)
 ![Static Badge](https://img.shields.io/badge/MySQL-Base-green?style=for-the-badge)
 
-Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP (PDO), base MySQL/MariaDB.
+Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP , base MySQL.
 
 <details open>
 <summary><strong>🧭 Architecture rapide</strong></summary>
