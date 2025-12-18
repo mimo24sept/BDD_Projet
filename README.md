@@ -1,9 +1,7 @@
 # Parc matériels GEII — Documentation 🎛️
 
-![Static Badge](https://img.shields.io/badge/Frontend-HTML%2FCSS%2FJS-orange?style=for-the-badge)
-![Static Badge](https://img.shields.io/badge/Backend-PHP%20%2B%20PDO-blue?style=for-the-badge)
-![Static Badge](https://img.shields.io/badge/Base-MySQL%2FMariaDB-green?style=for-the-badge)
-![Static Badge](https://img.shields.io/badge/Role-Admin%20%7C%20User-purple?style=for-the-badge)
+![Static Badge](https://img.shields.io/badge/PHP-Backend-blue?style=for-the-badge)
+![Static Badge](https://img.shields.io/badge/MySQL-Base-green?style=for-the-badge)
 
 Application web pour réserver, emprunter, rendre et maintenir le parc d’équipements du département GEII. Front en HTML/CSS/JS vanilla, backend PHP (PDO), base MySQL/MariaDB.
 
