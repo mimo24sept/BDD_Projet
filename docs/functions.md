@@ -1,6 +1,4 @@
-# Documentation des fonctions (vue d'ensemble) ✨
-
-Ce mémo reste statique mais plus agréable à parcourir : sections repliables, tableaux compacts, résumés ciblés.
+# Documentation des fonctions
 
 ---
 

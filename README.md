@@ -1,4 +1,4 @@
-# Parc matériels GEII — Documentation 🎛️
+# Parc matériels GEII — Documentation
 
 ![Static Badge](https://img.shields.io/badge/Frontend-HTML%2FCSS%2FJS-orange?style=for-the-badge)
 ![Static Badge](https://img.shields.io/badge/PHP-Backend-blue?style=for-the-badge)
