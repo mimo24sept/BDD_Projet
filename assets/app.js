@@ -86,6 +86,7 @@ const API = {
   const adminSearchInput = document.querySelector('#admin-search');
   const adminTagBar = document.querySelector('#admin-tag-bar');
   const adminSortSelect = document.querySelector('#admin-sort');
+  const adminExportBtn = document.querySelector('#admin-export');
   const maintenanceCatalogEl = document.querySelector('#maintenance-catalog');
   const maintenanceSearchInput = document.querySelector('#maintenance-search');
   const maintenanceTagBar = document.querySelector('#maintenance-tag-bar');
@@ -225,6 +226,11 @@ const API = {
     adminSortSelect.addEventListener('change', () => {
       state.adminFilters.sort = adminSortSelect.value;
       renderAdminCatalog();
+    });
+  }
+  if (adminExportBtn) {
+    adminExportBtn.addEventListener('click', () => {
+      exportInventoryPdf();
     });
   }
 
@@ -1168,6 +1174,7 @@ const API = {
     const maints = state.adminLoans
       .filter((l) => (l.type || '').toLowerCase() === 'maintenance')
       .filter((l) => l.status !== 'rendu');
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     if (pendingRequests.length) {
       const block = document.createElement('div');
@@ -1248,15 +1255,18 @@ const API = {
     }
 
     maints.forEach((m) => {
+      const startStr = normalizeDateOnly(m.start);
+      const hasStarted = Boolean(startStr && startStr <= todayStr);
       const progress = progressPercentWithTime(m.start, m.due);
-      const severity = dueSeverity(m.due || m.start);
-      const visualSeverity = severityVisual(severity);
+      const severity = hasStarted ? dueSeverity(m.due || m.start) : 'future';
+      const visualSeverity = hasStarted ? severityVisual(severity) : 'ok';
       const barColor = barColorForProgress(progress, visualSeverity);
+      const statusLabel = hasStarted ? severityLabel(severity) : 'Planifiée';
       const row = document.createElement('div');
       row.className = `loan-item loan-${visualSeverity}`;
       row.innerHTML = `
        <div>
-         <div class="small-title">Maintenance planifiée - ${escapeHtml(severityLabel(severity))}</div>
+         <div class="small-title">Maintenance planifiée - ${escapeHtml(statusLabel)}</div>
          <div style="font-weight:800">${escapeHtml(m.name)}</div>
          <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
          <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
@@ -1286,6 +1296,88 @@ const API = {
     if (!maints.length && !pendingRequests.length) {
       maintenanceListEl.innerHTML = '<p class="meta">Aucune maintenance planifiée ou demande en attente.</p>';
     }
+  }
+
+  // Exporte l'inventaire complet côté admin en PDF (via l'impression navigateur).
+  function exportInventoryPdf() {
+    if (!isAdmin()) {
+      alert('Accès réservé aux administrateurs.');
+      return;
+    }
+    const list = state.inventory || [];
+    if (!list.length) {
+      alert('Aucun matériel à exporter.');
+      return;
+    }
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (!popup) {
+      alert("Impossible d'ouvrir la fenêtre d'export (bloqueur de pop-up ?).");
+      return;
+    }
+    const dateLabel = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+    const rowsHtml = list.map((item, idx) => {
+      const categories = Array.isArray(item.categories) ? item.categories.join(', ') : (item.category || 'Non classé');
+      const condition = formatConditionLabel(item.condition || '');
+      const status = statusLabelText(item.status || '');
+      const reservationsCount = Array.isArray(item.reservations) ? item.reservations.length : 0;
+      const location = item.location || 'Stock';
+      return `<tr>
+        <td>${idx + 1}</td>
+        <td>${escapeHtml(item.name || 'Matériel')}</td>
+        <td>${escapeHtml(categories)}</td>
+        <td>${escapeHtml(condition)}</td>
+        <td>${escapeHtml(status)}</td>
+        <td style="text-align:center;">${reservationsCount}</td>
+        <td>${escapeHtml(location)}</td>
+      </tr>`;
+    }).join('');
+    const style = `
+      body { font-family: Manrope, 'Inter', system-ui, -apple-system, sans-serif; padding: 24px; color: #0f172a; }
+      h1 { margin: 0; font-size: 20px; }
+      .meta { margin-top: 4px; color: #475569; font-size: 12px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+      th, td { border: 1px solid #e2e8f0; padding: 8px; }
+      th { background: #fff3e6; text-align: left; }
+      tr:nth-child(even) { background: #f8fafc; }
+      .footer { margin-top: 12px; color: #64748b; font-size: 12px; }
+    `;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <title>Inventaire - Parc Materiels</title>
+          <style>${style}</style>
+        </head>
+        <body>
+          <h1>Inventaire complet</h1>
+          <div class="meta">Export du ${escapeHtml(dateLabel)} — ${list.length} matériel(s)</div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nom</th>
+                <th>Catégories</th>
+                <th>Etat</th>
+                <th>Statut</th>
+                <th>Réservations</th>
+                <th>Emplacement</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="footer">Généré automatiquement depuis l’interface admin.</div>
+        </body>
+      </html>
+    `;
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    setTimeout(() => {
+      popup.print();
+    }, 200);
   }
 
   // Rendu de la liste des comptes utilisateurs côté admin.
@@ -2133,6 +2225,15 @@ const API = {
     return `<span class="badge ${cls}">${label}</span>`;
   }
 
+  // Libellé textuel du statut (sans HTML).
+  function statusLabelText(status = '') {
+    const norm = status.toLowerCase();
+    if (['reserve', 'emprunte', 'pret'].includes(norm)) return 'Réservé';
+    if (['maintenance', 'hs'].includes(norm)) return 'Maintenance';
+    if (!status) return 'Disponible';
+    return status;
+  }
+
   // Echappe une chaîne pour affichage HTML.
   function escapeHtml(str = '') {
     return String(str)
@@ -2627,6 +2728,7 @@ const API = {
     if (severity === 'overdue') return 'En retard';
     if (severity === 'urgent') return 'Retour proche';
     if (severity === 'soon') return 'Retour proche';
+    if (severity === 'future') return 'Planifiée';
     return 'A jour';
   }
 
