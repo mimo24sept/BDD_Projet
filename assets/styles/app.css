@@ -117,6 +117,11 @@ main {
   align-items: center;
 }
 
+.filters-spaced { margin-bottom: 10px; }
+.filters-inline { margin: 10px 0; }
+
+.spacer-sm { height: 12px; }
+
 .admin-add-grid {
   display: grid;
   grid-template-columns: minmax(280px, 340px) 1fr;
@@ -264,13 +269,19 @@ main {
 .tags span { background: #f6f7fb; padding: 6px 9px; border-radius: 8px; font-size: 12px; color: #4b5563; }
 
 .section-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.section-title-spaced { margin-bottom: 10px; }
+.section-title-start { align-items: flex-start; }
+.section-heading { margin: 2px 0 0; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.stats-spaced { margin: 12px 0; }
 
 .stat-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 6px; box-shadow: var(--shadow); }
 .stat-label { color: var(--muted); font-size: 13px; }
 .stat-value { font-size: 22px; font-weight: 800; letter-spacing: -0.2px; }
 .stat-trend { color: var(--success); font-weight: 700; }
+.stat-trend-warning { color: var(--warning); }
+.stat-trend-danger { color: var(--danger); }
 .stat-card.active { border-color: var(--accent-soft); box-shadow: 0 12px 30px rgba(255,140,50,0.14); background: #fff8f1; }
 .stat-card.clickable { cursor: pointer; transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
 .stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.08); border-color: var(--accent-soft); }
@@ -303,6 +314,7 @@ main {
   display: grid;
   gap: 12px;
 }
+.admin-bubble-spaced { margin-bottom: 12px; }
 .bubble-head { display:flex; justify-content:space-between; align-items:flex-start; }
 .bubble-head .small-title { font-size: 15px; }
 .bubble-head .meta { margin-top: 4px; }
@@ -357,6 +369,7 @@ main {
 
 .modal { width: min(700px, 92vw); background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3); display: grid; gap: 12px; }
 .modal .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 
 .modal-body-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
 .modal-hero { background: linear-gradient(135deg, #fff7ed, #fff); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 10px; }

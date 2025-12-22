@@ -51,6 +51,10 @@
   transition: filter 0.35s ease;
 }
 
+.auth-brand { margin-bottom: 6px; }
+
+.auth-form-title { margin-bottom: 6px; }
+
 .auth-wall.is-exiting { pointer-events: none; }
 
 .auth-card {

@@ -45,9 +45,9 @@
 
       <!-- Catalogue public avec filtres -->
       <section class="panel" data-section="borrow">
-        <div class="section-title" style="margin-bottom:10px;">
+        <div class="section-title section-title-spaced">
           <div>
-            <h3 style="margin:2px 0 0;">Catalogue</h3>
+            <h3 class="section-heading">Catalogue</h3>
           </div>
         </div>
         <div class="filters">
@@ -58,7 +58,7 @@
             <div class="tag-bar" id="tag-bar"></div>
           </div>
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-sm"></div>
         <div id="catalog" class="catalog scroll-area"></div>
       </section>
 
@@ -66,10 +66,10 @@
       <section class="panel" data-section="loans" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Mes emprunts</h3>
+            <h3 class="section-heading">Mes emprunts</h3>
           </div>
         </div>
-        <div class="filters" style="margin-bottom:10px;">
+        <div class="filters filters-spaced">
           <div class="input-group">
             <input id="loan-search" placeholder="recherche" />
           </div>
@@ -80,10 +80,10 @@
       <section class="panel" data-section="stats" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Synthèse de mes emprunts</h3>
+            <h3 class="section-heading">Synthèse de mes emprunts</h3>
           </div>
         </div>
-        <div class="stats" style="margin:12px 0;">
+        <div class="stats stats-spaced">
           <div class="stat-card clickable active" id="user-stat-card-total">
             <div class="stat-label">Emprunts cette annee</div>
             <div class="stat-value" id="stat-total">0</div>
@@ -92,12 +92,12 @@
           <div class="stat-card clickable" id="user-stat-card-delays">
             <div class="stat-label">Retours en retard</div>
             <div class="stat-value" id="stat-delays">0</div>
-            <div class="stat-trend" style="color:var(--warning);">A surveiller</div>
+            <div class="stat-trend stat-trend-warning">A surveiller</div>
           </div>
           <div class="stat-card clickable" id="user-stat-card-degrades">
             <div class="stat-label">Dégradations</div>
             <div class="stat-value" id="stat-degrades">0</div>
-            <div class="stat-trend" style="color:var(--danger);">Etat rendu inferieur</div>
+            <div class="stat-trend stat-trend-danger">Etat rendu inferieur</div>
           </div>
         </div>
         <div id="user-stats-msg" class="message"></div>
@@ -108,12 +108,12 @@
       <section class="panel" data-section="admin-add" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Ajouter un matériel</h3>
+            <h3 class="section-heading">Ajouter un matériel</h3>
           </div>
         </div>
         <div class="admin-add-grid">
           <div class="admin-card">
-            <form id="admin-form" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+            <form id="admin-form" class="grid form-grid">
               <div class="input-group">
                 <input id="admin-name" name="name" required placeholder="Nom" />
               </div>
@@ -148,9 +148,9 @@
           </div>
 
           <div class="admin-card">
-            <div class="section-title" style="align-items:flex-start;">
+            <div class="section-title section-title-start">
               <div>
-                <h3 style="margin:2px 0 0;">Rechercher, trier, retirer du parc</h3>
+                <h3 class="section-heading">Rechercher, trier, retirer du parc</h3>
               </div>
               <button type="button" class="ghost" id="admin-export">Exporter PDF</button>
             </div>
@@ -182,10 +182,10 @@
       <section class="panel" data-section="admin-returns" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Rendus de matériel</h3>
+            <h3 class="section-heading">Rendus de matériel</h3>
           </div>
         </div>
-        <div class="filters" style="margin-bottom:10px;">
+        <div class="filters filters-spaced">
           <div class="input-group">
             <input id="admin-loan-search" placeholder="Recherche emprunteur" />
           </div>
@@ -197,10 +197,10 @@
       <section class="panel" data-section="admin-maintenance" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Planifier une maintenance</h3>
+            <h3 class="section-heading">Planifier une maintenance</h3>
           </div>
         </div>
-        <div class="admin-bubble admin-scroll" style="margin-bottom:12px;">
+        <div class="admin-bubble admin-scroll admin-bubble-spaced">
           <div class="loans-list" id="maintenance-list"></div>
         </div>
         <div class="divider"></div>
@@ -212,7 +212,7 @@
             <div class="tag-bar" id="maintenance-tag-bar"></div>
           </div>
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-sm"></div>
         <div class="admin-scroll">
           <div id="maintenance-catalog" class="catalog"></div>
         </div>
@@ -222,7 +222,7 @@
       <section class="panel" data-section="admin-accounts" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Gestion des comptes</h3>
+            <h3 class="section-heading">Gestion des comptes</h3>
           </div>
         </div>
         <div class="loans-list admin-scroll" id="accounts-list"></div>
@@ -231,10 +231,10 @@
       <section class="panel" data-section="admin-stats" data-role="admin" hidden>
         <div class="section-title">
           <div>
-            <h3 style="margin:2px 0 0;">Statistiques</h3>
+            <h3 class="section-heading">Statistiques</h3>
           </div>
         </div>
-        <div class="stats" style="margin:12px 0;">
+        <div class="stats stats-spaced">
           <div class="stat-card clickable" id="admin-stat-card-total">
             <div class="stat-label">Objets empruntés (année)</div>
             <div class="stat-value" id="admin-stat-total">0</div>
@@ -252,7 +252,7 @@
             <div class="stat-value" id="admin-stat-maint">0</div>
           </div>
         </div>
-        <div class="filters" style="margin:10px 0;">
+        <div class="filters filters-inline">
           <div class="input-group">
             <input id="admin-stats-search" placeholder="Recherche emprunteur ou matériel" />
           </div>
@@ -271,7 +271,7 @@
         </div>
         <div id="modal-body"></div>
         <div class="divider"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="modal-actions">
           <div id="modal-msg" class="message"></div>
           <button id="reserve-btn" type="button">Reserver</button>
         </div>

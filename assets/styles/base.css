@@ -64,6 +64,13 @@ h1 { margin: 0; font-size: 22px; letter-spacing: -0.4px; }
 .input-group { display: grid; gap: 8px; }
 label { color: var(--muted); font-size: 14px; }
 
+.form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.form-grid-end { align-items: end; }
+
 input, select, textarea {
   width: 100%;
   padding: 12px 14px;
