@@ -22,6 +22,12 @@ const registerBlock = document.querySelector('#register-block');
 const authWall = document.querySelector('.auth-wall');
 const rippleOverlay = document.querySelector('#ripple-overlay');
 let authLoaderResizeBound = false;
+/**
+ * Ajuste le texte GEII pour quil remplisse la largeur de la barre.
+ * Mesure la largeur des lettres et calcule un nouveau font-size.
+ * Respecte le gap defini en CSS pour les espacements.
+ * Ignore le recalcul si les elements sont absents.
+ */
 
 function fitLoaderLabel(loader) {
   const label = loader.querySelector('.loader-label');
@@ -38,6 +44,12 @@ function fitLoaderLabel(loader) {
   if (lettersWidth <= 0 || targetWidth <= 0) return;
   label.style.fontSize = `${baseSize * (targetWidth / lettersWidth)}px`;
 }
+/**
+ * Cree le loader de connexion si absent dans loverlay.
+ * Injecte la structure HTML (lettres + barre) a la volee.
+ * Declenche un ajustement de taille apres chargement des polices.
+ * Installe un listener resize unique pour recalculer.
+ */
 
 function ensureAuthLoader() {
   if (!rippleOverlay) return;

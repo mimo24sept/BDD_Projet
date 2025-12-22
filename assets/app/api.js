@@ -13,6 +13,11 @@ import {
   formatDisplayDate,
   placeholderImage,
 } from './utils.js';
+/**
+ * Recupere la session utilisateur courante.
+ * Met a jour state.user selon la reponse.
+ * En cas derreur, force user a null.
+ */
 
 export async function apiSession() {
   try {
@@ -23,6 +28,11 @@ export async function apiSession() {
     state.user = null;
   }
 }
+/**
+ * Charge le catalogue depuis le backend.
+ * Normalise categories, tags et reservations.
+ * Complete picture/description dans state.inventory.
+ */
 
 export async function apiFetchEquipment() {
   try {
@@ -68,6 +78,11 @@ export async function apiFetchEquipment() {
     state.inventory = [];
   }
 }
+/**
+ * Charge les emprunts utilisateur et les stats.
+ * Filtre les rendus et normalise l historique.
+ * Met a jour notifications et demandes.
+ */
 
 export async function apiFetchLoans() {
   try {
@@ -99,6 +114,11 @@ export async function apiFetchLoans() {
     }
   }
 }
+/**
+ * Charge les emprunts globaux cote admin.
+ * Recupere aussi les demandes en attente.
+ * Met a jour state.adminLoans et listes associees.
+ */
 
 export async function apiFetchAdminLoans() {
   try {
@@ -117,6 +137,11 @@ export async function apiFetchAdminLoans() {
     state.reservationRequests = [];
   }
 }
+/**
+ * Charge les stats admin depuis le backend.
+ * Met a jour state.adminStats et adminHistory.
+ * Alimente le message derreur si besoin.
+ */
 
 export async function apiFetchAdminStats() {
   try {
@@ -135,6 +160,11 @@ export async function apiFetchAdminStats() {
     }
   }
 }
+/**
+ * Charge la liste des comptes utilisateurs.
+ * Met a jour state.accounts.
+ * Retourne une liste vide en cas derreur.
+ */
 
 export async function apiFetchUsers() {
   try {
@@ -146,6 +176,11 @@ export async function apiFetchUsers() {
     state.accounts = [];
   }
 }
+/**
+ * Envoie une mise a jour de role utilisateur.
+ * Lance une erreur si le backend refuse.
+ * Renvoie la reponse JSON en succes.
+ */
 
 export async function apiSetUserRole(id, role) {
   const res = await fetch(`${API.auth}?action=set_role`, {
@@ -160,6 +195,11 @@ export async function apiSetUserRole(id, role) {
   }
   return data;
 }
+/**
+ * Supprime un utilisateur via l API.
+ * Lance une erreur si le backend refuse.
+ * Renvoie la reponse JSON en succes.
+ */
 
 export async function apiDeleteUser(id) {
   const res = await fetch(`${API.auth}?action=delete_user`, {
@@ -174,6 +214,11 @@ export async function apiDeleteUser(id) {
   }
   return data;
 }
+/**
+ * Marque un pret comme rendu avec un etat.
+ * Declenche ensuite un refresh des emprunts.
+ * Lance une erreur si le retour est refuse.
+ */
 
 export async function apiReturnLoan(id, condition = '') {
   const res = await fetch(`${API.dashboard}?action=return`, {
@@ -188,6 +233,11 @@ export async function apiReturnLoan(id, condition = '') {
   }
   await apiFetchLoans();
 }
+/**
+ * Annule un pret cote admin.
+ * Rafraichit les emprunts apres validation.
+ * Lance une erreur si l annulation echoue.
+ */
 
 export async function apiAdminCancelLoan(id) {
   const res = await fetch(`${API.dashboard}?action=admin_cancel`, {
@@ -202,6 +252,11 @@ export async function apiAdminCancelLoan(id) {
   }
   await apiFetchLoans();
 }
+/**
+ * Demande une annulation de pret cote user.
+ * Rafraichit les emprunts apres envoi.
+ * Lance une erreur si la demande echoue.
+ */
 
 export async function apiRequestCancel(id) {
   const res = await fetch(`${API.dashboard}?action=cancel_request`, {
@@ -216,6 +271,11 @@ export async function apiRequestCancel(id) {
   }
   await apiFetchLoans();
 }
+/**
+ * Demande une prolongation pour un pret.
+ * Rafraichit les emprunts apres envoi.
+ * Renvoie la reponse pour affichage.
+ */
 
 export async function apiRequestExtension(id, newDue) {
   const res = await fetch(`${API.dashboard}?action=extend_request`, {
@@ -231,6 +291,11 @@ export async function apiRequestExtension(id, newDue) {
   await apiFetchLoans();
   return data;
 }
+/**
+ * Accepte ou refuse une prolongation (admin).
+ * Rafraichit les listes user/admin.
+ * Renvoie la reponse pour feedback.
+ */
 
 export async function apiDecideExtension(id, decision) {
   const res = await fetch(`${API.dashboard}?action=extend_decide`, {
@@ -246,6 +311,11 @@ export async function apiDecideExtension(id, decision) {
   await Promise.all([apiFetchLoans(), apiFetchAdminLoans()]);
   return data;
 }
+/**
+ * Accepte ou refuse une reservation en attente.
+ * Rafraichit catalogue et emprunts admin.
+ * Renvoie la reponse du backend.
+ */
 
 export async function apiDecideReservationRequest(id, decision) {
   const res = await fetch(`${API.dashboard}?action=reservation_decide`, {
@@ -261,12 +331,22 @@ export async function apiDecideReservationRequest(id, decision) {
   await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
   return data;
 }
+/**
+ * Appelle la route de deconnexion.
+ * Ignore silencieusement les erreurs reseau.
+ * Ne modifie pas le state directement.
+ */
 
 export async function apiLogout() {
   try {
     await fetch(`${API.auth}?action=logout`, { method: 'POST', credentials: 'include' });
   } catch (e) {}
 }
+/**
+ * Cree un materiel via FormData (image incluse).
+ * Remonte les erreurs HTTP avec message.
+ * Renvoie le materiel cree.
+ */
 
 export async function apiCreateEquipment(payload) {
   const form = new FormData();
@@ -288,6 +368,11 @@ export async function apiCreateEquipment(payload) {
   }
   return data?.equipment;
 }
+/**
+ * Supprime un materiel par identifiant.
+ * Remonte les erreurs HTTP avec message.
+ * Renvoie la reponse JSON.
+ */
 
 export async function apiDeleteEquipment(id) {
   const res = await fetch(`${API.equipment}?action=delete`, {
@@ -304,6 +389,11 @@ export async function apiDeleteEquipment(id) {
   }
   return data;
 }
+/**
+ * Planifie une maintenance sur une periode.
+ * Remonte les erreurs HTTP avec message.
+ * Renvoie le resultat serveur.
+ */
 
 export async function apiSetMaintenance(payload) {
   const res = await fetch(`${API.equipment}?action=maintenance`, {
@@ -320,6 +410,11 @@ export async function apiSetMaintenance(payload) {
   }
   return data;
 }
+/**
+ * Accepte ou refuse une demande maintenance.
+ * Remonte les erreurs HTTP avec message.
+ * Renvoie la reponse JSON.
+ */
 
 export async function apiDecideMaintenance(id, decision) {
   const res = await fetch(`${API.equipment}?action=maintenance_decide`, {
@@ -336,6 +431,11 @@ export async function apiDecideMaintenance(id, decision) {
   }
   return data;
 }
+/**
+ * Normalise l historique pour les stats.
+ * Ignore les entrees maintenance et calcule delai/degradation.
+ * Ajoute des flags is_delay/is_degrade par defaut.
+ */
 
 function normalizeHistory(list = []) {
   const today = new Date();

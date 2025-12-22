@@ -6,6 +6,11 @@
   Sans dependances sur le DOM.
 */
 import { CONDITION_RANKS } from './config.js';
+/**
+ * Echappe les caracteres speciaux pour insertion HTML.
+ * Protege contre les balises et guillemets.
+ * Retourne une chaine sure.
+ */
 
 export function escapeHtml(str = '') {
   return String(str)
@@ -15,6 +20,11 @@ export function escapeHtml(str = '') {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+/**
+ * Formate une date yyyy-mm-dd en dd/mm/yyyy.
+ * Retourne N/C si la valeur est vide.
+ * Laisse la valeur telle quelle si le format est different.
+ */
 
 export function formatDisplayDate(dateStr) {
   if (!dateStr) return 'N/C';
@@ -25,6 +35,11 @@ export function formatDisplayDate(dateStr) {
   }
   return dateStr;
 }
+/**
+ * Convertit une date/heure en format fr-FR.
+ * Accepte YYYY-MM-DD HH:MM:SS ou ISO.
+ * Retourne la chaine brute si le parsing echoue.
+ */
 
 export function formatDateTimeFr(dateStr) {
   if (!dateStr) return '';
@@ -33,6 +48,11 @@ export function formatDateTimeFr(dateStr) {
   if (Number.isNaN(date.getTime())) return dateStr;
   return date.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
 }
+/**
+ * Formate un objet Date en yyyy-mm-dd local.
+ * Utilise zero-padding pour mois et jour.
+ * Retourne une chaine stable pour comparaisons.
+ */
 
 export function formatDateLocal(dateObj) {
   const y = dateObj.getFullYear();
@@ -40,6 +60,11 @@ export function formatDateLocal(dateObj) {
   const d = String(dateObj.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+/**
+ * Normalise une date (Date ou string) en yyyy-mm-dd.
+ * Extrait le pattern si present, sinon parse en Date.
+ * Retourne null si la date est invalide.
+ */
 
 export function normalizeDateOnly(value) {
   if (value instanceof Date) {
@@ -53,6 +78,11 @@ export function normalizeDateOnly(value) {
   if (Number.isNaN(parsed.getTime())) return null;
   return formatDateLocal(parsed);
 }
+/**
+ * Mappe une categorie libre vers un tag canonique.
+ * Supporte Info/Elen/Ener/Auto via prefixe.
+ * Retourne null si pas reconnu.
+ */
 
 export function canonicalCategory(cat) {
   const lower = String(cat || '').toLowerCase();
@@ -62,6 +92,11 @@ export function canonicalCategory(cat) {
   if (lower.startsWith('auto')) return 'Auto';
   return null;
 }
+/**
+ * Nettoie un etat materiel en forme canonique.
+ * Supprime accents et variations de casse.
+ * Retourne une chaine vide si inconnu.
+ */
 
 export function normalizeCondition(value = '') {
   const cleaned = String(value || '')
@@ -75,18 +110,33 @@ export function normalizeCondition(value = '') {
   if (cleaned.includes('bon')) return 'bon';
   return '';
 }
+/**
+ * Convertit un etat en rang numerique.
+ * Utilise CONDITION_RANKS pour comparer.
+ * Retourne le rang max si inconnu.
+ */
 
 export function conditionRank(value = '') {
   const norm = normalizeCondition(value);
   const maxRank = Math.max(...Object.values(CONDITION_RANKS));
   return norm && norm in CONDITION_RANKS ? CONDITION_RANKS[norm] : maxRank;
 }
+/**
+ * Retourne les etats autorises pour un retour.
+ * Interdit dameliorer letat au retour.
+ * Classe les options du meilleur au pire.
+ */
 
 export function allowedReturnConditions(baseCondition = '') {
   const rank = conditionRank(baseCondition);
   const ordered = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
   return ordered.filter((c) => conditionRank(c) <= rank);
 }
+/**
+ * Convertit la valeur canonique en libelle lisible.
+ * Gere les variantes connues.
+ * Retourne la valeur brute si non standard.
+ */
 
 export function formatConditionLabel(value = '') {
   const norm = normalizeCondition(value);
@@ -96,6 +146,11 @@ export function formatConditionLabel(value = '') {
   if (norm === 'neuf') return 'Neuf';
   return value || 'N/C';
 }
+/**
+ * Genere le HTML des options de retour.
+ * Sappuie sur allowedReturnConditions.
+ * Echappe les valeurs pour securite.
+ */
 
 export function buildReturnOptions(baseCondition = '') {
   const allowed = allowedReturnConditions(baseCondition);
@@ -106,16 +161,31 @@ export function buildReturnOptions(baseCondition = '') {
     })
     .join('');
 }
+/**
+ * Detecte si l objet est en reparation necessaire.
+ * Normalise la chaine pour gerer les accents.
+ * Retourne un booleen.
+ */
 
 export function needsRepair(item) {
   const cond = String(item?.condition || '').toLowerCase();
   const plain = cond.normalize ? cond.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : cond;
   return plain.includes('reparation necessaire');
 }
+/**
+ * Retourne le chemin du placeholder par defaut.
+ * Centralise la valeur pour tout le front.
+ * Utilise une image locale du projet.
+ */
 
 export function placeholderImage() {
   return './assets/placeholder.svg';
 }
+/**
+ * Genere un badge HTML selon le statut.
+ * Mappe les statuts en classes visuelles.
+ * Retourne un fragment pret a inserer.
+ */
 
 export function statusBadge(status = '') {
   const norm = status.toLowerCase();
@@ -132,6 +202,11 @@ export function statusBadge(status = '') {
   if (!label) label = status;
   return `<span class="badge ${cls}">${label}</span>`;
 }
+/**
+ * Renvoie un libelle court pour le statut.
+ * Utilise un fallback Disponible si vide.
+ * Evite les labels techniques.
+ */
 
 export function statusLabelText(status = '') {
   const norm = status.toLowerCase();
@@ -140,6 +215,11 @@ export function statusLabelText(status = '') {
   if (!status) return 'Disponible';
   return status;
 }
+/**
+ * Calcule la cle de semaine ISO a partir dune date.
+ * Travaille en UTC pour stabilite.
+ * Retourne null si la date est invalide.
+ */
 
 export function isoWeekKey(dateStr) {
   if (!dateStr) return null;
@@ -152,6 +232,11 @@ export function isoWeekKey(dateStr) {
   const weekNo = Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
   return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
+/**
+ * Liste les semaines ISO couvertes par une periode.
+ * Saute de 7 jours pour eviter les doublons.
+ * Gere les periodes inversees.
+ */
 
 export function weeksBetween(start, end) {
   const s = new Date(`${start}T00:00:00`);
@@ -167,6 +252,11 @@ export function weeksBetween(start, end) {
   }
   return weeks;
 }
+/**
+ * Liste les dates entre start et end incluses.
+ * Avance jour par jour, dans un sens ou lautre.
+ * Retourne [] si la date est invalide.
+ */
 
 export function datesBetween(start, end) {
   if (!start) return [];
@@ -182,6 +272,11 @@ export function datesBetween(start, end) {
   }
   return dates;
 }
+/**
+ * Calcule le nombre de jours inclusifs.
+ * Utilise minuit local pour chaque date.
+ * Retourne 0 si parsing invalide.
+ */
 
 export function dateDiffDays(a, b) {
   const da = new Date(`${a}T00:00:00`);
@@ -189,6 +284,11 @@ export function dateDiffDays(a, b) {
   if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return 0;
   return Math.abs(Math.round((db - da) / (1000 * 60 * 60 * 24))) + 1;
 }
+/**
+ * Retourne le lundi de la semaine en UTC.
+ * Utilise la norme ISO (lundi=1).
+ * Renvoie une chaine yyyy-mm-dd.
+ */
 
 export function weekStartFromDate(dateObj) {
   const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
@@ -196,6 +296,11 @@ export function weekStartFromDate(dateObj) {
   d.setUTCDate(d.getUTCDate() + 1 - day);
   return d.toISOString().slice(0, 10);
 }
+/**
+ * Ajoute un nombre de jours a une date.
+ * Retourne la date formatee en yyyy-mm-dd.
+ * Renvoie la valeur dorigine si invalide.
+ */
 
 export function addDays(dateStr, days) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -203,6 +308,11 @@ export function addDays(dateStr, days) {
   d.setDate(d.getDate() + days);
   return formatDateLocal(d);
 }
+/**
+ * Parse la saisie JJ/MM/AAAA ou AAAA-MM-JJ.
+ * Valide la date avec Date().
+ * Retourne yyyy-mm-dd ou null.
+ */
 
 export function parseManualInput(value) {
   const raw = String(value || '').trim();
@@ -226,6 +336,11 @@ export function parseManualInput(value) {
   if (Number.isNaN(date.getTime())) return null;
   return formatDateLocal(date);
 }
+/**
+ * Formate yyyy-mm-dd en JJ/MM/AAAA.
+ * Retourne "" si la valeur est invalide.
+ * Utilise le format pour les inputs manuels.
+ */
 
 export function formatManualInput(value) {
   if (!value) return '';
@@ -234,6 +349,11 @@ export function formatManualInput(value) {
   const [y, m, d] = parts;
   return `${d}/${m}/${y}`;
 }
+/**
+ * Determine la severite d une date de retour.
+ * Compare la date due au jour courant.
+ * Retourne ok/soon/urgent/lastday/overdue.
+ */
 
 export function dueSeverity(due) {
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -251,6 +371,11 @@ export function dueSeverity(due) {
   if (diffDays <= 5) return 'soon';
   return 'ok';
 }
+/**
+ * Associe une couleur a la severite.
+ * Retourne un gradient pour les cas neutres.
+ * Utilise des couleurs alignees avec le theme.
+ */
 
 export function severityColor(severity) {
   if (severity === 'lastday') return '#f59e0b';
@@ -259,6 +384,11 @@ export function severityColor(severity) {
   if (severity === 'soon') return '#f59e0b';
   return 'linear-gradient(120deg, var(--accent), var(--accent-strong))';
 }
+/**
+ * Libelle court pour afficher la severite.
+ * Normalise les cas proches (urgent/soon).
+ * Retourne A jour par defaut.
+ */
 
 export function severityLabel(severity) {
   if (severity === 'lastday') return 'Dernier jour';
@@ -268,16 +398,31 @@ export function severityLabel(severity) {
   if (severity === 'future') return 'Planifiée';
   return 'A jour';
 }
+/**
+ * Normalise la severite pour les classes CSS.
+ * Mappe lastday vers overdue.
+ * Retourne la valeur originale sinon.
+ */
 
 export function severityVisual(severity) {
   if (severity === 'lastday') return 'overdue';
   return severity;
 }
+/**
+ * Choisit la couleur de barre selon progression.
+ * Priorise la severite au dela de 50%.
+ * Retourne un vert si avance faible.
+ */
 
 export function barColorForProgress(progress, visualSeverity) {
   if (visualSeverity !== 'overdue' && progress < 50) return '#22c55e';
   return severityColor(visualSeverity);
 }
+/**
+ * Calcule le pourcentage de temps ecoule.
+ * Utilise start et due (fin a 23:59:59).
+ * Borne le resultat entre 0 et 100.
+ */
 
 export function progressPercentWithTime(start, due) {
   const startStr = normalizeDateOnly(start);

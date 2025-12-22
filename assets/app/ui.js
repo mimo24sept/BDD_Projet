@@ -25,6 +25,11 @@ if (tabsBar) {
 
 const revealObservers = new Map();
 let resizeBound = false;
+/**
+ * Cree un IntersectionObserver par conteneur.
+ * Ajoute la classe is-visible quand un item entre.
+ * Memoise lobserver pour reutilisation.
+ */
 
 function getRevealObserver(root) {
   const key = root || 'viewport';
@@ -43,6 +48,11 @@ function getRevealObserver(root) {
   revealObservers.set(key, observer);
   return observer;
 }
+/**
+ * Ajoute lanimation reveal sur une liste de noeuds.
+ * Gere le stagger via une CSS variable.
+ * Passe en mode instant si reduce-motion.
+ */
 
 export function revealInContainer(container, selector, options = {}) {
   if (!container) return;
@@ -69,6 +79,11 @@ export function revealInContainer(container, selector, options = {}) {
     observer.observe(el);
   });
 }
+/**
+ * Determine le sens de transition entre onglets.
+ * Compare les positions dans lordre des tabs.
+ * Retourne from-left ou from-right.
+ */
 
 function tabSlideDirection(prevTab, nextTab) {
   const prevIndex = tabOrder.indexOf(prevTab);
@@ -76,6 +91,11 @@ function tabSlideDirection(prevTab, nextTab) {
   if (prevIndex === -1 || nextIndex === -1) return 'from-right';
   return nextIndex < prevIndex ? 'from-left' : 'from-right';
 }
+/**
+ * Declenche lanimation dentree dune section.
+ * Applique la classe de direction puis nettoie.
+ * Utilise animationend pour le cleanup.
+ */
 
 function animateSectionEntrance(section, directionClass) {
   if (!section) return;
@@ -86,6 +106,11 @@ function animateSectionEntrance(section, directionClass) {
     section.classList.remove('tab-enter', 'from-left', 'from-right');
   }, { once: true });
 }
+/**
+ * Positionne lindicateur sous longlet actif.
+ * Calcule taille et translation depuis le conteneur.
+ * Peut desactiver l animation sur resize.
+ */
 
 function updateTabIndicator(animate = true) {
   if (!tabsBar || !tabIndicator) return;
@@ -113,12 +138,22 @@ function updateTabIndicator(animate = true) {
     });
   }
 }
+/**
+ * Attache un listener resize unique.
+ * Recalcule lindicateur sans animation.
+ * Evite les doubles bindings.
+ */
 
 export function setupTabIndicatorResize() {
   if (resizeBound || !tabsBar) return;
   resizeBound = true;
   window.addEventListener('resize', () => updateTabIndicator(false));
 }
+/**
+ * Met a jour le chip utilisateur en entete.
+ * Formate le login avec une majuscule.
+ * Affiche un fallback si non connecte.
+ */
 
 export function setAuthUI() {
   if (dom.userChip) {
@@ -127,6 +162,11 @@ export function setAuthUI() {
     dom.userChip.textContent = state.user ? `Utilisateur : ${prettyLogin}` : 'Non connecte';
   }
 }
+/**
+ * Montre ou cache les sections selon le role.
+ * Force un onglet valide si le role change.
+ * Gere les cas technicien seulement.
+ */
 
 export function applyRoleVisibility() {
   const adminEnabled = isAdmin();
@@ -196,6 +236,11 @@ export function applyRoleVisibility() {
     state.activeTab = 'borrow';
   }
 }
+/**
+ * Active longlet courant et masque les autres.
+ * Anime les sections si changement de tab.
+ * Met a jour lindicateur et lastActiveTab.
+ */
 
 export function updateTabs() {
   const previousTab = state.lastActiveTab;

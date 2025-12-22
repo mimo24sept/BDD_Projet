@@ -47,6 +47,11 @@ import {
   apiReturnLoan,
   apiRequestCancel,
 } from './api.js';
+/**
+ * Orchestre tous les rendus du dashboard.
+ * Applique les permissions puis rafraichit les sections.
+ * Point central pour les mises a jour globales.
+ */
 
 export function renderApp() {
   applyRoleVisibility();
@@ -66,6 +71,11 @@ export function renderApp() {
   renderMaintenanceTags();
   renderAdminStats();
 }
+/**
+ * Rend les alertes et notifications en haut de page.
+ * Ajoute les alertes de retards et dernier jour.
+ * Masque le bloc si aucune entree.
+ */
 
 export function renderNotifications() {
   if (!dom.notificationsEl) return;
@@ -93,6 +103,11 @@ export function renderNotifications() {
   }).join('');
   revealInContainer(dom.notificationsEl, '.alert-banner', { stagger: 80 });
 }
+/**
+ * Rend les tags filtres cote utilisateur.
+ * Permet lactivation/desactivation par clic.
+ * Declenche un re-render du catalogue.
+ */
 
 export function renderTags() {
   if (!dom.tagBar) return;
@@ -116,6 +131,11 @@ export function renderTags() {
     dom.tagBar.appendChild(chip);
   });
 }
+/**
+ * Rend les tags filtres pour la vue admin.
+ * Filtre sur les tags disponibles dans le stock.
+ * Met a jour le catalogue admin.
+ */
 
 export function renderAdminTags() {
   if (!dom.adminTagBar) return;
@@ -138,6 +158,11 @@ export function renderAdminTags() {
     dom.adminTagBar.appendChild(chip);
   });
 }
+/**
+ * Affiche le catalogue admin avec filtres et tri.
+ * Ajoute les actions de suppression par carte.
+ * Declenche un refresh apres suppression.
+ */
 
 export function renderAdminCatalog() {
   if (!dom.adminInventoryEl) return;
@@ -227,6 +252,11 @@ export function renderAdminCatalog() {
   });
   revealInContainer(dom.adminInventoryEl, '.card', { stagger: 40 });
 }
+/**
+ * Affiche la liste des materiels pour maintenance.
+ * Applique les filtres tags/recherche.
+ * Ouvre la modale en mode maintenance.
+ */
 
 export function renderMaintenanceCatalog() {
   if (!dom.maintenanceCatalogEl) return;
@@ -273,6 +303,11 @@ export function renderMaintenanceCatalog() {
     dom.maintenanceCatalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
   }
 }
+/**
+ * Rend les tags filtres pour la maintenance.
+ * Met a jour la selection et le catalogue.
+ * Reutilise la logique de chips.
+ */
 
 export function renderMaintenanceTags() {
   if (!dom.maintenanceTagBar) return;
@@ -291,6 +326,11 @@ export function renderMaintenanceTags() {
     dom.maintenanceTagBar.appendChild(chip);
   });
 }
+/**
+ * Rend les maintenances planifiees et demandes.
+ * Permet de valider/refuser les demandes.
+ * Permet de cloturer une maintenance.
+ */
 
 export function renderMaintenanceAgenda() {
   if (!dom.maintenanceListEl) return;
@@ -429,6 +469,11 @@ export function renderMaintenanceAgenda() {
   }
   revealInContainer(dom.maintenanceListEl, '.loan-item', { stagger: 30 });
 }
+/**
+ * Genere un export imprime de linventaire.
+ * Ouvre une fenetre avec un tableau HTML.
+ * Declenche la boite dimpression.
+ */
 
 export function exportInventoryPdf() {
   if (!isAdmin()) {
@@ -510,6 +555,11 @@ export function exportInventoryPdf() {
     popup.print();
   }, 200);
 }
+/**
+ * Rend la liste des comptes cote admin.
+ * Permet changement de role et suppression.
+ * Affiche un message si acces refuse.
+ */
 
 export function renderAccounts() {
   if (!dom.accountsListEl) return;
@@ -560,6 +610,11 @@ export function renderAccounts() {
   });
   revealInContainer(dom.accountsListEl, '.loan-item', { stagger: 30 });
 }
+/**
+ * Rend le catalogue utilisateur filtre.
+ * Applique recherche, tags et tri visuel.
+ * Ouvre la modale de reservation.
+ */
 
 export function renderCatalog() {
   if (!dom.catalogEl) return;
@@ -600,6 +655,11 @@ export function renderCatalog() {
     dom.catalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
   }
 }
+/**
+ * Rend les emprunts de lutilisateur courant.
+ * Affiche actions retour/annulation/prolongation.
+ * Applique les styles de severite.
+ */
 
 export function renderLoans() {
   if (!dom.loansEl) return;
@@ -753,6 +813,11 @@ export function renderLoans() {
   }
   revealInContainer(dom.loansEl, '.loan-item', { stagger: 30 });
 }
+/**
+ * Rend les emprunts admin avec colonnes et actions.
+ * Gere annulations, retours et validations.
+ * Met en avant les alertes et priorites.
+ */
 
 export function renderAdminLoans() {
   if (!dom.adminLoansEl) return;
@@ -1079,6 +1144,11 @@ export function renderAdminLoans() {
   }
   revealInContainer(dom.adminLoansEl, '.loan-item', { stagger: 30 });
 }
+/**
+ * Met a jour les stats utilisateur.
+ * Active la carte selectionnee.
+ * Affiche des zeros si aucune data.
+ */
 
 export function renderStats() {
   if (!dom.statsEls.total) return;
@@ -1109,6 +1179,11 @@ export function renderStats() {
     el.classList.toggle('active', state.userStatsView === key);
   });
 }
+/**
+ * Rend la liste detaillee des stats user.
+ * Filtre par type (total/delays/degrades).
+ * Affiche un message si vide.
+ */
 
 export function renderUserStatsList() {
   if (!dom.statsEls.list) return;
@@ -1158,6 +1233,11 @@ export function renderUserStatsList() {
     dom.statsEls.list.innerHTML = '<p class="meta">Aucun élément pour ce filtre.</p>';
   }
 }
+/**
+ * Rend les cartes de stats admin.
+ * Filtre les vues selon le role.
+ * Met a jour les compteurs.
+ */
 
 export function renderAdminStats() {
   if (!dom.adminStatsEls.total) return;
@@ -1184,6 +1264,11 @@ export function renderAdminStats() {
     el.classList.toggle('active', state.adminStatsView === viewKey);
   });
 }
+/**
+ * Rend la liste detaillee des stats admin.
+ * Applique le filtre de recherche.
+ * Exclut les maintenances des stats emprunts.
+ */
 
 export function renderAdminStatsList() {
   if (!dom.adminStatsEls.list) return;
@@ -1245,6 +1330,11 @@ export function renderAdminStatsList() {
     dom.adminStatsEls.list.innerHTML = '<p class="meta">Aucun résultat pour ce filtre.</p>';
   }
 }
+/**
+ * Construit la liste des alertes en retard.
+ * Sappuie sur les emprunts non rendus.
+ * Retourne une liste de notifications.
+ */
 
 function buildOverdueAlerts() {
   if (isAdmin()) return [];
@@ -1259,6 +1349,11 @@ function buildOverdueAlerts() {
     created_at: loan.due || '',
   }));
 }
+/**
+ * Construit les alertes pour les derniers jours.
+ * Se base sur la date de fin proche.
+ * Retourne une liste de notifications.
+ */
 
 function buildLastDayAlerts() {
   if (isAdmin()) return [];

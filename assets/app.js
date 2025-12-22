@@ -364,7 +364,11 @@ if (!dom.appShell) {
       }
     });
   }
-
+  /**
+   * Sequence principale de demarrage du dashboard.
+   * Charge la session, ajuste le role et recupere les donnees.
+   * Declenche les rendus initiaux une fois les appels termines.
+   */
   (async function start() {
     await apiSession();
     if (!state.user) {

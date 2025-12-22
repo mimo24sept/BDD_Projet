@@ -31,18 +31,38 @@ let calendarMonth = null;
 let selectedStartDate = null;
 let selectedEndDate = null;
 let extensionContext = null;
+/**
+ * Expose le mode courant de la modale.
+ * Utile pour differencier reserve/extend/maintenance.
+ * Retourne une chaine courte.
+ */
 
 export function getModalMode() {
   return modalMode;
 }
+/**
+ * Expose le contexte de prolongation en cours.
+ * Contient loanId, start et due.
+ * Retourne null si non defini.
+ */
 
 export function getExtensionContext() {
   return extensionContext;
 }
+/**
+ * Expose la map des dates bloquees.
+ * Utilisee pour verifier une plage.
+ * Retourne un objet date -> type.
+ */
 
 export function getBlockedDates() {
   return blockedDates;
 }
+/**
+ * Prepare le contexte de prolongation depuis un pret.
+ * Verifie lexistence du materiel associe.
+ * Ouvre la modale en mode extend.
+ */
 
 export function openExtendModal(loan) {
   if (!loan || !loan.material_id || !loan.start || !loan.due) {
@@ -61,6 +81,11 @@ export function openExtendModal(loan) {
   };
   openModal(item, 'extend');
 }
+/**
+ * Ouvre la modale et prepare le calendrier.
+ * Calcule les dates bloquees et la selection.
+ * Configure les inputs et le bouton principal.
+ */
 
 export function openModal(item, mode = 'reserve') {
   if (!dom.modalTitle || !dom.modalBody || !dom.modalBackdrop) return;
@@ -147,6 +172,11 @@ export function openModal(item, mode = 'reserve') {
       : (modalMode === 'extend' ? 'Prolonger' : 'Reserver');
   }
 }
+/**
+ * Reinitialise letat de la modale.
+ * Cache loverlay et oublie la selection.
+ * Nettoie le contexte de prolongation.
+ */
 
 export function closeModal() {
   state.modalItem = null;
@@ -157,6 +187,11 @@ export function closeModal() {
   extensionContext = null;
   if (dom.modalBackdrop) dom.modalBackdrop.classList.remove('show');
 }
+/**
+ * Construit la grille du mois courant.
+ * Marque les jours bloques et selectionnes.
+ * Branche la navigation mois precedent/suivant.
+ */
 
 export function renderCalendar() {
   if (!dom.modalBody) return;
@@ -226,6 +261,11 @@ export function renderCalendar() {
     grid.appendChild(btn);
   });
 }
+/**
+ * Gere la selection start/end sur un clic jour.
+ * Applique les limites de duree et disponibilite.
+ * Relance le rendu et les messages.
+ */
 
 function handleDayClick(dateStr) {
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -280,10 +320,20 @@ function handleDayClick(dateStr) {
   syncManualInputs();
   updateAvailabilityMessage();
 }
+/**
+ * Indique si une date est un bord de selection.
+ * Compare avec start ou end.
+ * Retourne un booleen.
+ */
 
 function isDateSelected(dateStr) {
   return dateStr === selectedStartDate || dateStr === selectedEndDate;
 }
+/**
+ * Teste si une date est a linterieur de la plage.
+ * Sappuie sur datesBetween.
+ * Retourne un booleen.
+ */
 
 function isDateInSelection(dateStr) {
   const range = selectionRange();
@@ -291,6 +341,11 @@ function isDateInSelection(dateStr) {
   const list = datesBetween(range.start, range.end);
   return list.includes(dateStr);
 }
+/**
+ * Retourne la plage selectionnee start/end.
+ * Ne renvoie rien si selection incomplete.
+ * Utilisee avant validation.
+ */
 
 export function selectionRange() {
   if (!selectedStartDate) return null;
@@ -299,6 +354,11 @@ export function selectionRange() {
   const end = selectedEndDate;
   return { start, end };
 }
+/**
+ * Verifie quune plage ne chevauche pas de blocage.
+ * Tient compte du mode maintenance.
+ * Retourne true si libre.
+ */
 
 export function isRangeFree(start, end) {
   if (!start || !end) return false;
@@ -308,6 +368,11 @@ export function isRangeFree(start, end) {
   }
   return list.every((d) => !blockedDates[d]);
 }
+/**
+ * Transforme les periodes en dates bloquees.
+ * Priorise les maintenances sur les reservations.
+ * Retourne une map date -> type.
+ */
 
 function buildBlockedDates(periods) {
   const dates = {};
@@ -324,6 +389,11 @@ function buildBlockedDates(periods) {
   });
   return dates;
 }
+/**
+ * Repercute la selection dans les inputs manuels.
+ * Formate en JJ/MM/AAAA.
+ * Efface si aucune selection.
+ */
 
 function syncManualInputs() {
   if (dateStartInput) {
@@ -333,6 +403,11 @@ function syncManualInputs() {
     dateEndInput.value = selectedEndDate ? formatManualInput(selectedEndDate) : '';
   }
 }
+/**
+ * Parse la saisie manuelle des dates.
+ * Ajuste la selection et verifie les inversions.
+ * Relance le rendu et les messages.
+ */
 
 function handleManualDateInput() {
   const startRaw = dateStartInput ? dateStartInput.value : '';
@@ -374,6 +449,11 @@ function handleManualDateInput() {
   renderCalendar();
   updateAvailabilityMessage();
 }
+/**
+ * Met a jour le bouton et le message de la modale.
+ * Applique les regles de dates et de duree.
+ * Active ou desactive le bouton selon la dispo.
+ */
 
 export function updateAvailabilityMessage() {
   const range = selectionRange();
@@ -423,6 +503,11 @@ export function updateAvailabilityMessage() {
     : 'Periode deja reservee';
   dom.modalMsg.className = label;
 }
+/**
+ * Recherche la prochaine semaine non bloquee.
+ * Teste jusqua 52 semaines a partir daujourdhui.
+ * Retourne une date locale formatee.
+ */
 
 export function nextAvailableDate() {
   let cursor = new Date();
