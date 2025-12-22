@@ -2422,8 +2422,7 @@ const API = {
 
   // Génère une URL d'image de placeholder pseudo-aléatoire.
   function placeholderImage(seed) {
-    const s = encodeURIComponent(seed.toLowerCase());
-    return `https://source.unsplash.com/collection/190727/600x400?sig=${s}`;
+    return './assets/placeholder.svg';
   }
 
   // Outils calendrier (semaines, dates bloquées, rendu grille).
