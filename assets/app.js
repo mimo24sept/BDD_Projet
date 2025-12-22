@@ -27,6 +27,7 @@ const API = {
     adminLoans: [],
     accounts: [],
     activeTab: 'borrow',
+    lastActiveTab: null,
     filters: { search: '', tags: [] },
     adminFilters: { search: '', tag: null, sort: 'recent' },
     maintenanceFilters: { search: '', tag: null },
@@ -50,6 +51,18 @@ const API = {
   const userChip = document.querySelector('#user-chip');
   const tabs = document.querySelectorAll('[data-tab]');
   const sections = document.querySelectorAll('[data-section]');
+  const tabOrder = Array.from(tabs).map((tab) => tab.dataset.tab);
+  const tabsBar = document.querySelector('.tabs');
+  let tabIndicator = null;
+  let tabIndicatorReady = false;
+  if (tabsBar) {
+    tabIndicator = tabsBar.querySelector('.tab-indicator');
+    if (!tabIndicator) {
+      tabIndicator = document.createElement('div');
+      tabIndicator.className = 'tab-indicator';
+      tabsBar.appendChild(tabIndicator);
+    }
+  }
   const notificationsEl = document.querySelector('#notifications');
   const catalogEl = document.querySelector('#catalog');
   const loansEl = document.querySelector('#loans');
@@ -120,6 +133,95 @@ const API = {
   let selectedStartDate = null;
   let selectedEndDate = null;
   let extensionContext = null;
+  const revealObservers = new Map();
+
+  function getRevealObserver(root) {
+    const key = root || 'viewport';
+    if (revealObservers.has(key)) return revealObservers.get(key);
+    const observer = new IntersectionObserver((entries, obs) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-visible');
+        obs.unobserve(entry.target);
+      });
+    }, {
+      root: root || null,
+      threshold: 0.12,
+      rootMargin: '0px 0px -8% 0px',
+    });
+    revealObservers.set(key, observer);
+    return observer;
+  }
+
+  function revealInContainer(container, selector, options = {}) {
+    if (!container) return;
+    const items = container.querySelectorAll(selector);
+    if (!items.length) return;
+    const prefersReduced = window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const supportsObserver = 'IntersectionObserver' in window;
+    const root = container.classList.contains('scroll-area') || container.classList.contains('admin-scroll')
+      ? container
+      : container.closest('.scroll-area, .admin-scroll');
+    const observer = (!prefersReduced && supportsObserver) ? getRevealObserver(root || null) : null;
+    const stagger = Number.isFinite(options.stagger) ? options.stagger : 60;
+    items.forEach((el, index) => {
+      if (el.dataset.reveal === '1') return;
+      el.dataset.reveal = '1';
+      el.classList.add('reveal-item');
+      if (!observer) {
+        el.classList.add('is-visible');
+        return;
+      }
+      const delay = Math.min(index, 8) * stagger;
+      el.style.setProperty('--reveal-delay', `${delay}ms`);
+      observer.observe(el);
+    });
+  }
+
+  function tabSlideDirection(prevTab, nextTab) {
+    const prevIndex = tabOrder.indexOf(prevTab);
+    const nextIndex = tabOrder.indexOf(nextTab);
+    if (prevIndex === -1 || nextIndex === -1) return 'from-right';
+    return nextIndex < prevIndex ? 'from-left' : 'from-right';
+  }
+
+  function animateSectionEntrance(section, directionClass) {
+    if (!section) return;
+    section.classList.remove('tab-enter', 'from-left', 'from-right');
+    void section.offsetWidth;
+    section.classList.add('tab-enter', directionClass);
+    section.addEventListener('animationend', () => {
+      section.classList.remove('tab-enter', 'from-left', 'from-right');
+    }, { once: true });
+  }
+
+  function updateTabIndicator(animate = true) {
+    if (!tabsBar || !tabIndicator) return;
+    const activeTab = tabsBar.querySelector('.tab.active');
+    if (!activeTab || activeTab.offsetParent === null) {
+      tabIndicator.style.opacity = '0';
+      return;
+    }
+    const barRect = tabsBar.getBoundingClientRect();
+    const tabRect = activeTab.getBoundingClientRect();
+    const x = tabRect.left - barRect.left;
+    const y = tabRect.top - barRect.top;
+    if (!animate) {
+      tabIndicator.classList.remove('ready');
+      tabIndicatorReady = false;
+    }
+    tabIndicator.style.width = `${tabRect.width}px`;
+    tabIndicator.style.height = `${tabRect.height}px`;
+    tabIndicator.style.transform = `translate(${x}px, ${y}px)`;
+    tabIndicator.style.opacity = '1';
+    if (!tabIndicatorReady) {
+      requestAnimationFrame(() => {
+        tabIndicator.classList.add('ready');
+        tabIndicatorReady = true;
+      });
+    }
+  }
 
   // Gestion logout.
   if (logoutBtn) {
@@ -133,10 +235,15 @@ const API = {
   // Navigation entre onglets.
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      state.activeTab = tab.dataset.tab;
+      const nextTab = tab.dataset.tab;
+      if (state.activeTab === nextTab) return;
+      state.activeTab = nextTab;
       updateTabs();
     });
   });
+  if (tabsBar) {
+    window.addEventListener('resize', () => updateTabIndicator(false));
+  }
 
   // Filtres catalogue / maintenance / prêts admin / stats admin.
   if (searchInput) {
@@ -940,6 +1047,10 @@ const API = {
 
   // Active l'onglet courant et affiche la section associée.
   function updateTabs() {
+    const previousTab = state.lastActiveTab;
+    const nextTab = state.activeTab;
+    const shouldAnimate = Boolean(previousTab && previousTab !== nextTab);
+    const directionClass = shouldAnimate ? tabSlideDirection(previousTab, nextTab) : 'from-right';
     tabs.forEach((tab) => {
       const isMaintenanceTab = tab.dataset.tab === 'admin-maintenance';
       if (isMaintenanceTab && !hasMaintenanceAccess()) {
@@ -965,13 +1076,23 @@ const API = {
       const isStatsSection = sec.dataset.section === 'stats';
       const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
       const isAdminStatsSection = sec.dataset.section === 'admin-stats';
+      const isUserSection = isLoansSection || isBorrowSection || isStatsSection;
       const allowAdminSection = isAdmin()
         || (isMaintenanceSection && hasMaintenanceAccess())
         || (isAdminStatsSection && canViewAdminStats());
-      sec.hidden = sec.dataset.section !== state.activeTab
-        || (isAdminSection && !allowAdminSection)
-        || ((isLoansSection || isBorrowSection || isStatsSection) && isAdmin());
+      const shouldShow = sec.dataset.section === state.activeTab
+        && (!isAdminSection || allowAdminSection)
+        && !(isUserSection && isAdmin());
+      if (shouldShow) {
+        sec.hidden = false;
+        if (shouldAnimate) animateSectionEntrance(sec, directionClass);
+      } else {
+        sec.hidden = true;
+        sec.classList.remove('tab-enter', 'from-left', 'from-right');
+      }
     });
+    updateTabIndicator(shouldAnimate);
+    state.lastActiveTab = nextTab;
   }
 
   // Affiche les notifications système (annulations admin/maintenance) en haut de la page.
@@ -999,6 +1120,7 @@ const API = {
         </div>
       `;
     }).join('');
+    revealInContainer(notificationsEl, '.alert-banner', { stagger: 80 });
   }
 
   // Affiche et met à jour les tags filtres du catalogue utilisateur.
@@ -1134,6 +1256,7 @@ const API = {
       }
       adminInventoryEl.appendChild(card);
     });
+    revealInContainer(adminInventoryEl, '.card', { stagger: 40 });
   }
 
   // Rendu du catalogue de maintenance filtré.
@@ -1176,6 +1299,7 @@ const API = {
       card.querySelector('button').addEventListener('click', () => openModal(item, 'maintenance'));
       maintenanceCatalogEl.appendChild(card);
     });
+    revealInContainer(maintenanceCatalogEl, '.card', { stagger: 40 });
 
     if (!filtered.length) {
       maintenanceCatalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
@@ -1337,6 +1461,7 @@ const API = {
     if (!maints.length && !pendingRequests.length) {
       maintenanceListEl.innerHTML = '<p class="meta">Aucune maintenance planifiée ou demande en attente.</p>';
     }
+    revealInContainer(maintenanceListEl, '.loan-item', { stagger: 30 });
   }
 
   // Exporte l'inventaire complet côté admin en PDF (via l'impression navigateur).
@@ -1469,6 +1594,7 @@ const API = {
       }
       accountsListEl.appendChild(row);
     });
+    revealInContainer(accountsListEl, '.loan-item', { stagger: 30 });
   }
 
   // Catalogue public (recherche + tags) et cartes de réservation.
@@ -1506,6 +1632,7 @@ const API = {
       card.querySelector('button').addEventListener('click', () => openModal(item));
       catalogEl.appendChild(card);
     });
+    revealInContainer(catalogEl, '.card', { stagger: 60 });
 
     if (!filtered.length) {
       catalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
@@ -1659,6 +1786,7 @@ const API = {
       }
       loansEl.appendChild(row);
     });
+    revealInContainer(loansEl, '.loan-item', { stagger: 30 });
 
     if (!state.loans.length) {
       loansEl.innerHTML = '<p class="meta">Aucun emprunt en cours.</p>';
@@ -1990,6 +2118,7 @@ const API = {
       if (priorityCol.childElementCount) layout.appendChild(priorityCol);
       adminLoansEl.appendChild(layout);
     }
+    revealInContainer(adminLoansEl, '.loan-item', { stagger: 30 });
   }
 
   // Stats côté utilisateur (cartes synthèse).
@@ -2067,6 +2196,7 @@ const API = {
       `;
       statsEls.list.appendChild(row);
     });
+    revealInContainer(statsEls.list, '.loan-item', { stagger: 30 });
 
     if (!filtered.length) {
       statsEls.list.innerHTML = '<p class="meta">Aucun élément pour ce filtre.</p>';
@@ -2115,15 +2245,16 @@ const API = {
     state.adminStatsView = view;
     const all = Array.isArray(state.adminHistory) ? state.adminHistory : [];
     const filtered = all.filter((item) => {
-      const matchesView = view === 'total'
-        ? true
+      const isMaint = Boolean(item.is_maint);
+      const matchesView = view === 'maint'
+        ? isMaint
         : view === 'delays'
-          ? item.is_delay
+          ? item.is_delay && !isMaint
           : view === 'degrades'
-            ? item.is_degrade
-            : view === 'maint'
-              ? item.is_maint
-              : true;
+            ? item.is_degrade && !isMaint
+            : view === 'total'
+              ? !isMaint
+              : !isMaint;
       if (!matchesView) return false;
       if (!state.adminHistorySearch) return true;
       const haystack = `${item.user || ''} ${item.name || ''}`.toLowerCase();
@@ -2156,6 +2287,7 @@ const API = {
       `;
       adminStatsEls.list.appendChild(row);
     });
+    revealInContainer(adminStatsEls.list, '.loan-item', { stagger: 30 });
 
     if (!filtered.length) {
       adminStatsEls.list.innerHTML = '<p class="meta">Aucun résultat pour ce filtre.</p>';

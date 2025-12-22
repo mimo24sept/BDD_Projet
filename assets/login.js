@@ -12,8 +12,59 @@ const toggleRegisterBtn = document.querySelector('#toggle-register');
 const backToLoginBtn = document.querySelector('#back-to-login');
 const loginBlock = document.querySelector('#login-block');
 const registerBlock = document.querySelector('#register-block');
+const authWall = document.querySelector('.auth-wall');
 const rippleOverlay = document.querySelector('#ripple-overlay');
-const rippleCircles = rippleOverlay ? rippleOverlay.querySelectorAll('.ripple-circle') : [];
+let authLoaderResizeBound = false;
+
+function fitLoaderLabel(loader) {
+  const label = loader.querySelector('.loader-label');
+  const track = loader.querySelector('.loader-track');
+  if (!label || !track) return;
+  const gapValue = getComputedStyle(label).getPropertyValue('--letter-gap');
+  const gap = Number.parseFloat(gapValue) || 5;
+  const letters = Array.from(label.querySelectorAll('.label-base span'));
+  if (!letters.length) return;
+  const baseSize = 120;
+  label.style.fontSize = `${baseSize}px`;
+  const lettersWidth = letters.reduce((sum, span) => sum + span.getBoundingClientRect().width, 0);
+  const targetWidth = track.getBoundingClientRect().width - gap * (letters.length - 1);
+  if (lettersWidth <= 0 || targetWidth <= 0) return;
+  label.style.fontSize = `${baseSize * (targetWidth / lettersWidth)}px`;
+}
+
+function ensureAuthLoader() {
+  if (!rippleOverlay) return;
+  if (rippleOverlay.querySelector('.auth-loader')) return;
+  const loader = document.createElement('div');
+  loader.className = 'auth-loader';
+  loader.setAttribute('role', 'status');
+  loader.setAttribute('aria-live', 'polite');
+  loader.innerHTML = `
+    <div class="loader-label" aria-hidden="true">
+      <span class="label-layer label-base">
+        <span>G</span><span>E</span><span>I</span><span>I</span>
+      </span>
+      <span class="label-layer label-fill">
+        <span>G</span><span>E</span><span>I</span><span>I</span>
+      </span>
+    </div>
+    <div class="loader-track" aria-hidden="true">
+      <div class="loader-bar"></div>
+    </div>
+  `;
+  rippleOverlay.appendChild(loader);
+  fitLoaderLabel(loader);
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => fitLoaderLabel(loader));
+  }
+  if (!authLoaderResizeBound) {
+    authLoaderResizeBound = true;
+    window.addEventListener('resize', () => {
+      const activeLoader = rippleOverlay.querySelector('.auth-loader');
+      if (activeLoader) fitLoaderLabel(activeLoader);
+    });
+  }
+}
 
 // Active le bouton œil sur chaque champ mot de passe pour basculer texte/masqué.
 function initPasswordToggles() {
@@ -34,15 +85,22 @@ function initPasswordToggles() {
 
 // Animation ripple puis redirection vers le tableau de bord après succès.
 function playRippleAndRedirect() {
-  if (!rippleOverlay || !rippleCircles.length) {
+  if (!rippleOverlay) {
     window.location.href = 'menu.html';
     return;
   }
+  if (document.body.classList.contains('auth-transition')) return;
+  const prefersReduced = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduced) {
+    window.location.href = 'menu.html';
+    return;
+  }
+  document.body.classList.add('auth-transition');
+  if (authWall) authWall.classList.add('is-exiting');
+  ensureAuthLoader();
   rippleOverlay.classList.add('show');
-  rippleCircles.forEach((circle, idx) => {
-    circle.style.animation = `ripplePulse 1s ease-out ${idx * 0.12}s forwards`;
-  });
-  setTimeout(() => { window.location.href = 'menu.html'; }, 850);
+  setTimeout(() => { window.location.href = 'menu.html'; }, 1200);
 }
 
 // Affiche le champ "mot secret" uniquement si le rôle professeur est choisi.
