@@ -24,6 +24,8 @@ try {
     exit;
 }
 
+ensure_material_picture_column($pdo);
+
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
@@ -99,7 +101,8 @@ function list_equipment(PDO $pdo): void
             m.Dispo AS dispo,
             cat.Categorie AS category,
             m.NUMserie AS numserie,
-            m.Etat AS etat
+            m.Etat AS etat,
+            m.Image AS picture
         FROM `Materiel` m
         LEFT JOIN `Categorie` cat ON cat.IDcategorie = m.IDcategorie
         ORDER BY m.IDmateriel DESC'
@@ -122,6 +125,7 @@ function list_equipment(PDO $pdo): void
                 'location' => $row['location'] ?? '',
                 'status' => map_status($hasActiveNow, $hasMaintenanceNow),
                 'condition' => $row['etat'] ?? '',
+                'picture' => $row['picture'] ?? '',
                 'notes' => '',
                 'serial' => $row['numserie'] ?? '',
                 'tags' => [],
@@ -640,10 +644,98 @@ function ensure_reservation_request_table(PDO $pdo): void
     $done = true;
 }
 
+// S'assure que la colonne Image existe sur Materiel.
+function ensure_material_picture_column(PDO $pdo): bool
+{
+    static $checked = false;
+    static $has = false;
+    if ($checked) {
+        return $has;
+    }
+    $checked = true;
+    try {
+        $col = $pdo->query("SHOW COLUMNS FROM `Materiel` LIKE 'Image'")->fetch();
+        if (!$col) {
+            $pdo->exec('ALTER TABLE `Materiel` ADD COLUMN `Image` VARCHAR(255) NULL');
+        }
+        $has = true;
+    } catch (Throwable $e) {
+        $has = false;
+    }
+    return $has;
+}
+
+// Enregistre une image uploadée et renvoie son chemin public.
+function store_uploaded_picture(array $file): string
+{
+    $error = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($error === UPLOAD_ERR_NO_FILE) {
+        return '';
+    }
+    if ($error !== UPLOAD_ERR_OK) {
+        $messages = [
+            UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (upload_max_filesize).',
+            UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux.',
+            UPLOAD_ERR_PARTIAL => 'Upload incomplet.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant.',
+            UPLOAD_ERR_CANT_WRITE => 'Ecriture du fichier impossible.',
+            UPLOAD_ERR_EXTENSION => 'Upload bloque par une extension PHP.',
+        ];
+        $message = $messages[$error] ?? 'Upload image impossible';
+        throw new RuntimeException($message);
+    }
+    $size = (int) ($file['size'] ?? 0);
+    if ($size <= 0) {
+        throw new RuntimeException('Fichier image invalide');
+    }
+    if ($size > 4 * 1024 * 1024) {
+        throw new RuntimeException('Image trop lourde (4 Mo max)');
+    }
+
+    $mime = '';
+    if (class_exists('finfo')) {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = (string) $finfo->file((string) ($file['tmp_name'] ?? ''));
+    }
+    if ($mime === '' && function_exists('getimagesize')) {
+        $info = @getimagesize((string) ($file['tmp_name'] ?? ''));
+        $mime = is_array($info) ? (string) ($info['mime'] ?? '') : '';
+    }
+
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException('Format d\'image non supporté');
+    }
+
+    $uploadDir = __DIR__ . '/../assets/uploads';
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+        throw new RuntimeException('Impossible de créer le dossier upload');
+    }
+
+    $suffix = bin2hex(random_bytes(4));
+    $filename = sprintf('materiel-%s-%s.%s', date('Ymd-His'), $suffix, $allowed[$mime]);
+    $target = $uploadDir . '/' . $filename;
+    if (!move_uploaded_file((string) ($file['tmp_name'] ?? ''), $target)) {
+        throw new RuntimeException('Enregistrement image impossible');
+    }
+
+    return 'assets/uploads/' . $filename;
+}
+
 // Crée un nouvel équipement dans la base (admin).
 function create_equipment(PDO $pdo): void
 {
-    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $contentType = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
+    if (str_contains($contentType, 'multipart/form-data') || !empty($_POST) || !empty($_FILES)) {
+        $data = $_POST;
+    } else {
+        $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    }
     $name = trim((string) ($data['name'] ?? ''));
     $payloadCategories = $data['categories'] ?? [];
     $categories = [];
@@ -667,6 +759,16 @@ function create_equipment(PDO $pdo): void
     $categoryId = (int) ($data['category_id'] ?? 0);
     $location = trim((string) ($data['location'] ?? ''));
     $condition = ucfirst(strtolower(trim((string) ($data['condition'] ?? ''))));
+    $picturePath = '';
+    if (!empty($_FILES['picture']) && is_array($_FILES['picture'])) {
+        try {
+            $picturePath = store_uploaded_picture($_FILES['picture']);
+        } catch (Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+            return;
+        }
+    }
 
     if ($name === '' || ($categoryId <= 0 && $categoryName === '') || $location === '') {
         http_response_code(400);
@@ -690,8 +792,8 @@ function create_equipment(PDO $pdo): void
         $serial = generate_reference($pdo, $name, $categories ?: [$categoryName]);
 
         $insert = $pdo->prepare(
-            'INSERT INTO `Materiel` (NOMmateriel, IDcategorie, Emplacement, Dispo, NUMserie, Etat)
-             VALUES (:name, :cat, :loc, "Oui", :serial, :etat)'
+            'INSERT INTO `Materiel` (NOMmateriel, IDcategorie, Emplacement, Dispo, NUMserie, Etat, Image)
+             VALUES (:name, :cat, :loc, "Oui", :serial, :etat, :image)'
         );
         $insert->execute([
             ':name' => $name,
@@ -699,6 +801,7 @@ function create_equipment(PDO $pdo): void
             ':loc' => $location,
             ':serial' => $serial,
             ':etat' => $condition ?: 'Bon',
+            ':image' => $picturePath !== '' ? $picturePath : null,
         ]);
         $newId = (int) $pdo->lastInsertId();
         $pdo->commit();
@@ -837,7 +940,8 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
             m.Dispo AS dispo,
             cat.Categorie AS category,
             m.NUMserie AS numserie,
-            m.Etat AS etat
+            m.Etat AS etat,
+            m.Image AS picture
         FROM `Materiel` m
         LEFT JOIN `Categorie` cat ON cat.IDcategorie = m.IDcategorie
         WHERE m.IDmateriel = :id
@@ -861,6 +965,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         'location' => $row['location'] ?? '',
         'status' => map_status($hasActiveLoan, $hasMaintenanceNow),
         'condition' => $row['etat'] ?? '',
+        'picture' => $row['picture'] ?? '',
         'notes' => '',
         'serial' => $row['numserie'] ?? '',
         'tags' => [],

@@ -82,6 +82,7 @@ const API = {
     categories: document.querySelectorAll('input[name="admin-categories"]'),
     location: document.querySelector('#admin-location'),
     condition: document.querySelector('#admin-condition'),
+    picture: document.querySelector('#admin-picture'),
   };
   const adminInventoryEl = document.querySelector('#admin-inventory');
   const adminSearchInput = document.querySelector('#admin-search');
@@ -389,11 +390,23 @@ const API = {
         adminMsg.className = 'message err';
         return;
       }
+      const pictureFile = adminInputs.picture?.files?.[0] || null;
+      if (pictureFile && !pictureFile.type.startsWith('image/')) {
+        adminMsg.textContent = 'Format image non supporté';
+        adminMsg.className = 'message err';
+        return;
+      }
+      if (pictureFile && pictureFile.size > 4 * 1024 * 1024) {
+        adminMsg.textContent = 'Image trop lourde (4 Mo max)';
+        adminMsg.className = 'message err';
+        return;
+      }
       const payload = {
         name: adminInputs.name?.value?.trim(),
         categories: selectedCats,
         location: adminInputs.location?.value?.trim(),
         condition: adminInputs.condition?.value?.trim(),
+        picture: pictureFile,
       };
       adminMsg.textContent = 'Enregistrement...';
       adminMsg.className = 'message';
@@ -720,11 +733,16 @@ const API = {
 
   // Crée un équipement depuis le formulaire admin.
   async function apiCreateEquipment(payload) {
+    const form = new FormData();
+    if (payload?.name) form.append('name', payload.name);
+    if (payload?.location) form.append('location', payload.location);
+    if (payload?.condition) form.append('condition', payload.condition);
+    (payload?.categories || []).forEach((cat) => form.append('categories[]', cat));
+    if (payload?.picture) form.append('picture', payload.picture);
     const res = await fetch(`${API.equipment}?action=create`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(payload),
+      body: form,
     });
     const data = await res.json();
     if (!res.ok) {
