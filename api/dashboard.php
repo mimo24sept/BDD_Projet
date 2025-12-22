@@ -26,6 +26,7 @@ try {
 
 ensure_prolongation_table($pdo);
 ensure_maintenance_request_table($pdo);
+ensure_reservation_request_table($pdo);
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
@@ -92,6 +93,16 @@ if ($method === 'POST' && $action === 'extend_decide') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'reservation_decide') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    decide_reservation_request($pdo);
+    exit;
+}
+
 try {
     $scope = $_GET['scope'] ?? 'mine';
     $targetUser = ($scope === 'all' && (is_admin() || is_technician())) ? null : (int) $_SESSION['user_id'];
@@ -101,11 +112,15 @@ try {
     $maintenanceRequests = (is_admin() || is_technician())
         ? fetch_maintenance_requests($pdo, $scope === 'all' ? null : (int) $_SESSION['user_id'])
         : [];
+    $reservationRequests = is_admin()
+        ? fetch_reservation_requests($pdo, $scope === 'all' ? null : (int) $_SESSION['user_id'])
+        : [];
     echo json_encode([
         'loans' => $loans,
         'stats' => $stats,
         'notifications' => $notifications,
         'maintenance_requests' => $maintenanceRequests,
+        'reservation_requests' => $reservationRequests,
     ]);
 } catch (Throwable $e) {
     http_response_code(500);
@@ -426,6 +441,32 @@ function ensure_maintenance_request_table(PDO $pdo): void
     $done = true;
 }
 
+// S'assure que la table des demandes de réservation existe.
+function ensure_reservation_request_table(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `ReservationRequest` (
+            `IDreservation` int(11) NOT NULL AUTO_INCREMENT,
+            `IDmateriel` int(11) NOT NULL,
+            `IDuser` int(11) NOT NULL,
+            `DATEdebut` date NOT NULL,
+            `DATEfin` date NOT NULL,
+            `Status` enum("pending","approved","rejected") NOT NULL DEFAULT "pending",
+            `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`IDreservation`),
+            KEY `idx_res_req_material` (`IDmateriel`),
+            KEY `idx_res_req_user` (`IDuser`),
+            CONSTRAINT `fk_res_req_material_dash` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
+            CONSTRAINT `fk_res_req_user_dash` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    );
+    $done = true;
+}
+
 // Récupère les demandes de maintenance en attente (optionnellement filtrées par demandeur).
 function fetch_maintenance_requests(PDO $pdo, ?int $userId): array
 {
@@ -458,6 +499,44 @@ function fetch_maintenance_requests(PDO $pdo, ?int $userId): array
             'requested_by' => $row['NOMuser'] ?? '',
             'requested_by_id' => (int) ($row['IDuser'] ?? 0),
             'type' => 'maintenance_request',
+            'progress' => 0,
+        ],
+        $rows ?: []
+    );
+}
+
+// Récupère les demandes de réservation en attente (optionnellement filtrées par demandeur).
+function fetch_reservation_requests(PDO $pdo, ?int $userId): array
+{
+    ensure_reservation_request_table($pdo);
+    $where = 'WHERE rr.Status = "pending"';
+    $params = [];
+    if ($userId !== null) {
+        $where .= ' AND rr.IDuser = :uid';
+        $params[':uid'] = $userId;
+    }
+    $stmt = $pdo->prepare(
+        "SELECT rr.IDreservation AS id, rr.IDmateriel, rr.IDuser, rr.DATEdebut, rr.DATEfin, rr.Status,
+                m.NOMmateriel, u.NOMuser
+         FROM `ReservationRequest` rr
+         LEFT JOIN `Materiel` m ON m.IDmateriel = rr.IDmateriel
+         LEFT JOIN `User` u ON u.IDuser = rr.IDuser
+         $where
+         ORDER BY rr.CreatedAt DESC"
+    );
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    return array_map(
+        static fn($row) => [
+            'id' => (int) ($row['id'] ?? 0),
+            'material_id' => (int) ($row['IDmateriel'] ?? 0),
+            'start' => $row['DATEdebut'] ?? '',
+            'due' => $row['DATEfin'] ?? ($row['DATEdebut'] ?? ''),
+            'status' => $row['Status'] ?? '',
+            'name' => $row['NOMmateriel'] ?? '',
+            'requested_by' => $row['NOMuser'] ?? '',
+            'requested_by_id' => (int) ($row['IDuser'] ?? 0),
+            'type' => 'reservation_request',
             'progress' => 0,
         ],
         $rows ?: []
@@ -1006,6 +1085,169 @@ function decide_extension(PDO $pdo): void
 
         $pdo->commit();
         echo json_encode(['status' => 'ok', 'decision' => $newStatus, 'new_due' => $decision === 'approve' ? $requested : null]);
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['error' => 'Traitement impossible', 'details' => $e->getMessage()]);
+    }
+}
+
+// Validation/refus d'une demande de réservation par un administrateur.
+function decide_reservation_request(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    $decision = strtolower((string) ($data['decision'] ?? ''));
+    $decision = in_array($decision, ['approve', 'reject'], true) ? $decision : '';
+
+    if ($id <= 0 || $decision === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Requête invalide']);
+        return;
+    }
+
+    ensure_reservation_request_table($pdo);
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT rr.IDreservation, rr.IDmateriel, rr.IDuser, rr.DATEdebut, rr.DATEfin, rr.Status,
+                    m.NOMmateriel, r.Role
+             FROM `ReservationRequest` rr
+             LEFT JOIN `Materiel` m ON m.IDmateriel = rr.IDmateriel
+             LEFT JOIN `User` u ON u.IDuser = rr.IDuser
+             LEFT JOIN `Role` r ON r.IDrole = u.IDrole
+             WHERE rr.IDreservation = :id
+             LIMIT 1'
+        );
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Demande introuvable']);
+            return;
+        }
+
+        $status = strtolower((string) ($row['Status'] ?? ''));
+        if ($status !== 'pending') {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Demande déjà traitée']);
+            return;
+        }
+
+        $materialId = (int) ($row['IDmateriel'] ?? 0);
+        $userId = (int) ($row['IDuser'] ?? 0);
+        $start = normalize_date_input((string) ($row['DATEdebut'] ?? ''));
+        $end = normalize_date_input((string) ($row['DATEfin'] ?? ''));
+        if ($materialId <= 0 || !$start || !$end) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Demande invalide (données manquantes)']);
+            return;
+        }
+        if (strtotime($end) !== false && strtotime($start) !== false && strtotime($end) < strtotime($start)) {
+            [$start, $end] = [$end, $start];
+        }
+
+        if ($decision === 'reject') {
+            $reject = $pdo->prepare(
+                'UPDATE `ReservationRequest`
+                 SET Status = "rejected"
+                 WHERE IDreservation = :id'
+            );
+            $reject->execute([':id' => $id]);
+            if ($userId > 0) {
+                $materialName = trim((string) ($row['NOMmateriel'] ?? 'le matériel'));
+                $message = sprintf(
+                    'Votre demande de réservation pour %s du %s au %s a été refusée.',
+                    $materialName !== '' ? $materialName : 'le matériel',
+                    format_date_fr($start),
+                    format_date_fr($end)
+                );
+                enqueue_notification($pdo, $userId, $message);
+            }
+            $pdo->commit();
+            echo json_encode(['status' => 'rejected', 'request_id' => $id]);
+            return;
+        }
+
+        $today = date('Y-m-d');
+        if ($end < $today) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Période déjà passée']);
+            return;
+        }
+
+        $borrowerRole = $row['Role'] ?? '';
+        $maxDays = max_reservation_days_for_role($borrowerRole);
+        $duration = days_between_inclusive($start, $end);
+        if ($duration > $maxDays) {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Durée maximale de ' . $maxDays . ' jours dépassée']);
+            return;
+        }
+
+        $conflict = $pdo->prepare(
+            'SELECT 1
+             FROM `Emprunt` e
+             WHERE e.IDmateriel = :id
+               AND NOT EXISTS (
+                 SELECT 1 FROM `Rendu` r WHERE r.IDemprunt = e.IDemprunt
+               )
+               AND e.DATEdebut <= :fin
+               AND e.DATEfin >= :debut
+             LIMIT 1'
+        );
+        $conflict->execute([':id' => $materialId, ':debut' => $start, ':fin' => $end]);
+        if ($conflict->fetchColumn()) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'Conflit avec une autre réservation']);
+            return;
+        }
+
+        $shouldBlockNow = period_is_current($start, $end, $today);
+        if ($shouldBlockNow) {
+            $update = $pdo->prepare('UPDATE `Materiel` SET Dispo = "Non" WHERE IDmateriel = :id');
+            $update->execute([':id' => $materialId]);
+        }
+
+        $insert = $pdo->prepare(
+            'INSERT INTO `Emprunt` (IDmateriel, IDuser, DATEdebut, DATEfin, ETATemprunt)
+             VALUES (:id, :uid, :debut, :fin, :etat)'
+        );
+        $insert->execute([
+            ':id' => $materialId,
+            ':uid' => $userId,
+            ':debut' => $start,
+            ':fin' => $end,
+            ':etat' => 'En cours',
+        ]);
+
+        $approve = $pdo->prepare(
+            'UPDATE `ReservationRequest`
+             SET Status = "approved"
+             WHERE IDreservation = :id'
+        );
+        $approve->execute([':id' => $id]);
+
+        if ($userId > 0) {
+            $materialName = trim((string) ($row['NOMmateriel'] ?? 'le matériel'));
+            $message = sprintf(
+                'Votre demande de réservation pour %s du %s au %s a été validée.',
+                $materialName !== '' ? $materialName : 'le matériel',
+                format_date_fr($start),
+                format_date_fr($end)
+            );
+            enqueue_notification($pdo, $userId, $message);
+        }
+
+        $pdo->commit();
+        echo json_encode(['status' => 'approved', 'request_id' => $id]);
     } catch (Throwable $e) {
         $pdo->rollBack();
         http_response_code(500);

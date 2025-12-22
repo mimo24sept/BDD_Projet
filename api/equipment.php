@@ -165,15 +165,6 @@ function reserve_equipment(PDO $pdo, int $userId): void
         $end = $start;
     }
 
-    if (!is_admin() && !is_technician()) {
-        $delayCount = count_user_delays($pdo, $userId);
-        if ($delayCount >= 3) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Trop de retards (3 ou plus) : réservation soumise à accord administrateur.']);
-            return;
-        }
-    }
-
     if ($id <= 0) {
         http_response_code(400);
         echo json_encode(['error' => 'Identifiant manquant ou invalide']);
@@ -218,6 +209,19 @@ function reserve_equipment(PDO $pdo, int $userId): void
         http_response_code(400);
         echo json_encode(['error' => 'Impossible de réserver dans le passé']);
         return;
+    }
+
+    if (!is_admin() && !is_technician()) {
+        $delayCount = count_user_delays($pdo, $userId);
+        if ($delayCount >= 3) {
+            $requestId = store_pending_reservation_request($pdo, $id, $userId, $start, $end);
+            echo json_encode([
+                'status' => 'pending',
+                'request_id' => $requestId,
+                'message' => 'Demande envoyée pour validation administrateur',
+            ]);
+            return;
+        }
     }
 
     $pdo->beginTransaction();
@@ -540,6 +544,50 @@ function store_pending_maintenance_request(PDO $pdo, int $materialId, int $userI
     return (int) $pdo->lastInsertId();
 }
 
+// Enregistre ou met à jour une demande de réservation en attente.
+function store_pending_reservation_request(PDO $pdo, int $materialId, int $userId, string $start, string $end): int
+{
+    ensure_reservation_request_table($pdo);
+    $existing = $pdo->prepare(
+        'SELECT IDreservation
+         FROM `ReservationRequest`
+         WHERE IDmateriel = :mid
+           AND IDuser = :uid
+           AND Status = "pending"
+         ORDER BY CreatedAt DESC
+         LIMIT 1'
+    );
+    $existing->execute([':mid' => $materialId, ':uid' => $userId]);
+    $reqId = (int) ($existing->fetchColumn() ?: 0);
+
+    if ($reqId > 0) {
+        $update = $pdo->prepare(
+            'UPDATE `ReservationRequest`
+             SET DATEdebut = :start, DATEfin = :end, Status = "pending", CreatedAt = CURRENT_TIMESTAMP
+             WHERE IDreservation = :id'
+        );
+        $update->execute([
+            ':start' => $start,
+            ':end' => $end,
+            ':id' => $reqId,
+        ]);
+        return $reqId;
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO `ReservationRequest` (IDmateriel, IDuser, DATEdebut, DATEfin, Status)
+         VALUES (:mid, :uid, :start, :end, "pending")'
+    );
+    $insert->execute([
+        ':mid' => $materialId,
+        ':uid' => $userId,
+        ':start' => $start,
+        ':end' => $end,
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
 // S'assure de la présence de la table des demandes de maintenance.
 function ensure_maintenance_request_table(PDO $pdo): void
 {
@@ -561,6 +609,32 @@ function ensure_maintenance_request_table(PDO $pdo): void
             KEY `idx_maint_req_user` (`IDuser`),
             CONSTRAINT `fk_maint_req_material` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
             CONSTRAINT `fk_maint_req_user` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
+    );
+    $done = true;
+}
+
+// S'assure de la présence de la table des demandes de réservation.
+function ensure_reservation_request_table(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `ReservationRequest` (
+            `IDreservation` int(11) NOT NULL AUTO_INCREMENT,
+            `IDmateriel` int(11) NOT NULL,
+            `IDuser` int(11) NOT NULL,
+            `DATEdebut` date NOT NULL,
+            `DATEfin` date NOT NULL,
+            `Status` enum("pending","approved","rejected") NOT NULL DEFAULT "pending",
+            `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`IDreservation`),
+            KEY `idx_res_req_material` (`IDmateriel`),
+            KEY `idx_res_req_user` (`IDuser`),
+            CONSTRAINT `fk_res_req_material` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
+            CONSTRAINT `fk_res_req_user` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
     );
     $done = true;

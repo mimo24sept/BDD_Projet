@@ -42,6 +42,7 @@ const API = {
     loanSearch: '',
     notifications: [],
     maintenanceRequests: [],
+    reservationRequests: [],
   };
 
   // Sélecteurs DOM principaux.
@@ -319,6 +320,7 @@ const API = {
           end: range.end,
         };
         let pendingMaintenance = false;
+        let pendingReservation = false;
         if (modalMode === 'maintenance') {
           const dates = datesBetween(range.start, range.end);
           const overrides = dates.filter((d) => blockedDates[d] && blockedDates[d] !== 'maintenance').length;
@@ -346,6 +348,7 @@ const API = {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data?.error || 'Réservation impossible');
+          pendingReservation = data?.status === 'pending';
           if (data?.equipment) {
             const idx = state.inventory.findIndex((i) => i.id === data.equipment.id);
             if (idx !== -1) {
@@ -360,7 +363,7 @@ const API = {
         }
         const successMsg = modalMode === 'maintenance'
           ? (pendingMaintenance ? 'Demande envoyée pour validation administrateur' : 'Maintenance planifiée')
-          : 'Reservation enregistrée';
+          : (pendingReservation ? 'Demande envoyée pour validation administrateur' : 'Reservation enregistrée');
         modalMsg.textContent = successMsg;
         modalMsg.className = 'message ok';
         closeModal();
@@ -490,6 +493,7 @@ const API = {
       state.stats = data.stats ? { ...data.stats, history } : { history };
       state.notifications = Array.isArray(data.notifications) ? data.notifications : [];
       state.maintenanceRequests = Array.isArray(data.maintenance_requests) ? data.maintenance_requests : [];
+      state.reservationRequests = Array.isArray(data.reservation_requests) ? data.reservation_requests : [];
       if (statsEls.msg) {
         statsEls.msg.textContent = '';
         statsEls.msg.className = 'message';
@@ -501,6 +505,7 @@ const API = {
       state.loanHistory = [];
       state.notifications = [];
       state.maintenanceRequests = [];
+      state.reservationRequests = [];
       if (statsEls.msg) {
         statsEls.msg.textContent = err?.message || 'Stats indisponibles';
         statsEls.msg.className = 'message err';
@@ -516,12 +521,14 @@ const API = {
       if (!res.ok) throw new Error(data.error || 'API emprunts admin');
       state.adminLoans = data.loans || [];
       state.maintenanceRequests = Array.isArray(data.maintenance_requests) ? data.maintenance_requests : [];
+      state.reservationRequests = Array.isArray(data.reservation_requests) ? data.reservation_requests : [];
       if (adminStatsEls.msg && !state.adminStats) {
         adminStatsEls.msg.textContent = '';
       }
     } catch (err) {
       state.adminLoans = [];
       state.maintenanceRequests = [];
+      state.reservationRequests = [];
     }
   }
 
@@ -685,6 +692,22 @@ const API = {
       throw new Error(data?.error || 'Traitement impossible');
     }
     await Promise.all([apiFetchLoans(), apiFetchAdminLoans()]);
+    return data;
+  }
+
+  // Validation/refus d'une demande de réservation (admin).
+  async function apiDecideReservationRequest(id, decision) {
+    const res = await fetch(`${API.dashboard}?action=reservation_decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id, decision }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Traitement impossible');
+    }
+    await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
     return data;
   }
 
@@ -1642,6 +1665,13 @@ const API = {
     const active = [];
     const upcoming = [];
     const extensionRequests = [];
+    const reservationRequests = (state.reservationRequests || []).filter((req) => {
+      const statusNorm = (req.status || '').toLowerCase();
+      if (statusNorm && statusNorm !== 'pending') return false;
+      if (!state.adminLoanSearch) return true;
+      const haystack = `${req.requested_by || ''} ${req.name || ''}`.toLowerCase();
+      return haystack.includes(state.adminLoanSearch);
+    });
     state.adminLoans
       .filter((l) => l.type !== 'maintenance')
       .filter((l) => l.status !== 'rendu')
@@ -1779,6 +1809,75 @@ const API = {
 
     const cancels = upcoming.filter((l) => l._cancelRequested);
     const future = upcoming.filter((l) => !l._cancelRequested);
+    if (reservationRequests.length) {
+      const bubble = buildBubble('Réservations à valider', '', 'alert');
+      const block = document.createElement('div');
+      block.className = 'admin-subblock admin-alert';
+      reservationRequests.forEach((req) => {
+        const end = req.due || req.end || req.start;
+        const userLabel = escapeHtml(req.requested_by || 'Inconnu');
+        const row = document.createElement('div');
+        row.className = 'loan-item loan-cancel';
+        row.innerHTML = `
+          <div>
+            <div class="small-title">Demande de réservation</div>
+            <div style="font-weight:800">${escapeHtml(req.name || 'Matériel')}</div>
+            <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
+            <div class="loan-meta">Du ${formatDisplayDate(req.start)} au ${formatDisplayDate(end)}</div>
+          </div>
+          <div class="admin-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="ghost" data-approve="${req.id}">Valider</button>
+            <button type="button" class="ghost danger" data-reject="${req.id}">Refuser</button>
+          </div>
+        `;
+        const approveBtn = row.querySelector('button[data-approve]');
+        const rejectBtn = row.querySelector('button[data-reject]');
+        const setLoading = (btn, label) => {
+          btn.disabled = true;
+          btn.textContent = label;
+          if (approveBtn && approveBtn !== btn) approveBtn.disabled = true;
+          if (rejectBtn && rejectBtn !== btn) rejectBtn.disabled = true;
+        };
+        const resetButtons = () => {
+          if (approveBtn) {
+            approveBtn.disabled = false;
+            approveBtn.textContent = 'Valider';
+          }
+          if (rejectBtn) {
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = 'Refuser';
+          }
+        };
+        if (approveBtn) {
+          approveBtn.addEventListener('click', async () => {
+            setLoading(approveBtn, 'Validation...');
+            try {
+              await apiDecideReservationRequest(req.id, 'approve');
+              render();
+            } catch (err) {
+              resetButtons();
+              alert(err?.message || 'Validation impossible');
+            }
+          });
+        }
+        if (rejectBtn) {
+          rejectBtn.addEventListener('click', async () => {
+            setLoading(rejectBtn, 'Refus...');
+            try {
+              await apiDecideReservationRequest(req.id, 'reject');
+              render();
+            } catch (err) {
+              resetButtons();
+              alert(err?.message || 'Refus impossible');
+            }
+          });
+        }
+        block.appendChild(row);
+      });
+      bubble.appendChild(block);
+      priorityCol.appendChild(bubble);
+      hasContent = true;
+    }
     if (extensionRequests.length) {
       const bubble = buildBubble('Prolongations à traiter', '', 'alert');
       const block = document.createElement('div');
