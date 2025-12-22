@@ -1,239 +1,59 @@
-﻿// Frontend principal : catalogue, réservations, prêts, maintenance et stats.
-// Tout est en vanilla JS : état global, appels API, rendu dynamique, calendrier, modales.
+import { API } from './app/config.js';
+import { state } from './app/state.js';
+import { dom } from './app/dom.js';
+import {
+  apiCreateEquipment,
+  apiFetchAdminLoans,
+  apiFetchAdminStats,
+  apiFetchEquipment,
+  apiFetchLoans,
+  apiFetchUsers,
+  apiLogout,
+  apiRequestExtension,
+  apiSession,
+  apiSetMaintenance,
+} from './app/api.js';
+import {
+  closeModal,
+  datesBetween,
+  getBlockedDates,
+  getExtensionContext,
+  getModalMode,
+  isRangeFree,
+  selectionRange,
+} from './app/calendar.js';
+import { hasMaintenanceAccess, isAdmin, isTechnician } from './app/permissions.js';
+import {
+  exportInventoryPdf,
+  renderAdminCatalog,
+  renderAdminLoans,
+  renderAdminStats,
+  renderAdminStatsList,
+  renderApp,
+  renderCatalog,
+  renderLoans,
+  renderMaintenanceCatalog,
+  renderTags,
+  renderUserStatsList,
+  renderStats,
+} from './app/render.js';
+import { setAuthUI, setupTabIndicatorResize, updateTabs } from './app/ui.js';
+import { placeholderImage } from './app/utils.js';
 
-const API = {
-  auth: './api/auth.php',
-  equipment: './api/equipment.php',
-  dashboard: './api/dashboard.php',
-};
+if (!dom.appShell) {
+  // Stop early if we are not on the dashboard page.
+} else {
+  setupTabIndicatorResize();
 
-(() => {
-  const appShell = document.querySelector('#app-shell');
-  if (!appShell) return;
-
-  // Constantes et état applicatif partagé.
-  const BASE_TAGS = ['Info', 'Elen', 'Ener', 'Auto'];
-  const CONDITION_RANKS = {
-    'reparation nécessaire': 0,
-    passable: 1,
-    bon: 2,
-    neuf: 3,
-  };
-
-  const state = {
-    user: null,
-    inventory: [],
-    loans: [],
-    adminLoans: [],
-    accounts: [],
-    activeTab: 'borrow',
-    lastActiveTab: null,
-    filters: { search: '', tags: [] },
-    adminFilters: { search: '', tag: null, sort: 'recent' },
-    maintenanceFilters: { search: '', tag: null },
-    adminLoanSearch: '',
-    adminHistory: [],
-    adminStatsView: 'total',
-    adminHistorySearch: '',
-    modalItem: null,
-    stats: null,
-    loanHistory: [],
-    userStatsView: 'total',
-    adminStats: null,
-    loanSearch: '',
-    notifications: [],
-    maintenanceRequests: [],
-    reservationRequests: [],
-  };
-
-  // Sélecteurs DOM principaux.
-  const logoutBtn = document.querySelector('#logout-btn');
-  const userChip = document.querySelector('#user-chip');
-  const tabs = document.querySelectorAll('[data-tab]');
-  const sections = document.querySelectorAll('[data-section]');
-  const tabOrder = Array.from(tabs).map((tab) => tab.dataset.tab);
-  const tabsBar = document.querySelector('.tabs');
-  let tabIndicator = null;
-  let tabIndicatorReady = false;
-  if (tabsBar) {
-    tabIndicator = tabsBar.querySelector('.tab-indicator');
-    if (!tabIndicator) {
-      tabIndicator = document.createElement('div');
-      tabIndicator.className = 'tab-indicator';
-      tabsBar.appendChild(tabIndicator);
-    }
-  }
-  const notificationsEl = document.querySelector('#notifications');
-  const catalogEl = document.querySelector('#catalog');
-  const loansEl = document.querySelector('#loans');
-  const adminLoansEl = document.querySelector('#admin-loans');
-  const statsEls = {
-    total: document.querySelector('#stat-total'),
-    delays: document.querySelector('#stat-delays'),
-    degrades: document.querySelector('#stat-degrades'),
-    list: document.querySelector('#user-stats-list'),
-    msg: document.querySelector('#user-stats-msg'),
-    cards: {
-      total: document.querySelector('#user-stat-card-total'),
-      delays: document.querySelector('#user-stat-card-delays'),
-      degrades: document.querySelector('#user-stat-card-degrades'),
-    },
-  };
-  const searchInput = document.querySelector('#search');
-  const tagBar = document.querySelector('#tag-bar');
-  const loanSearchInput = document.querySelector('#loan-search');
-  const modalBackdrop = document.querySelector('#modal');
-  const modalTitle = document.querySelector('#modal-title');
-  const modalBody = document.querySelector('#modal-body');
-  const reserveBtn = document.querySelector('#reserve-btn');
-  const modalMsg = document.querySelector('#modal-msg');
-  const closeModalBtn = document.querySelector('#close-modal');
-  const adminForm = document.querySelector('#admin-form');
-  const adminMsg = document.querySelector('#admin-msg');
-  const adminInputs = {
-    name: document.querySelector('#admin-name'),
-    categories: document.querySelectorAll('input[name="admin-categories"]'),
-    location: document.querySelector('#admin-location'),
-    condition: document.querySelector('#admin-condition'),
-    picture: document.querySelector('#admin-picture'),
-  };
-  const adminInventoryEl = document.querySelector('#admin-inventory');
-  const adminSearchInput = document.querySelector('#admin-search');
-  const adminTagBar = document.querySelector('#admin-tag-bar');
-  const adminSortSelect = document.querySelector('#admin-sort');
-  const adminExportBtn = document.querySelector('#admin-export');
-  const maintenanceCatalogEl = document.querySelector('#maintenance-catalog');
-  const maintenanceSearchInput = document.querySelector('#maintenance-search');
-  const maintenanceTagBar = document.querySelector('#maintenance-tag-bar');
-  const maintenanceListEl = document.querySelector('#maintenance-list');
-  const accountsListEl = document.querySelector('#accounts-list');
-  const adminLoanSearchInput = document.querySelector('#admin-loan-search');
-  const adminStatsEls = {
-    total: document.querySelector('#admin-stat-total'),
-    delays: document.querySelector('#admin-stat-delays'),
-    degrades: document.querySelector('#admin-stat-degrades'),
-    maint: document.querySelector('#admin-stat-maint'),
-    msg: document.querySelector('#admin-stats-msg'),
-    search: document.querySelector('#admin-stats-search'),
-    list: document.querySelector('#admin-stats-list'),
-    cards: {
-      total: document.querySelector('#admin-stat-card-total'),
-      delays: document.querySelector('#admin-stat-card-delays'),
-      degrades: document.querySelector('#admin-stat-card-degrades'),
-      maint: document.querySelector('#admin-stat-card-maint'),
-    },
-  };
-  let dateStartInput = null;
-  let dateEndInput = null;
-  let blockedWeeks = [];
-  let blockedDates = {};
-  let reservationPeriods = [];
-  let modalMode = 'reserve';
-  let calendarMonth = null;
-  let selectedStartDate = null;
-  let selectedEndDate = null;
-  let extensionContext = null;
-  const revealObservers = new Map();
-
-  function getRevealObserver(root) {
-    const key = root || 'viewport';
-    if (revealObservers.has(key)) return revealObservers.get(key);
-    const observer = new IntersectionObserver((entries, obs) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add('is-visible');
-        obs.unobserve(entry.target);
-      });
-    }, {
-      root: root || null,
-      threshold: 0.12,
-      rootMargin: '0px 0px -8% 0px',
-    });
-    revealObservers.set(key, observer);
-    return observer;
-  }
-
-  function revealInContainer(container, selector, options = {}) {
-    if (!container) return;
-    const items = container.querySelectorAll(selector);
-    if (!items.length) return;
-    const prefersReduced = window.matchMedia
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const supportsObserver = 'IntersectionObserver' in window;
-    const root = container.classList.contains('scroll-area') || container.classList.contains('admin-scroll')
-      ? container
-      : container.closest('.scroll-area, .admin-scroll');
-    const observer = (!prefersReduced && supportsObserver) ? getRevealObserver(root || null) : null;
-    const stagger = Number.isFinite(options.stagger) ? options.stagger : 60;
-    items.forEach((el, index) => {
-      if (el.dataset.reveal === '1') return;
-      el.dataset.reveal = '1';
-      el.classList.add('reveal-item');
-      if (!observer) {
-        el.classList.add('is-visible');
-        return;
-      }
-      const delay = Math.min(index, 8) * stagger;
-      el.style.setProperty('--reveal-delay', `${delay}ms`);
-      observer.observe(el);
-    });
-  }
-
-  function tabSlideDirection(prevTab, nextTab) {
-    const prevIndex = tabOrder.indexOf(prevTab);
-    const nextIndex = tabOrder.indexOf(nextTab);
-    if (prevIndex === -1 || nextIndex === -1) return 'from-right';
-    return nextIndex < prevIndex ? 'from-left' : 'from-right';
-  }
-
-  function animateSectionEntrance(section, directionClass) {
-    if (!section) return;
-    section.classList.remove('tab-enter', 'from-left', 'from-right');
-    void section.offsetWidth;
-    section.classList.add('tab-enter', directionClass);
-    section.addEventListener('animationend', () => {
-      section.classList.remove('tab-enter', 'from-left', 'from-right');
-    }, { once: true });
-  }
-
-  function updateTabIndicator(animate = true) {
-    if (!tabsBar || !tabIndicator) return;
-    const activeTab = tabsBar.querySelector('.tab.active');
-    if (!activeTab || activeTab.offsetParent === null) {
-      tabIndicator.style.opacity = '0';
-      return;
-    }
-    const barRect = tabsBar.getBoundingClientRect();
-    const tabRect = activeTab.getBoundingClientRect();
-    const x = tabRect.left - barRect.left;
-    const y = tabRect.top - barRect.top;
-    if (!animate) {
-      tabIndicator.classList.remove('ready');
-      tabIndicatorReady = false;
-    }
-    tabIndicator.style.width = `${tabRect.width}px`;
-    tabIndicator.style.height = `${tabRect.height}px`;
-    tabIndicator.style.transform = `translate(${x}px, ${y}px)`;
-    tabIndicator.style.opacity = '1';
-    if (!tabIndicatorReady) {
-      requestAnimationFrame(() => {
-        tabIndicator.classList.add('ready');
-        tabIndicatorReady = true;
-      });
-    }
-  }
-
-  // Gestion logout.
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', async () => {
+  if (dom.logoutBtn) {
+    dom.logoutBtn.addEventListener('click', async () => {
       await apiLogout();
       state.user = null;
       window.location.href = 'index.html';
     });
   }
 
-  // Navigation entre onglets.
-  tabs.forEach((tab) => {
+  dom.tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       const nextTab = tab.dataset.tab;
       if (state.activeTab === nextTab) return;
@@ -241,186 +61,185 @@ const API = {
       updateTabs();
     });
   });
-  if (tabsBar) {
-    window.addEventListener('resize', () => updateTabIndicator(false));
-  }
 
-  // Filtres catalogue / maintenance / prêts admin / stats admin.
-  if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      state.filters.search = searchInput.value.toLowerCase();
+  if (dom.searchInput) {
+    dom.searchInput.addEventListener('input', () => {
+      state.filters.search = dom.searchInput.value.toLowerCase();
       renderCatalog();
     });
   }
-  if (loanSearchInput) {
-    loanSearchInput.addEventListener('input', () => {
-      state.loanSearch = loanSearchInput.value.toLowerCase();
+  if (dom.loanSearchInput) {
+    dom.loanSearchInput.addEventListener('input', () => {
+      state.loanSearch = dom.loanSearchInput.value.toLowerCase();
       renderLoans();
     });
   }
-  if (maintenanceSearchInput) {
-    maintenanceSearchInput.addEventListener('input', () => {
-      state.maintenanceFilters.search = maintenanceSearchInput.value.toLowerCase();
+  if (dom.maintenanceSearchInput) {
+    dom.maintenanceSearchInput.addEventListener('input', () => {
+      state.maintenanceFilters.search = dom.maintenanceSearchInput.value.toLowerCase();
       renderMaintenanceCatalog();
     });
   }
-  if (adminLoanSearchInput) {
-    adminLoanSearchInput.addEventListener('input', () => {
-      state.adminLoanSearch = adminLoanSearchInput.value.toLowerCase();
+  if (dom.adminLoanSearchInput) {
+    dom.adminLoanSearchInput.addEventListener('input', () => {
+      state.adminLoanSearch = dom.adminLoanSearchInput.value.toLowerCase();
       renderAdminLoans();
     });
   }
-  if (adminStatsEls.search) {
-    adminStatsEls.search.addEventListener('input', () => {
-      state.adminHistorySearch = adminStatsEls.search.value.toLowerCase();
+  if (dom.adminStatsEls.search) {
+    dom.adminStatsEls.search.addEventListener('input', () => {
+      state.adminHistorySearch = dom.adminStatsEls.search.value.toLowerCase();
       renderAdminStatsList();
     });
   }
-  if (statsEls.cards.total) {
-    statsEls.cards.total.addEventListener('click', () => {
+  if (dom.statsEls.cards.total) {
+    dom.statsEls.cards.total.addEventListener('click', () => {
       state.userStatsView = 'total';
       renderStats();
       renderUserStatsList();
     });
   }
-  if (statsEls.cards.delays) {
-    statsEls.cards.delays.addEventListener('click', () => {
+  if (dom.statsEls.cards.delays) {
+    dom.statsEls.cards.delays.addEventListener('click', () => {
       state.userStatsView = 'delays';
       renderStats();
       renderUserStatsList();
     });
   }
-  if (statsEls.cards.degrades) {
-    statsEls.cards.degrades.addEventListener('click', () => {
+  if (dom.statsEls.cards.degrades) {
+    dom.statsEls.cards.degrades.addEventListener('click', () => {
       state.userStatsView = 'degrades';
       renderStats();
       renderUserStatsList();
     });
   }
-  if (adminStatsEls.cards.total) {
-    adminStatsEls.cards.total.addEventListener('click', () => {
+  if (dom.adminStatsEls.cards.total) {
+    dom.adminStatsEls.cards.total.addEventListener('click', () => {
       state.adminStatsView = 'total';
       renderAdminStats();
       renderAdminStatsList();
     });
   }
-  if (adminStatsEls.cards.delays) {
-    adminStatsEls.cards.delays.addEventListener('click', () => {
+  if (dom.adminStatsEls.cards.delays) {
+    dom.adminStatsEls.cards.delays.addEventListener('click', () => {
       state.adminStatsView = 'delays';
       renderAdminStats();
       renderAdminStatsList();
     });
   }
-  if (adminStatsEls.cards.degrades) {
-    adminStatsEls.cards.degrades.addEventListener('click', () => {
+  if (dom.adminStatsEls.cards.degrades) {
+    dom.adminStatsEls.cards.degrades.addEventListener('click', () => {
       state.adminStatsView = 'degrades';
       renderAdminStats();
       renderAdminStatsList();
     });
   }
-  if (adminStatsEls.cards.maint) {
-    adminStatsEls.cards.maint.addEventListener('click', () => {
+  if (dom.adminStatsEls.cards.maint) {
+    dom.adminStatsEls.cards.maint.addEventListener('click', () => {
       state.adminStatsView = 'maint';
       renderAdminStats();
       renderAdminStatsList();
     });
   }
-  if (adminSearchInput) {
-    adminSearchInput.addEventListener('input', () => {
-      state.adminFilters.search = adminSearchInput.value.toLowerCase();
+  if (dom.adminSearchInput) {
+    dom.adminSearchInput.addEventListener('input', () => {
+      state.adminFilters.search = dom.adminSearchInput.value.toLowerCase();
       renderAdminCatalog();
     });
   }
-  if (adminSortSelect) {
-    adminSortSelect.addEventListener('change', () => {
-      state.adminFilters.sort = adminSortSelect.value;
+  if (dom.adminSortSelect) {
+    dom.adminSortSelect.addEventListener('change', () => {
+      state.adminFilters.sort = dom.adminSortSelect.value;
       renderAdminCatalog();
     });
   }
-  if (adminExportBtn) {
-    adminExportBtn.addEventListener('click', () => {
+  if (dom.adminExportBtn) {
+    dom.adminExportBtn.addEventListener('click', () => {
       exportInventoryPdf();
     });
   }
 
-  // Modale (ouvrir/fermer) et bouton réserver/maintenance.
-  if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
-  if (modalBackdrop) {
-    modalBackdrop.addEventListener('click', (e) => {
-      if (e.target === modalBackdrop) closeModal();
+  if (dom.closeModalBtn) dom.closeModalBtn.addEventListener('click', closeModal);
+  if (dom.modalBackdrop) {
+    dom.modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === dom.modalBackdrop) closeModal();
     });
   }
 
-  // Réservation ou planification maintenance depuis la modale.
-  if (reserveBtn) {
-    reserveBtn.addEventListener('click', async () => {
+  if (dom.reserveBtn) {
+    dom.reserveBtn.addEventListener('click', async () => {
       const range = selectionRange();
+      const modalMode = getModalMode();
+      const extensionContext = getExtensionContext();
+      const blockedDates = getBlockedDates();
       if (!range) {
-        modalMsg.textContent = 'Choisissez un debut et une fin';
-        modalMsg.className = 'message err';
+        if (dom.modalMsg) {
+          dom.modalMsg.textContent = 'Choisissez un debut et une fin';
+          dom.modalMsg.className = 'message err';
+        }
         return;
       }
       if (modalMode === 'extend') {
         const todayStr = new Date().toISOString().slice(0, 10);
         const baseDue = extensionContext?.due || '';
         if (!extensionContext?.loanId) {
-          modalMsg.textContent = 'Prêt introuvable pour prolongation.';
-          modalMsg.className = 'message err';
+          dom.modalMsg.textContent = 'Prêt introuvable pour prolongation.';
+          dom.modalMsg.className = 'message err';
           return;
         }
         if (range.end < todayStr) {
-          modalMsg.textContent = 'La nouvelle date doit être future.';
-          modalMsg.className = 'message err';
+          dom.modalMsg.textContent = 'La nouvelle date doit être future.';
+          dom.modalMsg.className = 'message err';
           return;
         }
         if (baseDue && range.end <= baseDue) {
-          modalMsg.textContent = 'Choisissez une date après la fin actuelle.';
-          modalMsg.className = 'message err';
+          dom.modalMsg.textContent = 'Choisissez une date après la fin actuelle.';
+          dom.modalMsg.className = 'message err';
           return;
         }
         if (!isRangeFree(range.start, range.end)) {
-          modalMsg.textContent = 'Periode deja reservee';
-          modalMsg.className = 'message err';
+          dom.modalMsg.textContent = 'Periode deja reservee';
+          dom.modalMsg.className = 'message err';
           return;
         }
-        modalMsg.textContent = 'Prolongation en cours...';
-        modalMsg.className = 'message';
+        dom.modalMsg.textContent = 'Prolongation en cours...';
+        dom.modalMsg.className = 'message';
         try {
           await apiRequestExtension(extensionContext.loanId, range.end);
-          modalMsg.textContent = 'Prolongation demandée';
-          modalMsg.className = 'message ok';
+          dom.modalMsg.textContent = 'Prolongation demandée';
+          dom.modalMsg.className = 'message ok';
           closeModal();
           await Promise.all([apiFetchEquipment(), apiFetchLoans(), apiFetchAdminLoans()]);
-          render();
+          renderApp();
         } catch (err) {
-          modalMsg.textContent = err?.message || 'Prolongation impossible';
-          modalMsg.className = 'message err';
+          dom.modalMsg.textContent = err?.message || 'Prolongation impossible';
+          dom.modalMsg.className = 'message err';
         }
         return;
       }
       if (modalMode === 'reserve' && !state.user) {
-        modalMsg.textContent = 'Connectez-vous pour reserver';
-        modalMsg.className = 'message err';
+        dom.modalMsg.textContent = 'Connectez-vous pour reserver';
+        dom.modalMsg.className = 'message err';
         return;
       }
       if (modalMode === 'maintenance' && !hasMaintenanceAccess()) {
-        modalMsg.textContent = 'Réservé aux administrateurs ou techniciens';
-        modalMsg.className = 'message err';
+        dom.modalMsg.textContent = 'Réservé aux administrateurs ou techniciens';
+        dom.modalMsg.className = 'message err';
         return;
       }
       const todayStr = new Date().toISOString().slice(0, 10);
       if (range.start < todayStr) {
-        modalMsg.textContent = 'Impossible de reserver dans le passe.';
-        modalMsg.className = 'message err';
+        dom.modalMsg.textContent = 'Impossible de reserver dans le passe.';
+        dom.modalMsg.className = 'message err';
         return;
       }
       if (!isRangeFree(range.start, range.end)) {
-        modalMsg.textContent = 'Periode deja reservee';
-        modalMsg.className = 'message err';
+        dom.modalMsg.textContent = 'Periode deja reservee';
+        dom.modalMsg.className = 'message err';
         return;
       }
-      modalMsg.textContent = modalMode === 'maintenance' ? 'Planification...' : 'Reservation en cours...';
-      modalMsg.className = 'message';
+      dom.modalMsg.textContent = modalMode === 'maintenance' ? 'Planification...' : 'Reservation en cours...';
+      dom.modalMsg.className = 'message';
       try {
         const payload = {
           id: state.modalItem?.id,
@@ -436,16 +255,16 @@ const API = {
           if (overrides > 0 && !techOnly) {
             const ok = window.confirm(`Cette maintenance écrasera ${overrides} réservation(s). Continuer ?`);
             if (!ok) {
-              modalMsg.textContent = 'Planification annulée';
-              modalMsg.className = 'message';
+              dom.modalMsg.textContent = 'Planification annulée';
+              dom.modalMsg.className = 'message';
               return;
             }
           }
           const result = await apiSetMaintenance(payload);
           pendingMaintenance = result?.status === 'pending';
           if (pendingMaintenance) {
-            modalMsg.textContent = 'Demande envoyée pour validation administrateur';
-            modalMsg.className = 'message ok';
+            dom.modalMsg.textContent = 'Demande envoyée pour validation administrateur';
+            dom.modalMsg.className = 'message ok';
           }
         } else {
           const res = await fetch(`${API.equipment}?action=reserve`, {
@@ -472,51 +291,50 @@ const API = {
         const successMsg = modalMode === 'maintenance'
           ? (pendingMaintenance ? 'Demande envoyée pour validation administrateur' : 'Maintenance planifiée')
           : (pendingReservation ? 'Demande envoyée pour validation administrateur' : 'Reservation enregistrée');
-        modalMsg.textContent = successMsg;
-        modalMsg.className = 'message ok';
+        dom.modalMsg.textContent = successMsg;
+        dom.modalMsg.className = 'message ok';
         closeModal();
         await Promise.all([apiFetchEquipment(), apiFetchLoans(), apiFetchAdminLoans()]);
-        render();
+        renderApp();
       } catch (err) {
-        modalMsg.textContent = err?.message || (modalMode === 'maintenance' ? 'Planification impossible' : 'Erreur de réservation');
-        modalMsg.className = 'message err';
+        dom.modalMsg.textContent = err?.message || (modalMode === 'maintenance' ? 'Planification impossible' : 'Erreur de réservation');
+        dom.modalMsg.className = 'message err';
       }
     });
   }
 
-  // Formulaire d'ajout matériel (admin).
-  if (adminForm) {
-    adminForm.addEventListener('submit', async (e) => {
+  if (dom.adminForm) {
+    dom.adminForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!isAdmin()) return;
-      const selectedCats = Array.from(adminInputs.categories || [])
+      const selectedCats = Array.from(dom.adminInputs.categories || [])
         .filter((c) => c.checked)
         .map((c) => c.value);
       if (!selectedCats.length) {
-        adminMsg.textContent = 'Choisissez au moins une catégorie';
-        adminMsg.className = 'message err';
+        dom.adminMsg.textContent = 'Choisissez au moins une catégorie';
+        dom.adminMsg.className = 'message err';
         return;
       }
-      const pictureFile = adminInputs.picture?.files?.[0] || null;
+      const pictureFile = dom.adminInputs.picture?.files?.[0] || null;
       if (pictureFile && !pictureFile.type.startsWith('image/')) {
-        adminMsg.textContent = 'Format image non supporté';
-        adminMsg.className = 'message err';
+        dom.adminMsg.textContent = 'Format image non supporté';
+        dom.adminMsg.className = 'message err';
         return;
       }
       if (pictureFile && pictureFile.size > 4 * 1024 * 1024) {
-        adminMsg.textContent = 'Image trop lourde (4 Mo max)';
-        adminMsg.className = 'message err';
+        dom.adminMsg.textContent = 'Image trop lourde (4 Mo max)';
+        dom.adminMsg.className = 'message err';
         return;
       }
       const payload = {
-        name: adminInputs.name?.value?.trim(),
+        name: dom.adminInputs.name?.value?.trim(),
         categories: selectedCats,
-        location: adminInputs.location?.value?.trim(),
-        condition: adminInputs.condition?.value?.trim(),
+        location: dom.adminInputs.location?.value?.trim(),
+        condition: dom.adminInputs.condition?.value?.trim(),
         picture: pictureFile,
       };
-      adminMsg.textContent = 'Enregistrement...';
-      adminMsg.className = 'message';
+      dom.adminMsg.textContent = 'Enregistrement...';
+      dom.adminMsg.className = 'message';
       try {
         const created = await apiCreateEquipment(payload);
         if (created) {
@@ -528,2515 +346,16 @@ const API = {
             description: created.description || '',
           });
         }
-        adminMsg.textContent = 'Objet ajouté';
-        adminMsg.className = 'message ok';
-        adminForm.reset();
+        dom.adminMsg.textContent = 'Objet ajouté';
+        dom.adminMsg.className = 'message ok';
+        dom.adminForm.reset();
         await Promise.all([apiFetchEquipment(), apiFetchAdminLoans()]);
-        render();
+        renderApp();
       } catch (err) {
-        adminMsg.textContent = err?.message || 'Ajout impossible';
-        adminMsg.className = 'message err';
+        dom.adminMsg.textContent = err?.message || 'Ajout impossible';
+        dom.adminMsg.className = 'message err';
       }
     });
-  }
-
-  // --- API : session, catalogue, emprunts, stats, CRUD matériel/prêts ---
-
-  // Récupère l'utilisateur en session auprès de l'API d'authentification.
-  async function apiSession() {
-    try {
-      const res = await fetch(API.auth, { credentials: 'include' });
-      const data = await res.json();
-      state.user = data || null;
-    } catch (e) {
-      state.user = null;
-    }
-  }
-
-  // Charge le catalogue des matériels et normalise les catégories/tags.
-  async function apiFetchEquipment() {
-    try {
-      const res = await fetch(API.equipment, { credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'API equipement');
-      state.inventory = data.map((item) => {
-        const rawCategories = Array.isArray(item.categories)
-          ? item.categories
-          : String(item.category || '')
-            .split(/[,;]+/)
-            .map((c) => c.trim())
-            .filter(Boolean);
-        const normalizedCategories = rawCategories
-          .map(canonicalCategory)
-          .filter(Boolean);
-        const categories = normalizedCategories.length ? normalizedCategories : rawCategories;
-        const tags = normalizedCategories.filter(Boolean);
-        const categoryLabel = categories.length ? categories.join(', ') : (item.category || 'Non classé');
-        const reservations = (item.reservations || [])
-          .map((r) => ({
-            start: r.start,
-            end: r.end || r.start,
-            type: r.type || '',
-          }))
-          .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-        const descriptionParts = [
-          item.notes,
-          item.condition ? `Etat: ${item.condition}` : '',
-          item.next_service ? `Maintenance prevue le ${formatDisplayDate(item.next_service)}` : '',
-        ].filter(Boolean);
-        return {
-          ...item,
-          category: categoryLabel,
-          categories,
-          tags,
-          reservations,
-          picture: item.picture || placeholderImage(item.name),
-          description: descriptionParts.join(' — ') || 'Description a venir.',
-        };
-      });
-      return;
-    } catch (err) {
-      state.inventory = [];
-    }
-  }
-
-  // Récupère les emprunts de l'utilisateur (ou tous) et calcule l'historique.
-  async function apiFetchLoans() {
-    try {
-      const res = await fetch(API.dashboard, { credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'API emprunts');
-      state.loans = (data.loans || []).filter((l) => l.status !== 'rendu');
-      const rawHistory = Array.isArray(data?.stats?.history) ? data.stats.history : (data.loans || []);
-      const history = normalizeHistory(rawHistory);
-      state.loanHistory = history;
-      state.stats = data.stats ? { ...data.stats, history } : { history };
-      state.notifications = Array.isArray(data.notifications) ? data.notifications : [];
-      state.maintenanceRequests = Array.isArray(data.maintenance_requests) ? data.maintenance_requests : [];
-      state.reservationRequests = Array.isArray(data.reservation_requests) ? data.reservation_requests : [];
-      if (statsEls.msg) {
-        statsEls.msg.textContent = '';
-        statsEls.msg.className = 'message';
-      }
-      return;
-    } catch (err) {
-      state.loans = [];
-      state.stats = null;
-      state.loanHistory = [];
-      state.notifications = [];
-      state.maintenanceRequests = [];
-      state.reservationRequests = [];
-      if (statsEls.msg) {
-        statsEls.msg.textContent = err?.message || 'Stats indisponibles';
-        statsEls.msg.className = 'message err';
-      }
-    }
-  }
-
-  // Récupère la liste des emprunts côté admin.
-  async function apiFetchAdminLoans() {
-    try {
-      const res = await fetch(`${API.dashboard}?scope=all`, { credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'API emprunts admin');
-      state.adminLoans = data.loans || [];
-      state.maintenanceRequests = Array.isArray(data.maintenance_requests) ? data.maintenance_requests : [];
-      state.reservationRequests = Array.isArray(data.reservation_requests) ? data.reservation_requests : [];
-      if (adminStatsEls.msg && !state.adminStats) {
-        adminStatsEls.msg.textContent = '';
-      }
-    } catch (err) {
-      state.adminLoans = [];
-      state.maintenanceRequests = [];
-      state.reservationRequests = [];
-    }
-  }
-
-  // Récupère les statistiques côté admin.
-  async function apiFetchAdminStats() {
-    if (!canViewAdminStats()) return;
-    try {
-      const res = await fetch(`${API.dashboard}?action=admin_stats`, { credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'API stats');
-      state.adminStats = data || { total_year: 0, delays: 0, degrades: 0 };
-      state.adminHistory = data.history || [];
-      if (adminStatsEls.msg) adminStatsEls.msg.textContent = '';
-    } catch (err) {
-      state.adminStats = { total_year: 0, delays: 0, degrades: 0 };
-      state.adminHistory = [];
-      if (adminStatsEls.msg) {
-        adminStatsEls.msg.textContent = err?.message || 'Stats indisponibles';
-        adminStatsEls.msg.className = 'message err';
-      }
-    }
-  }
-
-  // Normalise l'historique des prêts (retards, dégradations).
-  function normalizeHistory(list = []) {
-    const today = new Date();
-    return (Array.isArray(list) ? list : [])
-      .filter((item) => (item.type || 'pret') !== 'maintenance')
-      .map((item) => {
-        const dueDate = item.due ? new Date(`${item.due}T00:00:00`) : null;
-        const returnedDate = item.returned ? new Date(`${item.returned}T00:00:00`) : null;
-        const dueValid = dueDate && !Number.isNaN(dueDate.getTime());
-        const returnedValid = returnedDate && !Number.isNaN(returnedDate.getTime());
-        const isDelayComputed = Boolean(dueValid)
-          && ((returnedValid && returnedDate > dueDate) || (!returnedValid && dueDate < today));
-        const returnState = item.return_state || '';
-        const lowerState = String(returnState).toLowerCase();
-        const isDegradeComputed = lowerState.startsWith('degrade') || String(returnState).includes('->');
-        return {
-          ...item,
-          is_delay: item.is_delay ?? isDelayComputed,
-          is_degrade: item.is_degrade ?? isDegradeComputed,
-          type: item.type || 'pret',
-        };
-      });
-  }
-
-  // Charge la liste des comptes utilisateurs.
-  async function apiFetchUsers() {
-    try {
-      const res = await fetch(`${API.auth}?action=users`, { credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'API users');
-      state.accounts = Array.isArray(data) ? data : [];
-    } catch (err) {
-      state.accounts = [];
-    }
-  }
-
-  // Met à jour le rôle d'un utilisateur.
-  async function apiSetUserRole(id, role) {
-    const res = await fetch(`${API.auth}?action=set_role`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id, role }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Mise à jour impossible');
-    }
-    return data;
-  }
-
-  // Supprime un utilisateur via l'API.
-  async function apiDeleteUser(id) {
-    const res = await fetch(`${API.auth}?action=delete_user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Suppression impossible');
-    }
-    return data;
-  }
-
-  // Marque un prêt comme rendu avec l'état du matériel.
-  async function apiReturnLoan(id, condition = '') {
-    const res = await fetch(`${API.dashboard}?action=return`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id, condition }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Retour impossible');
-    }
-    await apiFetchLoans();
-  }
-
-  // Annule une réservation côté admin.
-  async function apiAdminCancelLoan(id) {
-    const res = await fetch(`${API.dashboard}?action=admin_cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Annulation impossible');
-    }
-    await apiFetchLoans();
-  }
-
-  // Demande d'annulation initiée par l'utilisateur.
-  async function apiRequestCancel(id) {
-    const res = await fetch(`${API.dashboard}?action=cancel_request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Annulation impossible');
-    }
-    await apiFetchLoans();
-  }
-
-  // Demande de prolongation côté utilisateur.
-  async function apiRequestExtension(id, newDue) {
-    const res = await fetch(`${API.dashboard}?action=extend_request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id, new_due: newDue }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Prolongation impossible');
-    }
-    await apiFetchLoans();
-    return data;
-  }
-
-  // Validation/refus d'une prolongation côté administrateur.
-  async function apiDecideExtension(id, decision) {
-    const res = await fetch(`${API.dashboard}?action=extend_decide`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id, decision }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Traitement impossible');
-    }
-    await Promise.all([apiFetchLoans(), apiFetchAdminLoans()]);
-    return data;
-  }
-
-  // Validation/refus d'une demande de réservation (admin).
-  async function apiDecideReservationRequest(id, decision) {
-    const res = await fetch(`${API.dashboard}?action=reservation_decide`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id, decision }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data?.error || 'Traitement impossible');
-    }
-    await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
-    return data;
-  }
-
-  // Déconnecte l'utilisateur côté backend.
-  async function apiLogout() {
-    try {
-      await fetch(`${API.auth}?action=logout`, { method: 'POST', credentials: 'include' });
-    } catch (e) {}
-  }
-
-  // Crée un équipement depuis le formulaire admin.
-  async function apiCreateEquipment(payload) {
-    const form = new FormData();
-    if (payload?.name) form.append('name', payload.name);
-    if (payload?.location) form.append('location', payload.location);
-    if (payload?.condition) form.append('condition', payload.condition);
-    (payload?.categories || []).forEach((cat) => form.append('categories[]', cat));
-    if (payload?.picture) form.append('picture', payload.picture);
-    const res = await fetch(`${API.equipment}?action=create`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const err = new Error(data?.error || 'Création impossible');
-      err.status = res.status;
-      throw err;
-    }
-    return data?.equipment;
-  }
-
-  // Supprime un équipement depuis l'admin.
-  async function apiDeleteEquipment(id) {
-    const res = await fetch(`${API.equipment}?action=delete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const err = new Error(data?.error || 'Suppression impossible');
-      err.status = res.status;
-      throw err;
-    }
-    return data;
-  }
-
-  // Planifie une maintenance sur un équipement.
-  async function apiSetMaintenance(payload) {
-    const res = await fetch(`${API.equipment}?action=maintenance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const err = new Error(data?.error || 'Maintenance impossible');
-      err.status = res.status;
-      throw err;
-    }
-    return data;
-  }
-
-  // Validation ou refus d'une demande de maintenance (admin).
-  async function apiDecideMaintenance(id, decision) {
-    const res = await fetch(`${API.equipment}?action=maintenance_decide`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ id, decision }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const err = new Error(data?.error || 'Traitement maintenance impossible');
-      err.status = res.status;
-      throw err;
-    }
-    return data;
-  }
-
-  // Met à jour l'affichage du chip utilisateur selon la session.
-  function setAuthUI() {
-    if (userChip) {
-      const login = state.user?.login || 'profil';
-      const prettyLogin = login.charAt(0).toUpperCase() + login.slice(1);
-      userChip.textContent = state.user ? `Utilisateur : ${prettyLogin}` : 'Non connecte';
-    }
-  }
-
-  // Indique si l'utilisateur courant possède un rôle admin.
-  function isAdmin() {
-    return (state.user?.role || '').toLowerCase().includes('admin');
-  }
-
-  // Indique si l'utilisateur courant est technicien.
-  function isTechnician() {
-    return (state.user?.role || '').toLowerCase().includes('technicien');
-  }
-
-  // Indique si l'utilisateur courant est professeur.
-  function isProfessor() {
-    return (state.user?.role || '').toLowerCase().includes('prof');
-  }
-
-  // Accès maintenance (admin ou technicien).
-  function hasMaintenanceAccess() {
-    return isTechnician() || isAdmin();
-  }
-
-  // Durée max d'une réservation/prolongation selon le rôle.
-  function maxReservationDays() {
-    return isProfessor() ? 21 : 14;
-  }
-
-  function canViewAdminStats() {
-    return isAdmin() || isTechnician();
-  }
-
-  function allowedAdminStatsViews() {
-    if (isAdmin()) return ['total', 'delays', 'degrades', 'maint'];
-    if (isTechnician()) return ['degrades', 'maint'];
-    return [];
-  }
-
-  // Affiche ou masque les onglets/sections en fonction du rôle.
-  function applyRoleVisibility() {
-    const adminEnabled = isAdmin();
-    const techEnabled = isTechnician();
-    const maintenanceAccess = hasMaintenanceAccess();
-    const techOnly = techEnabled && !adminEnabled;
-    tabs.forEach((tab) => {
-      const isAdminTab = tab.dataset.role === 'admin';
-      const isUserLoansTab = tab.dataset.tab === 'loans';
-      const isBorrowTab = tab.dataset.tab === 'borrow';
-      const isStatsTab = tab.dataset.tab === 'stats';
-      const isMaintenanceTab = tab.dataset.tab === 'admin-maintenance';
-      const isAdminStatsTab = tab.dataset.tab === 'admin-stats';
-      if (techOnly && !isAdminTab && !isMaintenanceTab) {
-        tab.style.display = 'none';
-        return;
-      }
-      if (isAdminTab) {
-        if (isMaintenanceTab) {
-          tab.style.display = maintenanceAccess ? '' : 'none';
-        } else if (isAdminStatsTab && canViewAdminStats()) {
-          tab.style.display = '';
-        } else {
-          tab.style.display = adminEnabled ? '' : 'none';
-        }
-      } else if (isUserLoansTab || isBorrowTab || isStatsTab) {
-        tab.style.display = adminEnabled ? 'none' : '';
-      } else {
-        tab.style.display = '';
-      }
-    });
-    sections.forEach((sec) => {
-      const isAdminSection = sec.dataset.role === 'admin';
-      const isUserLoans = sec.dataset.section === 'loans';
-      const isBorrow = sec.dataset.section === 'borrow';
-      const isStats = sec.dataset.section === 'stats';
-      const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
-      const isAdminStatsSection = sec.dataset.section === 'admin-stats';
-      if (techOnly && !isMaintenanceSection && !isAdminStatsSection) {
-        sec.hidden = true;
-        return;
-      }
-      if (isAdminSection) {
-        if (isMaintenanceSection) {
-          sec.hidden = !maintenanceAccess;
-        } else if (isAdminStatsSection) {
-          sec.hidden = !canViewAdminStats();
-        } else {
-          sec.hidden = !adminEnabled;
-        }
-      } else if ((isUserLoans || isBorrow || isStats) && adminEnabled) {
-        sec.hidden = true;
-      } else {
-        sec.hidden = false;
-      }
-    });
-    if (techOnly) {
-      const allowedTabs = ['admin-maintenance', 'admin-stats'];
-      if (!allowedTabs.includes(state.activeTab)) {
-        state.activeTab = 'admin-maintenance';
-      }
-    } else if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow' || state.activeTab === 'stats')) {
-      state.activeTab = 'admin-add';
-    } else if (!maintenanceAccess && state.activeTab === 'admin-maintenance') {
-      state.activeTab = adminEnabled ? 'admin-add' : 'borrow';
-    } else if (!maintenanceAccess && !adminEnabled && state.activeTab.startsWith('admin')) {
-      state.activeTab = 'borrow';
-    }
-  }
-
-  // Rafraîchit toutes les vues de l'application.
-  function render() {
-    applyRoleVisibility();
-    updateTabs();
-    renderNotifications();
-    renderCatalog();
-    renderAdminCatalog();
-    renderLoans();
-    renderAdminLoans();
-    renderMaintenanceAgenda();
-    renderAccounts();
-    renderStats();
-    renderUserStatsList();
-    renderTags();
-    renderAdminTags();
-    renderMaintenanceCatalog();
-    renderMaintenanceTags();
-    renderAdminStats();
-  }
-
-  // Active l'onglet courant et affiche la section associée.
-  function updateTabs() {
-    const previousTab = state.lastActiveTab;
-    const nextTab = state.activeTab;
-    const shouldAnimate = Boolean(previousTab && previousTab !== nextTab);
-    const directionClass = shouldAnimate ? tabSlideDirection(previousTab, nextTab) : 'from-right';
-    tabs.forEach((tab) => {
-      const isMaintenanceTab = tab.dataset.tab === 'admin-maintenance';
-      if (isMaintenanceTab && !hasMaintenanceAccess()) {
-        tab.classList.remove('active');
-        tab.style.display = 'none';
-        return;
-      }
-      if (tab.dataset.role === 'admin' && !isAdmin()) {
-        const isAdminStatsTab = tab.dataset.tab === 'admin-stats';
-        const allowed = (isMaintenanceTab && hasMaintenanceAccess()) || (isAdminStatsTab && canViewAdminStats());
-        if (!allowed) {
-          tab.classList.remove('active');
-          tab.style.display = tab.style.display || 'none';
-          return;
-        }
-      }
-      tab.classList.toggle('active', tab.dataset.tab === state.activeTab);
-    });
-    sections.forEach((sec) => {
-      const isAdminSection = sec.dataset.role === 'admin';
-      const isLoansSection = sec.dataset.section === 'loans';
-      const isBorrowSection = sec.dataset.section === 'borrow';
-      const isStatsSection = sec.dataset.section === 'stats';
-      const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
-      const isAdminStatsSection = sec.dataset.section === 'admin-stats';
-      const isUserSection = isLoansSection || isBorrowSection || isStatsSection;
-      const allowAdminSection = isAdmin()
-        || (isMaintenanceSection && hasMaintenanceAccess())
-        || (isAdminStatsSection && canViewAdminStats());
-      const shouldShow = sec.dataset.section === state.activeTab
-        && (!isAdminSection || allowAdminSection)
-        && !(isUserSection && isAdmin());
-      if (shouldShow) {
-        sec.hidden = false;
-        if (shouldAnimate) animateSectionEntrance(sec, directionClass);
-      } else {
-        sec.hidden = true;
-        sec.classList.remove('tab-enter', 'from-left', 'from-right');
-      }
-    });
-    updateTabIndicator(shouldAnimate);
-    state.lastActiveTab = nextTab;
-  }
-
-  // Affiche les notifications système (annulations admin/maintenance) en haut de la page.
-  function renderNotifications() {
-    if (!notificationsEl) return;
-    const base = Array.isArray(state.notifications) ? state.notifications : [];
-    const overdue = buildOverdueAlerts();
-    const lastDay = buildLastDayAlerts();
-    const list = [...lastDay, ...overdue, ...base];
-    if (!list.length) {
-      notificationsEl.innerHTML = '';
-      notificationsEl.hidden = true;
-      return;
-    }
-    notificationsEl.hidden = false;
-    notificationsEl.innerHTML = list.map((n) => {
-      const received = formatDateTimeFr(n.created_at || '');
-      return `
-        <div class="alert-banner">
-          <div class="alert-icon" aria-hidden="true">!</div>
-          <div>
-            <div class="alert-title">${escapeHtml(n.message || '')}</div>
-            ${received ? `<div class="alert-meta">Reçu le ${escapeHtml(received)}</div>` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-    revealInContainer(notificationsEl, '.alert-banner', { stagger: 80 });
-  }
-
-  // Affiche et met à jour les tags filtres du catalogue utilisateur.
-  function renderTags() {
-    const allTags = BASE_TAGS.filter((tag) => state.inventory.some((item) => (item.tags || []).includes(tag)));
-    tagBar.innerHTML = '';
-    allTags.forEach((tag) => {
-      const chip = document.createElement('button');
-      const isActive = state.filters.tags.includes(tag);
-      chip.className = 'tag-chip' + (isActive ? ' active' : '');
-      chip.type = 'button';
-      chip.textContent = tag;
-      chip.addEventListener('click', () => {
-        if (isActive) {
-          state.filters.tags = state.filters.tags.filter((t) => t !== tag);
-        } else {
-          state.filters.tags = [...state.filters.tags, tag];
-        }
-        renderCatalog();
-        renderTags();
-      });
-      tagBar.appendChild(chip);
-    });
-  }
-
-  // Affiche et met à jour les tags filtres du catalogue admin.
-  function renderAdminTags() {
-    if (!adminTagBar) return;
-    if (!isAdmin()) {
-      adminTagBar.innerHTML = '';
-      return;
-    }
-    const allTags = Array.from(new Set(state.inventory.flatMap((item) => item.tags)));
-    adminTagBar.innerHTML = '';
-    allTags.forEach((tag) => {
-      const chip = document.createElement('button');
-      chip.className = 'tag-chip' + (state.adminFilters.tag === tag ? ' active' : '');
-      chip.type = 'button';
-      chip.textContent = tag;
-      chip.addEventListener('click', () => {
-        state.adminFilters.tag = state.adminFilters.tag === tag ? null : tag;
-        renderAdminCatalog();
-        renderAdminTags();
-      });
-      adminTagBar.appendChild(chip);
-    });
-  }
-
-  // Rendu du catalogue admin (filtres + tri).
-  function renderAdminCatalog() {
-    if (!adminInventoryEl) return;
-    adminInventoryEl.innerHTML = '';
-    if (!isAdmin()) {
-      adminInventoryEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
-      return;
-    }
-
-    const filtered = state.inventory.filter((item) => {
-      const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.location || ''} ${item.tags.join(' ')}`.toLowerCase();
-      const okSearch = matchText.includes(state.adminFilters.search);
-      const okTag = !state.adminFilters.tag || item.tags.includes(state.adminFilters.tag);
-      return okSearch && okTag;
-    });
-
-    const statusWeight = (status = '') => {
-      const map = { disponible: 0, reserve: 1, emprunte: 1, pret: 1, maintenance: 2, hs: 3 };
-      return map[status.toLowerCase()] ?? 4;
-    };
-
-    const sorted = filtered.slice().sort((a, b) => {
-      switch (state.adminFilters.sort) {
-        case 'name':
-          return a.name.localeCompare(b.name);
-        case 'category':
-          return a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
-        case 'status':
-          return statusWeight(a.status) - statusWeight(b.status) || a.name.localeCompare(b.name);
-        case 'location':
-          return (a.location || '').localeCompare(b.location || '') || a.name.localeCompare(b.name);
-        default:
-          return (b.id || 0) - (a.id || 0);
-      }
-    });
-
-    if (!sorted.length) {
-      adminInventoryEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
-      return;
-    }
-
-    sorted.forEach((item) => {
-      const card = document.createElement('article');
-      card.className = 'card';
-      card.innerHTML = `
-        <img src="${item.picture}" alt="" loading="lazy" />
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div>
-            <h3>${escapeHtml(item.name)}</h3>
-            <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
-          </div>
-          ${statusBadge(item.status)}
-        </div>
-        <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
-          <div class="tags" style="margin:0;">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
-          <button type="button" class="ghost danger" data-del="${item.id}">Supprimer</button>
-        </div>
-        <div class="message" data-error></div>
-      `;
-      const delBtn = card.querySelector('button[data-del]');
-      const errEl = card.querySelector('[data-error]');
-      if (delBtn) {
-        delBtn.addEventListener('click', async () => {
-          if (!confirm('Supprimer définitivement ce matériel ?')) return;
-          delBtn.disabled = true;
-          delBtn.textContent = 'Suppression...';
-          if (errEl) {
-            errEl.textContent = '';
-            errEl.className = 'message';
-          }
-          try {
-            await apiDeleteEquipment(item.id);
-            await Promise.all([apiFetchEquipment(), apiFetchAdminLoans()]);
-            render();
-          } catch (err) {
-            delBtn.disabled = false;
-            delBtn.textContent = 'Supprimer';
-            if (errEl) {
-              errEl.textContent = err?.message || 'Suppression impossible';
-              errEl.className = 'message err';
-            }
-          }
-        });
-      }
-      adminInventoryEl.appendChild(card);
-    });
-    revealInContainer(adminInventoryEl, '.card', { stagger: 40 });
-  }
-
-  // Rendu du catalogue de maintenance filtré.
-  function renderMaintenanceCatalog() {
-    if (!maintenanceCatalogEl) return;
-    maintenanceCatalogEl.innerHTML = '';
-    if (!hasMaintenanceAccess()) {
-      maintenanceCatalogEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs ou techniciens.</p>';
-      return;
-    }
-    const filtered = state.inventory.filter((item) => {
-      const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
-      const okSearch = matchText.includes(state.maintenanceFilters.search);
-      const okTag = !state.maintenanceFilters.tag || item.tags.includes(state.maintenanceFilters.tag);
-      return okSearch && okTag;
-    });
-
-    const sorted = filtered.slice().sort((a, b) => Number(needsRepair(b)) - Number(needsRepair(a)));
-
-    sorted.forEach((item) => {
-      const urgent = needsRepair(item);
-      const card = document.createElement('article');
-      card.className = 'card' + (urgent ? ' card-alert card-urgent' : '');
-      card.innerHTML = `
-        <img src="${item.picture}" alt="" loading="lazy" />
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div>
-            <h3>${escapeHtml(item.name)}</h3>
-            <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
-          </div>
-          ${statusBadge(item.status)}
-        </div>
-        <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
-        ${urgent ? '<div class="badge status-maint">Urgence : réparation nécessaire</div>' : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
-          <div class="tags" style="margin:0;">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
-          <button type="button" class="ghost" data-id="${item.id}">Planifier maintenance</button>
-        </div>
-      `;
-      card.querySelector('button').addEventListener('click', () => openModal(item, 'maintenance'));
-      maintenanceCatalogEl.appendChild(card);
-    });
-    revealInContainer(maintenanceCatalogEl, '.card', { stagger: 40 });
-
-    if (!filtered.length) {
-      maintenanceCatalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
-    }
-  }
-
-  // Affiche la barre de tags pour la vue maintenance.
-  function renderMaintenanceTags() {
-    if (!maintenanceTagBar) return;
-    const allTags = Array.from(new Set(state.inventory.flatMap((item) => item.tags)));
-    maintenanceTagBar.innerHTML = '';
-    allTags.forEach((tag) => {
-      const chip = document.createElement('button');
-      chip.className = 'tag-chip' + (state.maintenanceFilters.tag === tag ? ' active' : '');
-      chip.type = 'button';
-      chip.textContent = tag;
-      chip.addEventListener('click', () => {
-        state.maintenanceFilters.tag = state.maintenanceFilters.tag === tag ? null : tag;
-        renderMaintenanceCatalog();
-        renderMaintenanceTags();
-      });
-      maintenanceTagBar.appendChild(chip);
-    });
-  }
-
-  // Liste les maintenances programmées et les supprime au besoin.
-  function renderMaintenanceAgenda() {
-    if (!maintenanceListEl) return;
-    maintenanceListEl.innerHTML = '';
-    if (!hasMaintenanceAccess()) {
-      maintenanceListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs ou techniciens.</p>';
-      return;
-    }
-    const isAdminUser = isAdmin();
-    const pendingRequests = (state.maintenanceRequests || [])
-      .filter((r) => (r.status || '').toLowerCase() === 'pending');
-    const maints = state.adminLoans
-      .filter((l) => (l.type || '').toLowerCase() === 'maintenance')
-      .filter((l) => l.status !== 'rendu');
-    const todayStr = new Date().toISOString().slice(0, 10);
-
-    if (pendingRequests.length) {
-      const block = document.createElement('div');
-      block.className = 'admin-subblock admin-alert';
-      const title = document.createElement('div');
-      title.className = 'small-title';
-      title.textContent = 'Demandes de maintenance en attente';
-      block.appendChild(title);
-      pendingRequests.forEach((req) => {
-        const end = req.due || req.end || req.start;
-        const row = document.createElement('div');
-        row.className = 'loan-item loan-cancel';
-        row.innerHTML = `
-         <div>
-           <div class="small-title">Validation administrateur requise</div>
-           <div style="font-weight:800">${escapeHtml(req.name || 'Matériel')}</div>
-           <div class="loan-meta">Du ${formatDisplayDate(req.start)} au ${formatDisplayDate(end)}</div>
-           <div class="loan-meta">Demandé par ${escapeHtml(req.requested_by || 'Technicien')}</div>
-         </div>
-         <div class="admin-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
-           ${isAdminUser ? `
-             <button type="button" class="ghost" data-approve="${req.id}">Valider</button>
-             <button type="button" class="ghost danger" data-reject="${req.id}">Refuser</button>
-           ` : '<span class="meta">En attente validation admin</span>'}
-         </div>
-        `;
-        const approveBtn = row.querySelector('button[data-approve]');
-        const rejectBtn = row.querySelector('button[data-reject]');
-        const setLoading = (btn, label) => {
-          if (btn) {
-            btn.disabled = true;
-            btn.textContent = label;
-          }
-          if (approveBtn && approveBtn !== btn) approveBtn.disabled = true;
-          if (rejectBtn && rejectBtn !== btn) rejectBtn.disabled = true;
-        };
-        const resetButtons = () => {
-          if (approveBtn) {
-            approveBtn.disabled = false;
-            approveBtn.textContent = 'Valider';
-          }
-          if (rejectBtn) {
-            rejectBtn.disabled = false;
-            rejectBtn.textContent = 'Refuser';
-          }
-        };
-        if (isAdminUser) {
-          if (approveBtn) {
-            approveBtn.addEventListener('click', async () => {
-              setLoading(approveBtn, 'Validation...');
-              try {
-                await apiDecideMaintenance(req.id, 'approve');
-                await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
-                render();
-              } catch (err) {
-                resetButtons();
-                alert(err?.message || 'Validation impossible');
-              }
-            });
-          }
-          if (rejectBtn) {
-            rejectBtn.addEventListener('click', async () => {
-              setLoading(rejectBtn, 'Refus...');
-              try {
-                await apiDecideMaintenance(req.id, 'reject');
-                await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
-                render();
-              } catch (err) {
-                resetButtons();
-                alert(err?.message || 'Refus impossible');
-              }
-            });
-          }
-        }
-        block.appendChild(row);
-      });
-      maintenanceListEl.appendChild(block);
-    }
-
-    maints.forEach((m) => {
-      const startStr = normalizeDateOnly(m.start);
-      const hasStarted = Boolean(startStr && startStr <= todayStr);
-      const progress = progressPercentWithTime(m.start, m.due);
-      const severity = hasStarted ? dueSeverity(m.due || m.start) : 'future';
-      const visualSeverity = hasStarted ? severityVisual(severity) : 'ok';
-      const barColor = barColorForProgress(progress, visualSeverity);
-      const statusLabel = hasStarted ? severityLabel(severity) : 'Planifiée';
-      const row = document.createElement('div');
-      row.className = `loan-item loan-${visualSeverity}`;
-      row.innerHTML = `
-       <div>
-         <div class="small-title">Maintenance planifiée - ${escapeHtml(statusLabel)}</div>
-         <div style="font-weight:800">${escapeHtml(m.name)}</div>
-         <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
-         <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
-       </div>
-        <div class="admin-actions">
-          <button type="button" class="ghost" data-id="${m.id}">Fin de maintenance</button>
-        </div>
-      `;
-      const btn = row.querySelector('button');
-      if (btn) {
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          btn.textContent = 'Clôture...';
-          try {
-            await apiReturnLoan(m.id, '');
-            await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
-            render();
-          } catch (err) {
-            btn.disabled = false;
-            btn.textContent = 'Fin de maintenance';
-          }
-        });
-      }
-      maintenanceListEl.appendChild(row);
-    });
-
-    if (!maints.length && !pendingRequests.length) {
-      maintenanceListEl.innerHTML = '<p class="meta">Aucune maintenance planifiée ou demande en attente.</p>';
-    }
-    revealInContainer(maintenanceListEl, '.loan-item', { stagger: 30 });
-  }
-
-  // Exporte l'inventaire complet côté admin en PDF (via l'impression navigateur).
-  function exportInventoryPdf() {
-    if (!isAdmin()) {
-      alert('Accès réservé aux administrateurs.');
-      return;
-    }
-    const list = state.inventory || [];
-    if (!list.length) {
-      alert('Aucun matériel à exporter.');
-      return;
-    }
-    const popup = window.open('', '_blank', 'width=900,height=700');
-    if (!popup) {
-      alert("Impossible d'ouvrir la fenêtre d'export (bloqueur de pop-up ?).");
-      return;
-    }
-    const dateLabel = new Date().toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-    const rowsHtml = list.map((item, idx) => {
-      const categories = Array.isArray(item.categories) ? item.categories.join(', ') : (item.category || 'Non classé');
-      const condition = formatConditionLabel(item.condition || '');
-      const status = statusLabelText(item.status || '');
-      const reservationsCount = Array.isArray(item.reservations) ? item.reservations.length : 0;
-      const location = item.location || 'Stock';
-      return `<tr>
-        <td>${idx + 1}</td>
-        <td>${escapeHtml(item.name || 'Matériel')}</td>
-        <td>${escapeHtml(categories)}</td>
-        <td>${escapeHtml(condition)}</td>
-        <td>${escapeHtml(status)}</td>
-        <td style="text-align:center;">${reservationsCount}</td>
-        <td>${escapeHtml(location)}</td>
-      </tr>`;
-    }).join('');
-    const style = `
-      body { font-family: Manrope, 'Inter', system-ui, -apple-system, sans-serif; padding: 24px; color: #0f172a; }
-      h1 { margin: 0; font-size: 20px; }
-      .meta { margin-top: 4px; color: #475569; font-size: 12px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
-      th, td { border: 1px solid #e2e8f0; padding: 8px; }
-      th { background: #fff3e6; text-align: left; }
-      tr:nth-child(even) { background: #f8fafc; }
-      .footer { margin-top: 12px; color: #64748b; font-size: 12px; }
-    `;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8" />
-          <title>Inventaire - Parc Materiels</title>
-          <style>${style}</style>
-        </head>
-        <body>
-          <h1>Inventaire complet</h1>
-          <div class="meta">Export du ${escapeHtml(dateLabel)} — ${list.length} matériel(s)</div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Nom</th>
-                <th>Catégories</th>
-                <th>Etat</th>
-                <th>Statut</th>
-                <th>Réservations</th>
-                <th>Emplacement</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-          <div class="footer">Généré automatiquement depuis l’interface admin.</div>
-        </body>
-      </html>
-    `;
-    popup.document.write(html);
-    popup.document.close();
-    popup.focus();
-    setTimeout(() => {
-      popup.print();
-    }, 200);
-  }
-
-  // Rendu de la liste des comptes utilisateurs côté admin.
-  function renderAccounts() {
-    if (!accountsListEl) return;
-    accountsListEl.innerHTML = '';
-    if (!isAdmin()) {
-      accountsListEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
-      return;
-    }
-    if (!state.accounts.length) {
-      accountsListEl.innerHTML = '<p class="meta">Aucun compte trouvé.</p>';
-      return;
-    }
-    state.accounts.forEach((acc) => {
-      const row = document.createElement('div');
-      row.className = 'loan-item';
-      row.innerHTML = `
-        <div>
-          <div class="small-title">${escapeHtml(acc.login || 'Utilisateur')}</div>
-          <div class="loan-meta">${escapeHtml(acc.email || '')}</div>
-          <div class="loan-meta">Créé le ${formatDisplayDate(acc.created)}</div>
-        </div>
-        <div class="admin-actions">
-          <button type="button" class="ghost danger" data-del="${acc.id}">Supprimer</button>
-        </div>
-      `;
-      const delBtn = row.querySelector('button[data-del]');
-      if (delBtn) {
-        const isAdminRole = (acc.role || '').toLowerCase().includes('admin');
-        if (isAdminRole) {
-          delBtn.disabled = true;
-          delBtn.textContent = 'Admin';
-        } else {
-          delBtn.addEventListener('click', async () => {
-            delBtn.disabled = true;
-            delBtn.textContent = 'Suppression...';
-            try {
-              await apiDeleteUser(acc.id);
-              await apiFetchUsers();
-              renderAccounts();
-            } catch (err) {
-              delBtn.disabled = false;
-              delBtn.textContent = 'Supprimer';
-            }
-          });
-        }
-      }
-      accountsListEl.appendChild(row);
-    });
-    revealInContainer(accountsListEl, '.loan-item', { stagger: 30 });
-  }
-
-  // Catalogue public (recherche + tags) et cartes de réservation.
-  // Rendu du catalogue pour les utilisateurs.
-  function renderCatalog() {
-    if (!catalogEl) return;
-    catalogEl.innerHTML = '';
-    const filtered = state.inventory.filter((item) => {
-      const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
-      const okSearch = matchText.includes(state.filters.search);
-      const okTags = !state.filters.tags.length
-        || state.filters.tags.every((tag) => item.tags.includes(tag));
-      return okSearch && okTags;
-    });
-
-    filtered.forEach((item) => {
-      const tagsHtml = item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('');
-      const card = document.createElement('article');
-      card.className = 'card';
-      card.innerHTML = `
-        <img src="${item.picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div>
-            <h3>${escapeHtml(item.name)}</h3>
-            <div class="meta">Lieu: ${escapeHtml(item.location || 'Stock')}</div>
-          </div>
-          ${statusBadge(item.status)}
-        </div>
-        <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
-          <div class="tags" style="margin:0;">${tagsHtml}</div>
-          <button type="button" class="ghost" data-id="${item.id}">Voir et reserver</button>
-        </div>
-      `;
-      card.querySelector('button').addEventListener('click', () => openModal(item));
-      catalogEl.appendChild(card);
-    });
-    revealInContainer(catalogEl, '.card', { stagger: 60 });
-
-    if (!filtered.length) {
-      catalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
-    }
-  }
-
-  // Bloc "Mes emprunts" côté utilisateur (retours ou annulations).
-  // Rendu des emprunts de l'utilisateur (retours/annulations).
-  function renderLoans() {
-    loansEl.innerHTML = '';
-    const isAdmin = (state.user?.role || '').toLowerCase().includes('admin');
-    const today = normalizeDateOnly(new Date());
-    const filteredLoans = state.loans.filter((loan) => {
-      if (!state.loanSearch) return true;
-      const haystack = `${loan.name || ''} ${loan.status || ''}`.toLowerCase();
-      return haystack.includes(state.loanSearch);
-    });
-    const sortedLoans = filteredLoans.sort((a, b) => {
-      const started = (loan) => {
-        const startStr = normalizeDateOnly(loan.start);
-        return startStr && today && startStr <= today;
-      };
-      const severityKey = (loan) => {
-        if (!started(loan)) return 'future';
-        return dueSeverity(loan.due);
-      };
-      const weight = (key) => {
-        const map = { overdue: 0, urgent: 1, soon: 2, ok: 3, future: 4 };
-        return map[key] ?? 5;
-      };
-      const wa = weight(severityKey(a));
-      const wb = weight(severityKey(b));
-      if (wa !== wb) return wa - wb;
-      if (wa === weight('future')) {
-        return (a.start || '').localeCompare(b.start || '');
-      }
-      return (a.due || '').localeCompare(b.due || '');
-    });
-
-    sortedLoans.forEach((loan) => {
-      const startStr = normalizeDateOnly(loan.start);
-      const dueStr = normalizeDateOnly(loan.due);
-      const hasStarted = Boolean(startStr && today && startStr <= today);
-      const progress = progressPercentWithTime(loan.start, loan.due);
-      const severity = hasStarted ? dueSeverity(loan.due) : 'ok';
-      const visualSeverity = severityVisual(severity);
-      const barColor = hasStarted ? barColorForProgress(progress, visualSeverity) : '#e5e7eb';
-      const statusLower = (loan.status || '').toLowerCase();
-      const isOngoing = hasStarted && statusLower === 'en cours';
-      const userStateLabel = isOngoing
-        ? (severity === 'overdue'
-          ? 'Retard'
-          : severity === 'lastday'
-            ? 'Dernier jour'
-            : (severity === 'urgent' || severity === 'soon')
-              ? 'Retour proche'
-              : 'A jour')
-        : 'A venir';
-      const canReturn = isAdmin && loan.type === 'pret' && loan.status !== 'rendu';
-      const canRequestCancel = !isAdmin
-        && loan.type === 'pret'
-        && loan.status !== 'rendu'
-        && loan.status !== 'annulation demandee'
-        && !hasStarted;
-      const extension = loan.extension || null;
-      const extensionStatus = (extension?.status || '').toLowerCase();
-      const extensionPending = extensionStatus === 'pending';
-      const extensionRejected = extensionStatus === 'rejected';
-      const extensionApproved = extensionStatus === 'approved';
-      const requestedDue = extension?.requested_due || loan.due;
-      const canRequestExtension = !isAdmin
-        && loan.type === 'pret'
-        && loan.status !== 'rendu'
-        && statusLower !== 'annulation demandee'
-        && hasStarted
-        && !extensionPending;
-
-      const actions = [];
-      if (canReturn) {
-        actions.push('<button type="button" class="ghost" data-id="' + loan.id + '">Rendre maintenant</button>');
-      }
-      if (canRequestCancel) {
-        actions.push('<button type="button" class="ghost" data-cancel="' + loan.id + '">Demander annulation</button>');
-      }
-      if (canRequestExtension) {
-        actions.push('<button type="button" class="ghost" data-extend="' + loan.id + '">Prolonger</button>');
-      }
-      const actionHtml = actions.length
-        ? '<div class="loan-actions" style="display:flex;gap:8px;flex-wrap:wrap;">' + actions.join('') + '</div>'
-        : (loan.status === 'annulation demandee'
-          ? '<span class="meta">Annulation demandée</span>'
-          : '');
-
-      let extensionMsg = '';
-      if (extensionPending) {
-        extensionMsg = `Prolongation demandée jusqu'au ${formatDisplayDate(requestedDue)}`;
-      } else if (extensionApproved && requestedDue) {
-        extensionMsg = `Prolongé jusqu'au ${formatDisplayDate(requestedDue)}`;
-      } else if (extensionRejected) {
-        extensionMsg = 'Prolongation refusée';
-      }
-
-      const row = document.createElement('div');
-      row.className = `loan-item loan-${visualSeverity}`;
-      row.innerHTML = `
-          <div>
-            <div class="small-title">${escapeHtml(userStateLabel)}</div>
-            <div style="font-weight:800">${escapeHtml(loan.name)}</div>
-            <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
-            ${extensionMsg ? `<div class="loan-meta">${escapeHtml(extensionMsg)}</div>` : ''}
-            <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
-          </div>
-        ${actionHtml}
-      `;
-      const returnBtn = canReturn ? row.querySelector('button') : null;
-      const cancelBtn = !canReturn ? row.querySelector('button[data-cancel]') : null;
-      const extendBtn = row.querySelector('button[data-extend]');
-      if (canReturn && returnBtn) {
-        returnBtn.addEventListener('click', async () => {
-          returnBtn.disabled = true;
-          returnBtn.textContent = 'Retour...';
-          try {
-            await apiReturnLoan(loan.id);
-            loan.status = 'rendu';
-            renderLoans();
-            renderStats();
-          } catch (err) {
-            returnBtn.disabled = false;
-            returnBtn.textContent = 'Rendre maintenant';
-          }
-        });
-      }
-      if (cancelBtn) {
-        cancelBtn.addEventListener('click', async () => {
-          cancelBtn.disabled = true;
-          cancelBtn.textContent = 'Envoi...';
-          try {
-            await apiRequestCancel(loan.id);
-            loan.status = 'annulation demandee';
-            renderLoans();
-          } catch (err) {
-            cancelBtn.disabled = false;
-            cancelBtn.textContent = 'Demander annulation';
-          }
-        });
-      }
-      if (extendBtn) {
-        extendBtn.addEventListener('click', async () => {
-          openExtendModal(loan);
-        });
-      }
-      loansEl.appendChild(row);
-    });
-    revealInContainer(loansEl, '.loan-item', { stagger: 30 });
-
-    if (!state.loans.length) {
-      loansEl.innerHTML = '<p class="meta">Aucun emprunt en cours.</p>';
-    }
-  }
-
-  // Vue admin des prêts en cours/à venir + actions de rendu/annulation.
-  // Deux colonnes : à gauche les réservations en cours (retours), à droite les demandes/annulations.
-  function renderAdminLoans() {
-    if (!adminLoansEl) return;
-    adminLoansEl.innerHTML = '';
-    if (!isAdmin()) {
-      adminLoansEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
-      return;
-    }
-    const layout = document.createElement('div');
-    layout.className = 'admin-bubble-columns';
-    const activeCol = document.createElement('div');
-    activeCol.className = 'admin-bubble-col';
-    const priorityCol = document.createElement('div');
-    priorityCol.className = 'admin-bubble-col';
-    const today = new Date().toISOString().slice(0, 10);
-    const active = [];
-    const upcoming = [];
-    const extensionRequests = [];
-    const reservationRequests = (state.reservationRequests || []).filter((req) => {
-      const statusNorm = (req.status || '').toLowerCase();
-      if (statusNorm && statusNorm !== 'pending') return false;
-      if (!state.adminLoanSearch) return true;
-      const haystack = `${req.requested_by || ''} ${req.name || ''}`.toLowerCase();
-      return haystack.includes(state.adminLoanSearch);
-    });
-    state.adminLoans
-      .filter((l) => l.type !== 'maintenance')
-      .filter((l) => l.status !== 'rendu')
-      .filter((l) => {
-        if (!state.adminLoanSearch) return true;
-        const haystack = `${l.user || ''} ${l.name || ''}`.toLowerCase();
-        return haystack.includes(state.adminLoanSearch);
-      })
-      .forEach((loan) => {
-        const statusNorm = (loan.status || '').toLowerCase();
-        const start = loan.start || loan.due;
-        const due = loan.due || loan.start;
-        const startOk = start && start <= today;
-        const dueOk = due && due >= today;
-        const hasPendingExtension = (loan.extension?.status || '').toLowerCase() === 'pending';
-        if (hasPendingExtension) {
-          extensionRequests.push(loan);
-          return;
-        }
-        if (statusNorm === 'annulation demandee') {
-          upcoming.push({ ...loan, _cancelRequested: true });
-          return;
-        }
-        if (startOk && dueOk) {
-          active.push(loan);
-        } else if (start && start > today) {
-          upcoming.push(loan);
-        } else {
-          active.push(loan);
-        }
-      });
-
-    const renderList = (target, list, title, opts = {}) => {
-      if (!list.length) return;
-      const block = document.createElement('div');
-      block.className = 'admin-subblock';
-      if (opts.variant) block.classList.add(`admin-${opts.variant}`);
-      block.innerHTML = '';
-      list.forEach((loan) => {
-        const progress = progressPercentWithTime(loan.start, loan.due);
-        const severity = dueSeverity(loan.due);
-        const visualSeverity = severityVisual(severity);
-        const barColor = barColorForProgress(progress, visualSeverity);
-        const userLabel = escapeHtml(loan.user || 'Inconnu');
-        const baseCondition = loan.condition || '';
-        const conditionLabel = formatConditionLabel(baseCondition);
-        const optionsHtml = buildReturnOptions(baseCondition);
-        const isUpcoming = opts.variant === 'upcoming';
-        const isCancelRequest = Boolean(loan._cancelRequested);
-        const allowCancel = (isUpcoming && opts.cancelable) || isCancelRequest;
-        const statusText = isCancelRequest
-          ? 'Annulation demande'
-          : isUpcoming
-            ? 'Réservation à venir'
-            : loan.status;
-        const severityText = (!isUpcoming && !isCancelRequest) ? severityLabel(severity) : '';
-        const showActions = !isUpcoming || allowCancel;
-        const showCondition = showActions && !allowCancel && !isCancelRequest;
-        const actionLabel = isCancelRequest
-          ? (opts.actionLabel || 'Valider annulation')
-          : allowCancel
-            ? (opts.actionLabel || 'Supprimer la réservation')
-            : (opts.actionLabel || 'Marquer rendu');
-        const row = document.createElement('div');
-        const cancelClass = isCancelRequest ? ' loan-cancel' : '';
-        row.className = `loan-item loan-${visualSeverity}${cancelClass}`;
-        row.innerHTML = `
-          <div>
-            <div class="small-title">${escapeHtml(statusText)}${severityText ? ' - ' + escapeHtml(severityText) : ''}</div>
-            <div style="font-weight:800">${escapeHtml(loan.name)}</div>
-            <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
-            <div class="loan-meta">Etat prêt: ${escapeHtml(conditionLabel)}</div>
-            <div class="loan-meta">Du ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
-            <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
-          </div>
-          ${showActions ? `
-          <div class="admin-actions">
-            ${showCondition ? `
-            <select data-cond="${loan.id}">
-              ${optionsHtml}
-            </select>
-            ` : ''}
-            <button type="button" class="ghost" data-id="${loan.id}">${actionLabel}</button>
-          </div>` : ''}
-        `;
-        const btn = row.querySelector('button');
-        const cond = row.querySelector('select');
-        if (btn) {
-          btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            btn.textContent = allowCancel ? 'Annulation...' : (opts.actionLabel || 'Retour...');
-            try {
-              if (allowCancel) {
-                await apiAdminCancelLoan(loan.id);
-              } else {
-                const condition = cond ? cond.value : '';
-                await apiReturnLoan(loan.id, condition);
-              }
-              await Promise.all([apiFetchAdminLoans(), apiFetchLoans()]);
-              render();
-            } catch (err) {
-              btn.disabled = false;
-              btn.textContent = actionLabel;
-            }
-          });
-        }
-        block.appendChild(row);
-      });
-      target.appendChild(block);
-    };
-
-    const buildBubble = (title, subtitle, variant) => {
-      const bubble = document.createElement('div');
-      bubble.className = 'admin-bubble';
-      if (variant) bubble.classList.add(`bubble-${variant}`);
-      bubble.innerHTML = `
-        <div class="bubble-head">
-          <div>
-            <div class="small-title">${title}</div>
-            ${subtitle ? `<div class="meta">${subtitle}</div>` : ''}
-          </div>
-        </div>
-      `;
-      return bubble;
-    };
-
-    let hasContent = false;
-
-    if (active.length) {
-      const bubble = buildBubble('Réservations en cours', '', 'current');
-      renderList(bubble, active, '', { variant: 'current' });
-      activeCol.appendChild(bubble);
-      hasContent = true;
-    }
-
-    const cancels = upcoming.filter((l) => l._cancelRequested);
-    const future = upcoming.filter((l) => !l._cancelRequested);
-    if (reservationRequests.length) {
-      const bubble = buildBubble('Réservations à valider', '', 'alert');
-      const block = document.createElement('div');
-      block.className = 'admin-subblock admin-alert';
-      reservationRequests.forEach((req) => {
-        const end = req.due || req.end || req.start;
-        const userLabel = escapeHtml(req.requested_by || 'Inconnu');
-        const row = document.createElement('div');
-        row.className = 'loan-item loan-cancel';
-        row.innerHTML = `
-          <div>
-            <div class="small-title">Demande de réservation</div>
-            <div style="font-weight:800">${escapeHtml(req.name || 'Matériel')}</div>
-            <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
-            <div class="loan-meta">Du ${formatDisplayDate(req.start)} au ${formatDisplayDate(end)}</div>
-          </div>
-          <div class="admin-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="ghost" data-approve="${req.id}">Valider</button>
-            <button type="button" class="ghost danger" data-reject="${req.id}">Refuser</button>
-          </div>
-        `;
-        const approveBtn = row.querySelector('button[data-approve]');
-        const rejectBtn = row.querySelector('button[data-reject]');
-        const setLoading = (btn, label) => {
-          btn.disabled = true;
-          btn.textContent = label;
-          if (approveBtn && approveBtn !== btn) approveBtn.disabled = true;
-          if (rejectBtn && rejectBtn !== btn) rejectBtn.disabled = true;
-        };
-        const resetButtons = () => {
-          if (approveBtn) {
-            approveBtn.disabled = false;
-            approveBtn.textContent = 'Valider';
-          }
-          if (rejectBtn) {
-            rejectBtn.disabled = false;
-            rejectBtn.textContent = 'Refuser';
-          }
-        };
-        if (approveBtn) {
-          approveBtn.addEventListener('click', async () => {
-            setLoading(approveBtn, 'Validation...');
-            try {
-              await apiDecideReservationRequest(req.id, 'approve');
-              render();
-            } catch (err) {
-              resetButtons();
-              alert(err?.message || 'Validation impossible');
-            }
-          });
-        }
-        if (rejectBtn) {
-          rejectBtn.addEventListener('click', async () => {
-            setLoading(rejectBtn, 'Refus...');
-            try {
-              await apiDecideReservationRequest(req.id, 'reject');
-              render();
-            } catch (err) {
-              resetButtons();
-              alert(err?.message || 'Refus impossible');
-            }
-          });
-        }
-        block.appendChild(row);
-      });
-      bubble.appendChild(block);
-      priorityCol.appendChild(bubble);
-      hasContent = true;
-    }
-    if (extensionRequests.length) {
-      const bubble = buildBubble('Prolongations à traiter', '', 'alert');
-      const block = document.createElement('div');
-      block.className = 'admin-subblock admin-alert';
-      extensionRequests.forEach((loan) => {
-        const severity = dueSeverity(loan.due);
-        const barColor = severityColor(severity);
-        const userLabel = escapeHtml(loan.user || 'Inconnu');
-        const requested = loan.extension?.requested_due || loan.due;
-        const row = document.createElement('div');
-        row.className = 'loan-item loan-cancel';
-        row.innerHTML = `
-          <div>
-            <div class="small-title">Prolongation demandée</div>
-            <div style="font-weight:800">${escapeHtml(loan.name)}</div>
-            <div class="loan-meta"><span class="user-pill">${userLabel}</span></div>
-            <div class="loan-meta">Actuel: ${formatDisplayDate(loan.start)} au ${formatDisplayDate(loan.due)}</div>
-            <div class="loan-meta">Demandé: ${formatDisplayDate(loan.start)} au ${formatDisplayDate(requested)}</div>
-            <div class="progress" aria-hidden="true"><div style="width:${loan.progress}%; background:${barColor}"></div></div>
-          </div>
-          <div class="admin-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="ghost" data-approve="${loan.id}">Valider</button>
-            <button type="button" class="ghost danger" data-reject="${loan.id}">Refuser</button>
-          </div>
-        `;
-        const approveBtn = row.querySelector('button[data-approve]');
-        const rejectBtn = row.querySelector('button[data-reject]');
-        const setLoading = (btn, label) => {
-          btn.disabled = true;
-          btn.textContent = label;
-          if (approveBtn && approveBtn !== btn) approveBtn.disabled = true;
-          if (rejectBtn && rejectBtn !== btn) rejectBtn.disabled = true;
-        };
-        const resetButtons = () => {
-          if (approveBtn) {
-            approveBtn.disabled = false;
-            approveBtn.textContent = 'Valider';
-          }
-          if (rejectBtn) {
-            rejectBtn.disabled = false;
-            rejectBtn.textContent = 'Refuser';
-          }
-        };
-        if (approveBtn) {
-          approveBtn.addEventListener('click', async () => {
-            setLoading(approveBtn, 'Validation...');
-            try {
-              await apiDecideExtension(loan.id, 'approve');
-              render();
-            } catch (err) {
-              resetButtons();
-              alert(err?.message || 'Validation impossible');
-            }
-          });
-        }
-        if (rejectBtn) {
-          rejectBtn.addEventListener('click', async () => {
-            setLoading(rejectBtn, 'Refus...');
-            try {
-              await apiDecideExtension(loan.id, 'reject');
-              render();
-            } catch (err) {
-              resetButtons();
-              alert(err?.message || 'Refus impossible');
-            }
-          });
-        }
-        block.appendChild(row);
-      });
-      bubble.appendChild(block);
-      priorityCol.appendChild(bubble);
-      hasContent = true;
-    }
-    if (cancels.length) {
-      const bubble = buildBubble('Annulations à traiter', '', 'alert');
-      renderList(bubble, cancels, '', { actionLabel: 'Valider annulation', variant: 'alert', cancelable: true });
-      priorityCol.appendChild(bubble);
-      hasContent = true;
-    }
-    if (future.length) {
-      const bubble = buildBubble('Réservations à venir', '', 'upcoming');
-      renderList(bubble, future, '', { variant: 'upcoming', cancelable: true, actionLabel: 'Supprimer la réservation' });
-      priorityCol.appendChild(bubble);
-      hasContent = true;
-    }
-
-    if (!hasContent) {
-      adminLoansEl.innerHTML = '<p class="meta">Aucune réservation en cours ou à venir.</p>';
-    } else {
-      if (activeCol.childElementCount) layout.appendChild(activeCol);
-      if (priorityCol.childElementCount) layout.appendChild(priorityCol);
-      adminLoansEl.appendChild(layout);
-    }
-    revealInContainer(adminLoansEl, '.loan-item', { stagger: 30 });
-  }
-
-  // Stats côté utilisateur (cartes synthèse).
-  // Rendu des cartes de statistiques côté utilisateur.
-  function renderStats() {
-    if (!statsEls.total) return;
-    const history = Array.isArray(state.stats?.history)
-      ? state.stats.history
-      : Array.isArray(state.loanHistory)
-        ? state.loanHistory
-        : [];
-    const safeHistory = Array.isArray(history) ? history : [];
-    const currentYear = new Date().getFullYear();
-    const yearHistory = safeHistory.filter((item) => {
-      if (!item.start) return false;
-      const dt = new Date(`${item.start}T00:00:00`);
-      return !Number.isNaN(dt.getTime()) && dt.getFullYear() === currentYear;
-    });
-    const fallback = {
-      total_year: yearHistory.length,
-      delays: yearHistory.filter((h) => h.is_delay).length,
-      degrades: yearHistory.filter((h) => h.is_degrade).length,
-      history: safeHistory,
-    };
-    const stats = state.stats ? { ...fallback, ...state.stats, history: safeHistory } : fallback;
-    statsEls.total.textContent = String(stats.total_year ?? stats.total ?? 0);
-    if (statsEls.delays) statsEls.delays.textContent = String(stats.delays ?? 0);
-    if (statsEls.degrades) statsEls.degrades.textContent = String(stats.degrades ?? 0);
-    Object.entries(statsEls.cards || {}).forEach(([key, el]) => {
-      if (!el) return;
-      el.classList.toggle('active', state.userStatsView === key);
-    });
-  }
-
-  // Liste détaillée de l'historique utilisateur selon le filtre stats.
-  function renderUserStatsList() {
-    if (!statsEls.list) return;
-    const history = Array.isArray(state.stats?.history)
-      ? state.stats.history
-      : Array.isArray(state.loanHistory)
-        ? state.loanHistory
-        : [];
-    statsEls.list.innerHTML = '';
-    if (!history.length) {
-      statsEls.list.innerHTML = '<p class="meta">Pas encore d\'historique.</p>';
-      return;
-    }
-    const filtered = history.filter((it) => {
-      if (state.userStatsView === 'delays') return Boolean(it.is_delay);
-      if (state.userStatsView === 'degrades') return Boolean(it.is_degrade);
-      return true;
-    });
-
-    filtered.forEach((it) => {
-      const row = document.createElement('div');
-      row.className = 'loan-item';
-      const badges = [];
-      if (it.is_delay) badges.push('<span class="badge status-loan">Retard</span>');
-      if (it.is_degrade) {
-        let transition = '';
-        if ((it.return_state || '').includes('->')) {
-          transition = it.return_state.split(':').pop() || it.return_state;
-        }
-        const cleanTransition = transition ? transition.replace(/^degrade:/i, '') : '';
-        const label = cleanTransition || 'Dégradé';
-        badges.push(`<span class="badge status-maint">${escapeHtml(label)}</span>`);
-      }
-      row.innerHTML = `
-        <div>
-          <div class="small-title">${escapeHtml(it.name || 'Objet')}</div>
-          <div class="loan-meta">Du ${formatDisplayDate(it.start)} au ${formatDisplayDate(it.due)}</div>
-          <div class="loan-meta">${it.returned ? `Rendu le ${formatDisplayDate(it.returned)}` : 'Pas encore rendu'}</div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${badges.join('')}</div>
-      `;
-      statsEls.list.appendChild(row);
-    });
-    revealInContainer(statsEls.list, '.loan-item', { stagger: 30 });
-
-    if (!filtered.length) {
-      statsEls.list.innerHTML = '<p class="meta">Aucun élément pour ce filtre.</p>';
-    }
-  }
-
-  // Stats côté admin (retards / dégradations / maintenances).
-  // Rendu des cartes de statistiques côté administrateur.
-  function renderAdminStats() {
-    if (!adminStatsEls.total) return;
-    if (!canViewAdminStats()) {
-      adminStatsEls.total.textContent = '0';
-      adminStatsEls.delays.textContent = '0';
-      adminStatsEls.degrades.textContent = '0';
-      if (adminStatsEls.maint) adminStatsEls.maint.textContent = '0';
-      return;
-    }
-    const allowedViews = allowedAdminStatsViews();
-    if (!allowedViews.includes(state.adminStatsView)) {
-      state.adminStatsView = allowedViews[0] || 'degrades';
-    }
-    const stats = state.adminStats || { total_year: 0, delays: 0, degrades: 0, maints: 0 };
-    adminStatsEls.total.textContent = String(stats.total_year ?? 0);
-    adminStatsEls.delays.textContent = String(stats.delays ?? 0);
-    adminStatsEls.degrades.textContent = String(stats.degrades ?? 0);
-    if (adminStatsEls.maint) adminStatsEls.maint.textContent = String(stats.maints ?? 0);
-    Object.entries(adminStatsEls.cards).forEach(([key, el]) => {
-      if (!el) return;
-      const viewKey = key.replace('card-', '');
-      el.style.display = allowedViews.includes(viewKey) ? '' : 'none';
-      el.classList.toggle('active', state.adminStatsView === viewKey);
-    });
-  }
-
-  // Historique détaillé pour les filtres de stats admin.
-  // Liste détaillée des stats admin filtrées par vue/recherche.
-  function renderAdminStatsList() {
-    if (!adminStatsEls.list) return;
-    adminStatsEls.list.innerHTML = '';
-    if (!canViewAdminStats()) {
-      adminStatsEls.list.innerHTML = '<p class="meta">Réservé aux administrateurs ou techniciens.</p>';
-      return;
-    }
-    const allowedViews = allowedAdminStatsViews();
-    const view = allowedViews.includes(state.adminStatsView) ? state.adminStatsView : (allowedViews[0] || 'degrades');
-    state.adminStatsView = view;
-    const all = Array.isArray(state.adminHistory) ? state.adminHistory : [];
-    const filtered = all.filter((item) => {
-      const isMaint = Boolean(item.is_maint);
-      const matchesView = view === 'maint'
-        ? isMaint
-        : view === 'delays'
-          ? item.is_delay && !isMaint
-          : view === 'degrades'
-            ? item.is_degrade && !isMaint
-            : view === 'total'
-              ? !isMaint
-              : !isMaint;
-      if (!matchesView) return false;
-      if (!state.adminHistorySearch) return true;
-      const haystack = `${item.user || ''} ${item.name || ''}`.toLowerCase();
-      return haystack.includes(state.adminHistorySearch);
-    });
-
-    filtered.forEach((it) => {
-      const row = document.createElement('div');
-      row.className = 'loan-item';
-      const badges = [];
-      if (it.is_delay) badges.push('<span class="badge status-loan">Retard</span>');
-      if (it.is_degrade) {
-        let transition = '';
-        if ((it.return_state || '').includes('->')) {
-          transition = it.return_state.split(':').pop() || it.return_state;
-        }
-        const cleanTransition = transition ? transition.replace(/^degrade:/i, '') : '';
-        const label = cleanTransition || 'Dégradé';
-        badges.push(`<span class="badge status-maint">${escapeHtml(label)}</span>`);
-      }
-      if (it.is_maint) badges.push('<span class="badge status-ok">Maintenance</span>');
-      row.innerHTML = `
-        <div>
-          <div class="small-title">${escapeHtml(it.name || 'Objet')}</div>
-          <div class="loan-meta"><span class="user-pill">${escapeHtml(it.user || 'Inconnu')}</span></div>
-          <div class="loan-meta">Du ${formatDisplayDate(it.start)} au ${formatDisplayDate(it.due)}</div>
-          <div class="loan-meta">Rendu le ${it.returned ? formatDisplayDate(it.returned) : 'Non rendu'}</div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${badges.join('')}</div>
-      `;
-      adminStatsEls.list.appendChild(row);
-    });
-    revealInContainer(adminStatsEls.list, '.loan-item', { stagger: 30 });
-
-    if (!filtered.length) {
-      adminStatsEls.list.innerHTML = '<p class="meta">Aucun résultat pour ce filtre.</p>';
-    }
-  }
-
-  // --- Normalisation et bornage des états matériels ---
-  // Normalise un libellé d'état matériel.
-  function normalizeCondition(value = '') {
-    const cleaned = String(value || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim();
-    if (cleaned.includes('reparation')) return 'reparation nécessaire';
-    if (cleaned.includes('passable')) return 'passable';
-    if (cleaned.includes('neuf')) return 'neuf';
-    if (cleaned.includes('bon')) return 'bon';
-    return '';
-  }
-
-  // Retourne un score de priorité selon l'état (pour comparer).
-  function conditionRank(value = '') {
-    const norm = normalizeCondition(value);
-    const maxRank = Math.max(...Object.values(CONDITION_RANKS));
-    return norm && norm in CONDITION_RANKS ? CONDITION_RANKS[norm] : maxRank;
-  }
-
-  // Calcule les états possibles pour un rendu donné l'état initial.
-  function allowedReturnConditions(baseCondition = '') {
-    const rank = conditionRank(baseCondition);
-    const ordered = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
-    return ordered.filter((c) => conditionRank(c) <= rank);
-  }
-
-  // Formate un état matériel pour l'affichage.
-  function formatConditionLabel(value = '') {
-    const norm = normalizeCondition(value);
-    if (norm === 'reparation nécessaire') return 'Réparation nécessaire';
-    if (norm === 'passable') return 'Passable';
-    if (norm === 'bon') return 'Bon';
-    if (norm === 'neuf') return 'Neuf';
-    return value || 'N/C';
-  }
-
-  // Construit le HTML des options d'état de retour.
-  function buildReturnOptions(baseCondition = '') {
-    const allowed = allowedReturnConditions(baseCondition);
-    return allowed
-      .map((c) => {
-        const value = normalizeCondition(c) || c;
-        return `<option value="${escapeHtml(value)}">${escapeHtml(formatConditionLabel(c))}</option>`;
-      })
-      .join('');
-  }
-
-  // --- Modale de réservation / maintenance et calendrier custom ---
-  // Ouvre la modale en mode prolongation pour un prêt existant.
-  function openExtendModal(loan) {
-    if (!loan || !loan.material_id || !loan.start || !loan.due) {
-      alert('Matériel introuvable pour cette prolongation.');
-      return;
-    }
-    const item = state.inventory.find((i) => i.id === loan.material_id);
-    if (!item) {
-      alert('Matériel introuvable pour cette prolongation.');
-      return;
-    }
-    extensionContext = {
-      loanId: loan.id,
-      start: loan.start,
-      due: loan.due,
-    };
-    openModal(item, 'extend');
-  }
-
-  // Ouvre la modale de réservation ou de maintenance pour un item.
-  function openModal(item, mode = 'reserve') {
-    modalMode = mode;
-    if (modalMode !== 'extend') {
-      extensionContext = null;
-    }
-    state.modalItem = item;
-    blockedWeeks = Array.isArray(item.reserved_weeks) ? item.reserved_weeks : [];
-    reservationPeriods = Array.isArray(item.reservations) ? item.reservations : [];
-    blockedDates = buildBlockedDates(reservationPeriods);
-    if (modalMode === 'extend' && extensionContext?.start) {
-      const ownSpan = datesBetween(extensionContext.start, extensionContext.due || extensionContext.start);
-      ownSpan.forEach((d) => {
-        delete blockedDates[d];
-      });
-      selectedStartDate = extensionContext.start;
-      selectedEndDate = null;
-      const baseMonth = extensionContext.due || extensionContext.start;
-      calendarMonth = baseMonth ? new Date(`${baseMonth}T00:00:00`) : new Date();
-    } else {
-      selectedStartDate = null;
-      selectedEndDate = null;
-      calendarMonth = new Date();
-    }
-    modalTitle.textContent = item.name;
-    const picture = item.picture || placeholderImage(item.name);
-    const categoriesLabel = (item.categories && item.categories.length)
-      ? item.categories.join(', ')
-      : item.category;
-    modalBody.innerHTML = `
-      <div class="modal-body-grid">
-        <div class="modal-hero">
-          <div class="hero-media">
-            <img src="${picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
-          </div>
-            <div class="hero-info">
-              <div class="badge ${item.status === 'maintenance' ? 'status-maint' : 'status-ok'}">${escapeHtml(item.status || 'Etat')}</div>
-              <div class="meta">Catégories : <strong>${escapeHtml(categoriesLabel || 'N/C')}</strong></div>
-              <div class="meta">Référence : <strong>${escapeHtml(item.serial || 'N/C')}</strong></div>
-              <div class="meta">Emplacement : <strong>${escapeHtml(item.location || 'Stock')}</strong></div>
-              <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
-            </div>
-          </div>
-          <div class="modal-calendar">
-            <div class="calendar-nav">
-              <button type="button" class="ghost" id="cal-prev">&#8592;</button>
-              <div class="small-title" id="cal-title"></div>
-              <button type="button" class="ghost" id="cal-next">&#8594;</button>
-            </div>
-            <div class="input-group" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items:center; gap:8px; margin:10px 0;">
-              <label style="font-weight:700;">Du
-                <input id="manual-start" type="text" inputmode="numeric" placeholder="JJ/MM/AAAA" />
-              </label>
-              <label style="font-weight:700;">au
-                <input id="manual-end" type="text" inputmode="numeric" placeholder="JJ/MM/AAAA" />
-              </label>
-            </div>
-            <div class="calendar-grid" id="calendar-grid"></div>
-          </div>
-        </div>
-      `;
-    dateStartInput = modalBody.querySelector('#manual-start');
-    dateEndInput = modalBody.querySelector('#manual-end');
-    if (dateStartInput) {
-      dateStartInput.addEventListener('input', handleManualDateInput);
-      dateStartInput.disabled = modalMode === 'extend';
-    }
-    if (dateEndInput) {
-      dateEndInput.addEventListener('input', handleManualDateInput);
-      dateEndInput.disabled = false;
-    }
-    renderCalendar();
-    syncManualInputs();
-    modalMsg.textContent = modalMode === 'extend' ? 'Choisissez une nouvelle date de fin.' : '';
-    modalMsg.className = 'message';
-    updateAvailabilityMessage();
-    modalBackdrop.classList.add('show');
-    reserveBtn.textContent = modalMode === 'maintenance'
-      ? 'Planifier maintenance'
-      : (modalMode === 'extend' ? 'Prolonger' : 'Reserver');
-  }
-
-  // Ferme la modale de réservation/maintenance et réinitialise l'état.
-  function closeModal() {
-    state.modalItem = null;
-    modalMode = 'reserve';
-    selectedStartDate = null;
-    selectedEndDate = null;
-    calendarMonth = null;
-    extensionContext = null;
-    modalBackdrop.classList.remove('show');
-  }
-
-  // Helpers d'affichage (badges, échappement, formatage dates).
-  // Retourne un badge HTML en fonction du statut prêt/rendu.
-  function statusBadge(status = '') {
-    const norm = status.toLowerCase();
-    let cls = 'status-ok';
-    let label = 'Disponible';
-    if (['reserve', 'emprunte', 'pret'].includes(norm)) {
-      cls = 'status-loan';
-      label = 'Reserve';
-    }
-    if (['maintenance', 'hs'].includes(norm)) {
-      cls = 'status-maint';
-      label = 'Maintenance';
-    }
-    if (!label) label = status;
-    return `<span class="badge ${cls}">${label}</span>`;
-  }
-
-  // Libellé textuel du statut (sans HTML).
-  function statusLabelText(status = '') {
-    const norm = status.toLowerCase();
-    if (['reserve', 'emprunte', 'pret'].includes(norm)) return 'Réservé';
-    if (['maintenance', 'hs'].includes(norm)) return 'Maintenance';
-    if (!status) return 'Disponible';
-    return status;
-  }
-
-  // Echappe une chaîne pour affichage HTML.
-  function escapeHtml(str = '') {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  // Formate une date AAAA-MM-JJ en JJ/MM/AAAA.
-  function formatDisplayDate(dateStr) {
-    if (!dateStr) return 'N/C';
-    const parts = String(dateStr).split('-');
-    if (parts.length === 3) {
-      const [y, m, d] = parts;
-      return `${d}/${m}/${y}`;
-    }
-    return dateStr;
-  }
-
-  // Formate une date/heure ISO ou SQL en libellé lisible français.
-  function formatDateTimeFr(dateStr) {
-    if (!dateStr) return '';
-    const normalized = String(dateStr).replace(' ', 'T');
-    const date = new Date(normalized);
-    if (Number.isNaN(date.getTime())) return dateStr;
-    return date.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-  }
-
-  // Retourne une date Date en chaîne locale AAAA-MM-JJ.
-  function formatDateLocal(dateObj) {
-    const y = dateObj.getFullYear();
-    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const d = String(dateObj.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-
-  // Normalise une valeur de date (Date ou string) en AAAA-MM-JJ si possible.
-  function normalizeDateOnly(value) {
-    if (value instanceof Date) {
-      return formatDateLocal(value);
-    }
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-    const m = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return formatDateLocal(parsed);
-  }
-
-  // Normalise un nom de catégorie (trim + casse).
-  function canonicalCategory(cat) {
-    const lower = String(cat || '').toLowerCase();
-    if (lower.startsWith('info')) return 'Info';
-    if (lower.startsWith('elen')) return 'Elen';
-    if (lower.startsWith('ener')) return 'Ener';
-    if (lower.startsWith('auto')) return 'Auto';
-    return null;
-  }
-
-  // Indique si un item nécessite réparation selon son état.
-  function needsRepair(item) {
-    const cond = String(item?.condition || '').toLowerCase();
-    const plain = cond.normalize ? cond.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : cond;
-    return plain.includes('reparation necessaire');
-  }
-
-  // Génère une URL d'image de placeholder pseudo-aléatoire.
-  function placeholderImage(seed) {
-    return './assets/placeholder.svg';
-  }
-
-  // Outils calendrier (semaines, dates bloquées, rendu grille).
-  // Calcule la clé de semaine ISO (AAAA-Wxx) pour une date.
-  function isoWeekKey(dateStr) {
-    if (!dateStr) return null;
-    const d = new Date(`${dateStr}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return null;
-    const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const day = target.getUTCDay() || 7;
-    target.setUTCDate(target.getUTCDate() + 4 - day);
-    const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
-    return `${target.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-  }
-
-  // Liste les clés de semaines entre deux dates.
-  function weeksBetween(start, end) {
-    const s = new Date(`${start}T00:00:00`);
-    const e = new Date(`${end || start}T00:00:00`);
-    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [];
-    const weeks = [];
-    const step = s <= e ? 1 : -1;
-    const cursor = new Date(s);
-    while ((step === 1 && cursor <= e) || (step === -1 && cursor >= e)) {
-      const wk = isoWeekKey(cursor.toISOString().slice(0, 10));
-      if (wk && !weeks.includes(wk)) weeks.push(wk);
-      cursor.setDate(cursor.getDate() + 7 * step);
-    }
-    return weeks;
-  }
-
-  // Vérifie si une plage de dates est libre (pas bloquée).
-  function isRangeFree(start, end) {
-    if (!start || !end) return false;
-    const dates = datesBetween(start, end);
-    if (modalMode === 'maintenance') {
-      return dates.every((d) => (blockedDates[d] || '') !== 'maintenance');
-    }
-    return dates.every((d) => !blockedDates[d]);
-  }
-
-  // Construit la map des dates bloquées (réserves/maintenance).
-  function buildBlockedDates(periods) {
-    const dates = {};
-    periods.forEach((p) => {
-      const list = datesBetween(p.start, p.end || p.start);
-      const type = (p.type || '').toLowerCase();
-      list.forEach((d) => {
-        if (type === 'maintenance') {
-          dates[d] = 'maintenance';
-        } else if (!dates[d]) {
-          dates[d] = 'reserve';
-        }
-      });
-    });
-    return dates;
-  }
-
-  // Retourne toutes les dates incluses entre start et end.
-  function datesBetween(start, end) {
-    if (!start) return [];
-    const s = new Date(`${start}T00:00:00`);
-    const e = new Date(`${(end || start)}T00:00:00`);
-    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [];
-    const dates = [];
-    const step = s <= e ? 1 : -1;
-    const cursor = new Date(s);
-    while ((step === 1 && cursor <= e) || (step === -1 && cursor >= e)) {
-      dates.push(formatDateLocal(cursor));
-      cursor.setDate(cursor.getDate() + step);
-    }
-    return dates;
-  }
-
-  // Génère le calendrier de sélection de dates dans la modale.
-  function renderCalendar() {
-    const grid = modalBody.querySelector('#calendar-grid');
-    const titleEl = modalBody.querySelector('#cal-title');
-    const prev = modalBody.querySelector('#cal-prev');
-    const next = modalBody.querySelector('#cal-next');
-    if (!grid || !titleEl) return;
-    if (!calendarMonth) calendarMonth = new Date();
-    const year = calendarMonth.getUTCFullYear();
-    const month = calendarMonth.getUTCMonth();
-    const monthNames = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
-    titleEl.textContent = `${monthNames[month]} ${year}`;
-    if (prev) {
-      prev.onclick = () => {
-        calendarMonth.setUTCMonth(calendarMonth.getUTCMonth() - 1);
-        renderCalendar();
-      };
-    }
-    if (next) {
-      next.onclick = () => {
-        calendarMonth.setUTCMonth(calendarMonth.getUTCMonth() + 1);
-        renderCalendar();
-      };
-    }
-    const first = new Date(Date.UTC(year, month, 1));
-    const startDay = (first.getUTCDay() || 7) - 1;
-    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    const cells = [];
-    for (let i = 0; i < startDay; i += 1) {
-      cells.push(null);
-    }
-    for (let d = 1; d <= daysInMonth; d += 1) {
-      cells.push(new Date(Date.UTC(year, month, d)));
-    }
-    while (cells.length % 7 !== 0) {
-      cells.push(null);
-    }
-    grid.innerHTML = '';
-    const todayStr = new Date().toISOString().slice(0, 10);
-    cells.forEach((cell) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'day-cell';
-      if (!cell) {
-        btn.classList.add('empty');
-        btn.disabled = true;
-        grid.appendChild(btn);
-        return;
-      }
-      const dateStr = cell.toISOString().slice(0, 10);
-      const isPast = dateStr < todayStr;
-      const blockedType = blockedDates[dateStr];
-      const canOverride = modalMode === 'maintenance' && blockedType && blockedType !== 'maintenance';
-      const blocked = (Boolean(blockedType) && !canOverride) || isPast;
-      const selected = isDateSelected(dateStr);
-      const inRange = isDateInSelection(dateStr);
-      btn.textContent = String(cell.getUTCDate());
-      if (blocked) btn.classList.add('blocked');
-      if (blockedType === 'maintenance') btn.classList.add('blocked-maint');
-      if (canOverride && blockedType !== 'maintenance') btn.classList.add('busy-loan');
-      else if (blockedType && blockedType !== 'maintenance') btn.classList.add('blocked-loan');
-      if (isPast) btn.disabled = true;
-      if (selected) btn.classList.add('selected');
-      if (inRange && !selected) btn.classList.add('in-range');
-      btn.onclick = () => handleDayClick(dateStr);
-      grid.appendChild(btn);
-    });
-  }
-
-  // Gestion de la sélection de plage sur le calendrier (avec blocage max 14 jours et dates occupées).
-  // Logique : on ignore les dates passées, on borne la plage à 14 jours,
-  // et on réinitialise la sélection si la plage choisie est déjà bloquée.
-  function handleDayClick(dateStr) {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (modalMode === 'extend') {
-      if (!extensionContext?.start) return;
-      if (dateStr < extensionContext.start) return;
-      selectedStartDate = extensionContext.start;
-      selectedEndDate = dateStr;
-      const maxDays = maxReservationDays();
-      const range = selectionRange();
-      if (range && dateDiffDays(range.start, range.end) > maxDays) {
-        selectedEndDate = null;
-        modalMsg.textContent = `Sélection limitée à ${maxDays} jours.`;
-        modalMsg.className = 'message err';
-      } else if (range && !isRangeFree(range.start, range.end)) {
-        selectedEndDate = null;
-        modalMsg.textContent = 'Periode deja reservee';
-        modalMsg.className = 'message err';
-      }
-      renderCalendar();
-      syncManualInputs();
-      updateAvailabilityMessage();
-      return;
-    }
-    if (dateStr < todayStr) return;
-    if (blockedDates[dateStr] && !(modalMode === 'maintenance' && blockedDates[dateStr] !== 'maintenance')) return;
-    if (!selectedStartDate || (selectedStartDate && selectedEndDate)) {
-      selectedStartDate = dateStr;
-      selectedEndDate = null;
-    } else if (!selectedEndDate) {
-      if (new Date(`${dateStr}T00:00:00`) < new Date(`${selectedStartDate}T00:00:00`)) {
-        selectedEndDate = selectedStartDate;
-        selectedStartDate = dateStr;
-      } else {
-        selectedEndDate = dateStr;
-      }
-      const range = selectionRange();
-      const maxDays = modalMode === 'maintenance' ? 365 : maxReservationDays();
-      if (range && modalMode !== 'maintenance' && dateDiffDays(range.start, range.end) > maxDays) {
-        selectedStartDate = dateStr;
-        selectedEndDate = null;
-      } else if (range && !isRangeFree(range.start, range.end)) {
-        selectedStartDate = dateStr;
-        selectedEndDate = null;
-      }
-    }
-    renderCalendar();
-    syncManualInputs();
-    updateAvailabilityMessage();
-  }
-
-  // Indique si la date est une extrémité de sélection.
-  function isDateSelected(dateStr) {
-    return dateStr === selectedStartDate || dateStr === selectedEndDate;
-  }
-
-  // Indique si la date appartient à la plage sélectionnée.
-  function isDateInSelection(dateStr) {
-    const range = selectionRange();
-    if (!range) return false;
-    const list = datesBetween(range.start, range.end);
-    return list.includes(dateStr);
-  }
-
-  // Retourne la plage sélectionnée (start/end) si complète.
-  function selectionRange() {
-    if (!selectedStartDate) return null;
-    if (!selectedEndDate) return null;
-    const start = selectedStartDate;
-    const end = selectedEndDate;
-    return { start, end };
-  }
-
-  // Calcule le nombre de jours inclus entre deux dates.
-  function dateDiffDays(a, b) {
-    const da = new Date(`${a}T00:00:00`);
-    const db = new Date(`${b}T00:00:00`);
-    if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return 0;
-    return Math.abs(Math.round((db - da) / (1000 * 60 * 60 * 24))) + 1;
-  }
-
-  // Cherche la prochaine semaine non bloquée pour pré-sélection.
-  function nextAvailableDate() {
-    let cursor = new Date();
-    for (let i = 0; i < 52; i += 1) {
-      const key = isoWeekKey(cursor.toISOString().slice(0, 10));
-      if (key && !blockedWeeks.includes(key)) {
-        return formatDateLocal(cursor);
-      }
-      cursor.setDate(cursor.getDate() + 7);
-    }
-    return formatDateLocal(new Date());
-  }
-
-  // Retourne le lundi de la semaine de la date donnée.
-  function weekStartFromDate(dateObj) {
-    const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
-    const day = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 1 - day);
-    return d.toISOString().slice(0, 10);
-  }
-
-  // Ajoute un nombre de jours à une date au format AAAA-MM-JJ.
-  function addDays(dateStr, days) {
-    const d = new Date(`${dateStr}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return dateStr;
-    d.setDate(d.getDate() + days);
-    return formatDateLocal(d);
-  }
-
-  // Convertit une saisie JJ/MM/AAAA ou AAAA-MM-JJ en format normalisé.
-  function parseManualInput(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-    let y; let m; let d;
-    if (raw.includes('/')) {
-      const parts = raw.split('/');
-      if (parts.length !== 3) return null;
-      [d, m, y] = parts;
-    } else if (raw.includes('-')) {
-      const parts = raw.split('-');
-      if (parts.length !== 3) return null;
-      [y, m, d] = parts;
-    } else {
-      return null;
-    }
-    y = String(y).padStart(4, '0');
-    m = String(m).padStart(2, '0');
-    d = String(d).padStart(2, '0');
-    const date = new Date(`${y}-${m}-${d}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return null;
-    return formatDateLocal(date);
-  }
-
-  // Convertit une date AAAA-MM-JJ en JJ/MM/AAAA pour les inputs texte.
-  function formatManualInput(value) {
-    if (!value) return '';
-    const parts = String(value).split('-');
-    if (parts.length !== 3) return '';
-    const [y, m, d] = parts;
-    return `${d}/${m}/${y}`;
-  }
-
-  // Synchronise l'état interne à partir des champs date saisis.
-  function handleManualDateInput() {
-    const startRaw = dateStartInput ? dateStartInput.value : '';
-    const endRaw = dateEndInput ? dateEndInput.value : '';
-    const start = parseManualInput(startRaw);
-    const end = parseManualInput(endRaw);
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (modalMode === 'extend') {
-      selectedStartDate = extensionContext?.start || null;
-      if (end) {
-        selectedEndDate = end;
-        if (selectedStartDate && selectedEndDate < selectedStartDate) {
-          selectedEndDate = null;
-        }
-      } else if (endRaw.trim() === '') {
-        selectedEndDate = null;
-      }
-      renderCalendar();
-      updateAvailabilityMessage();
-      return;
-    }
-    if (start) {
-      selectedStartDate = start < todayStr ? todayStr : start;
-    } else if (startRaw.trim() === '') {
-      selectedStartDate = null;
-    }
-    if (end) {
-      selectedEndDate = end < todayStr ? todayStr : end;
-    } else if (endRaw.trim() === '') {
-      selectedEndDate = null;
-    }
-    if (selectedStartDate && selectedEndDate) {
-      const startDate = new Date(`${selectedStartDate}T00:00:00`);
-      const endDate = new Date(`${selectedEndDate}T00:00:00`);
-      if (startDate > endDate) {
-        [selectedStartDate, selectedEndDate] = [selectedEndDate, selectedStartDate];
-      }
-    }
-    renderCalendar();
-    updateAvailabilityMessage();
-  }
-
-  // Met à jour les inputs texte selon la sélection courante.
-  function syncManualInputs() {
-    if (dateStartInput) {
-      dateStartInput.value = selectedStartDate ? formatManualInput(selectedStartDate) : '';
-    }
-    if (dateEndInput) {
-      dateEndInput.value = selectedEndDate ? formatManualInput(selectedEndDate) : '';
-    }
-  }
-
-  // Met à jour le message et l'état du bouton selon la plage choisie.
-  function updateAvailabilityMessage() {
-    const range = selectionRange();
-    if (!range) {
-      reserveBtn.disabled = true;
-      modalMsg.textContent = modalMode === 'extend' ? 'Choisissez une nouvelle date de fin.' : 'Choisissez un debut puis une fin.';
-      modalMsg.className = 'message';
-      return;
-    }
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (modalMode !== 'extend') {
-      if (range.start < todayStr) {
-        reserveBtn.disabled = true;
-        modalMsg.textContent = 'Impossible de reserver dans le passe.';
-        modalMsg.className = 'message err';
-        return;
-      }
-    } else {
-      if (range.end < todayStr) {
-        reserveBtn.disabled = true;
-        modalMsg.textContent = 'La nouvelle date doit être future.';
-        modalMsg.className = 'message err';
-        return;
-      }
-      const baseDue = extensionContext?.due || '';
-      if (baseDue && range.end <= baseDue) {
-        reserveBtn.disabled = true;
-        modalMsg.textContent = 'Choisissez une date après la fin actuelle.';
-        modalMsg.className = 'message err';
-        return;
-      }
-    }
-    const maxDays = modalMode === 'maintenance' ? 365 : maxReservationDays();
-    const diff = dateDiffDays(range.start, range.end);
-    if (modalMode !== 'maintenance' && diff > maxDays) {
-      reserveBtn.disabled = true;
-      modalMsg.textContent = `Sélection limitée à ${maxDays} jours.`;
-      modalMsg.className = 'message err';
-      return;
-    }
-    const free = isRangeFree(range.start, range.end);
-    reserveBtn.disabled = !free;
-    const label = free ? 'message ok' : 'message err';
-    modalMsg.textContent = free ? `Du ${formatDisplayDate(range.start)} au ${formatDisplayDate(range.end)}` : 'Periode deja reservee';
-    modalMsg.className = label;
-  }
-
-  // Détermine la sévérité temporelle d'un prêt selon la date de fin.
-  function dueSeverity(due) {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const match = String(due || '').match(/(\d{4}-\d{2}-\d{2})/);
-    const dueStr = match ? match[1] : normalizeDateOnly(due);
-    if (!dueStr) return 'ok';
-    if (dueStr === todayStr) return 'lastday';
-    const toUtc = (str) => {
-      const [y, m, d] = str.split('-').map((v) => parseInt(v, 10));
-      return Date.UTC(y, (m || 1) - 1, d || 1);
-    };
-    const diffDays = Math.floor((toUtc(dueStr) - toUtc(todayStr)) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return 'overdue';
-    if (diffDays <= 2) return 'urgent';
-    if (diffDays <= 5) return 'soon';
-    return 'ok';
-  }
-
-  // Renvoie la couleur associée à un niveau de sévérité.
-  function severityColor(severity) {
-    if (severity === 'lastday') return '#f59e0b';
-    if (severity === 'urgent') return '#f97316';
-    if (severity === 'overdue') return '#ef4444';
-    if (severity === 'soon') return '#f59e0b';
-    return 'linear-gradient(120deg, var(--accent), var(--accent-strong))';
-  }
-
-  // Renvoie le libellé lisible d'un niveau de sévérité.
-  function severityLabel(severity) {
-    if (severity === 'lastday') return 'Dernier jour';
-    if (severity === 'overdue') return 'En retard';
-    if (severity === 'urgent') return 'Retour proche';
-    if (severity === 'soon') return 'Retour proche';
-    if (severity === 'future') return 'Planifiée';
-    return 'A jour';
-  }
-
-  // Normalise une sévérité pour l'affichage (lastday traité comme overdue visuellement).
-  function severityVisual(severity) {
-    if (severity === 'lastday') return 'overdue';
-    return severity;
-  }
-
-  // Couleur de barre basée sur la progression : vert si <50% et pas en retard.
-  function barColorForProgress(progress, visualSeverity) {
-    if (visualSeverity !== 'overdue' && progress < 50) return '#22c55e';
-    return severityColor(visualSeverity);
-  }
-
-  // Calcule une progression temporelle en incluant l'heure (utile pour les réservations d'une journée).
-  function progressPercentWithTime(start, due) {
-    const startStr = normalizeDateOnly(start);
-    const dueStr = normalizeDateOnly(due);
-    if (!startStr || !dueStr) return 0;
-    const startDate = new Date(`${startStr}T00:00:00`);
-    const endDate = new Date(`${dueStr}T23:59:59`);
-    const now = Date.now();
-    const total = endDate.getTime() - startDate.getTime();
-    if (total <= 0) {
-      return now >= endDate.getTime() ? 100 : 0;
-    }
-    const ratio = Math.max(0, Math.min(1, (now - startDate.getTime()) / total));
-    return Math.round(ratio * 100);
-  }
-
-  // Construit des alertes locales pour les réservations en retard (utilisateur non admin).
-  function buildOverdueAlerts() {
-    if (isAdmin()) return [];
-    const overdueLoans = (state.loans || []).filter((loan) => {
-      if ((loan.type || 'pret') !== 'pret') return false;
-      if ((loan.status || '').toLowerCase() === 'rendu') return false;
-      return dueSeverity(loan.due) === 'overdue';
-    });
-    return overdueLoans.map((loan) => ({
-      id: `overdue-${loan.id}`,
-      message: `Votre réservation pour ${loan.name || 'un matériel'} est en retard depuis le ${formatDisplayDate(loan.due)}.`,
-      created_at: loan.due || '',
-    }));
-  }
-
-  // Construit des alertes locales pour les réservations à rendre aujourd'hui.
-  function buildLastDayAlerts() {
-    if (isAdmin()) return [];
-    const lastDayLoans = (state.loans || []).filter((loan) => {
-      if ((loan.type || 'pret') !== 'pret') return false;
-      if ((loan.status || '').toLowerCase() === 'rendu') return false;
-      return dueSeverity(loan.due) === 'lastday';
-    });
-    return lastDayLoans.map((loan) => ({
-      id: `lastday-${loan.id}`,
-      message: `Dernier jour pour rendre ${loan.name || 'un matériel'} (retour attendu le ${formatDisplayDate(loan.due)}).`,
-      created_at: loan.due || '',
-    }));
   }
 
   (async function start() {
@@ -3059,6 +378,6 @@ const API = {
     } else if (isTechnician()) {
       await apiFetchAdminStats();
     }
-    render();
+    renderApp();
   })();
-})();
+}
