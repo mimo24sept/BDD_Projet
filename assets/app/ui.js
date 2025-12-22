@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/ui.js
+  Role: comportements UI generaux.
+  Anime lindicateur donglets et les transitions.
+  Gere la visibilite des sections selon les roles.
+  Expose des helpers de reveal et resize.
+*/
 import { dom } from './dom.js';
 import { state } from './state.js';
 import { canViewAdminStats, hasMaintenanceAccess, isAdmin, isTechnician } from './permissions.js';

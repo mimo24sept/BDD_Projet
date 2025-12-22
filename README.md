@@ -9,7 +9,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 <details open>
 <summary><strong>🧭 Architecture rapide</strong></summary>
 
-- **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles.css` (UI).
+- **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles/base.css` + `assets/styles/auth.css` + `assets/styles/app.css` (UI).
 - **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations/prolongations), `api/reset_state.php` (reset), `api/config.php` (DSN).
 - **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`, `Prolongation`, `MaintenanceRequest`).
 

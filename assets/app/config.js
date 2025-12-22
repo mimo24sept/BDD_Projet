@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/config.js
+  Role: configuration statique partagee.
+  Expose les endpoints API utilises par le front.
+  Definit les tags de base et les rangs detat.
+  Charge sans effets de bord.
+*/
 export const API = {
   auth: './api/auth.php',
   equipment: './api/equipment.php',

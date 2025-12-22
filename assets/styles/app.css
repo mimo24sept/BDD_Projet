@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/styles/app.css
+  Role: styles du tableau de bord.
+  Mise en page des onglets, cartes et listes.
+  Habillage des modales et elements admin.
+  Complete base.css avec les variantes app.
+*/
 header {
   padding: 24px 22px 12px;
   max-width: 1200px;

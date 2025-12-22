@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/dom.js
+  Role: references DOM centralisees.
+  Evite les querySelector repetes dans les modules.
+  Expose les elements cles de linterface.
+  Utilise par ui/render/api.
+*/
 export const dom = {
   appShell: document.querySelector('#app-shell'),
   logoutBtn: document.querySelector('#logout-btn'),

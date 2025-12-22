@@ -1,4 +1,11 @@
-﻿// Rôle : gérer la connexion/inscription côté front, puis lancer l'animation ripple avant de rediriger.
+﻿/*
+  Fichier: assets/login.js
+  Role: logique de connexion/inscription cote front.
+  Gere les bascules de formulaires et la visibilite du mot de passe.
+  Declenche lanimation ripple puis la redirection.
+  Centralise les appels auth vers lAPI.
+*/
+// Rôle : gérer la connexion/inscription côté front, puis lancer l'animation ripple avant de rediriger.
 
 const API = { auth: './api/auth.php' };
 

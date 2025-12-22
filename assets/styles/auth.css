@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/styles/auth.css
+  Role: styles de la page dauthentification.
+  Mise en page des formulaires et du ripple.
+  Decline les transitions de connexion.
+  Depend uniquement des variables de base.
+*/
 .password-field { position: relative; }
 .password-field input { padding-right: 46px; }
 .password-toggle {

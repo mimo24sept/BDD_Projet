@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/permissions.js
+  Role: regles de roles et permissions.
+  Calcule les acces admin/technicien/professeur.
+  Definit les limites de reservation.
+  Utilise pour filtrer onglets et actions.
+*/
 import { state } from './state.js';
 
 export function isAdmin() {

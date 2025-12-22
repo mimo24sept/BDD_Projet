@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/styles.css
+  Role: point dentree CSS historique.
+  Importe les feuilles de style decoupees.
+  Permet la compatibilite avec les anciens liens.
+  Ne contient pas de styles directs.
+*/
 @import url("./styles/base.css");
 @import url("./styles/app.css");
 @import url("./styles/auth.css");

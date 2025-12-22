@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/calendar.js
+  Role: logique du calendrier de reservation.
+  Gere la selection de dates et la validation.
+  Calcule les dates bloquees et disponibilites.
+  Pilote la modale de reservation/maintenance.
+*/
 import { state } from './state.js';
 import { dom } from './dom.js';
 import { maxReservationDays } from './permissions.js';

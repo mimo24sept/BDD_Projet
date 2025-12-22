@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app.js
+  Role: point dentree du tableau de bord.
+  Initialise letat, branche les events et lance les chargements.
+  Coordonne les rendus et les redirections.
+  Sappuie sur les modules du dossier assets/app/.
+*/
 import { API } from './app/config.js';
 import { state } from './app/state.js';
 import { dom } from './app/dom.js';

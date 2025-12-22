@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/styles/base.css
+  Role: styles partages sur toutes les pages.
+  Definit les variables de theme et resets.
+  Contient les composants communs (boutons, inputs).
+  Base utilisee par auth et app.
+*/
 :root {
   --bg: #fdfdfb;
   --card: #ffffff;

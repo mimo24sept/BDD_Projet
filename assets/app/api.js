@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/api.js
+  Role: couche dappel API.
+  Envoie les requetes fetch vers le backend.
+  Normalise les donnees recues pour le state.
+  Centralise les erreurs et retours.
+*/
 import { API } from './config.js';
 import { state } from './state.js';
 import { dom } from './dom.js';

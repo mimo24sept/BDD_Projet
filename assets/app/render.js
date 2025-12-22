@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/render.js
+  Role: rendus des sections et listes.
+  Construit les cartes, listes et stats.
+  Attache les actions aux elements rendus.
+  Orchestre les vues admin et utilisateur.
+*/
 import { BASE_TAGS } from './config.js';
 import { state } from './state.js';
 import { dom } from './dom.js';

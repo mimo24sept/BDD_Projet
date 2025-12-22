@@ -1,3 +1,10 @@
+/*
+  Fichier: assets/app/utils.js
+  Role: utilitaires partages.
+  Formatage dates, libelles, badges et severites.
+  Helpers pour statuts et couleurs.
+  Sans dependances sur le DOM.
+*/
 import { CONDITION_RANKS } from './config.js';
 
 export function escapeHtml(str = '') {
