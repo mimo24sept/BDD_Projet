@@ -1489,6 +1489,7 @@ const API = {
       const card = document.createElement('article');
       card.className = 'card';
       card.innerHTML = `
+        <img src="${item.picture}" alt="${escapeHtml(item.name)}" loading="lazy" />
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <h3>${escapeHtml(item.name)}</h3>
