@@ -488,7 +488,7 @@ export function exportInventoryPdf() {
   }
   // Popup dediee pour declencher l'impression sans modifier l'UI courante.
   const popup = window.open('', '_blank', 'width=900,height=700');
-  if (!popup) 
+  if (!popup) {
     alert("Impossible d'ouvrir la fenêtre d'export (bloqueur de pop-up ?).");
     return;
   }
@@ -1286,7 +1286,7 @@ export function renderAdminStatsList() {
   state.adminStatsView = view;
   // Filtre cote front pour garder la navigation fluide.
   const all = Array.isArray(state.adminHistory) ? state.adminHistory : [];
-  const filtered = all.filter((item) => 
+  const filtered = all.filter((item) => {
     const isMaint = Boolean(item.is_maint);
     const matchesView = view === 'maint'
       ? isMaint

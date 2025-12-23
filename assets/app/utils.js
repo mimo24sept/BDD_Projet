@@ -12,7 +12,8 @@ import { CONDITION_RANKS } from './config.js';
 
 export function escapeHtml(str = '') {
   // Echappement strict pour eviter les injections HTML.
-  return String(str)    .replace(/&/g, '&amp;'
+  return String(str)
+    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')

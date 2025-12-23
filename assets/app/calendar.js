@@ -89,24 +89,25 @@ export function openModal(item, mode = 'reserve') {
   if (!dom.modalTitle || !dom.modalBody || !dom.modalBackdrop) return;
   modalMode = mode;
   // On nettoie le contexte si on change de mode pour eviter un melange d'etats.
-  if (modalMode !== 'extend') {    extensionContext = null
+  if (modalMode !== 'extend') {
+    extensionContext = null;
   }
   state.modalItem = item;
   blockedWeeks = Array.isArray(item.reserved_weeks) ? item.reserved_weeks : [];
   reservationPeriods = Array.isArray(item.reservations) ? item.reservations : [];
   // Map rapide pour verifier la dispo jour par jour.
   blockedDates = buildBlockedDates(reservationPeriods);
-  if (modalMode === 'extend' && extensionContext?.start) 
+  if (modalMode === 'extend' && extensionContext?.start) {
     // On retire les dates de l'emprunt courant pour autoriser sa propre prolongation.
     const ownSpan = datesBetween(extensionContext.start, extensionContext.due || extensionContext.start);
-    ownSpan.forEach((d) => 
+    ownSpan.forEach((d) => {
       delete blockedDates[d];
     });
     selectedStartDate = extensionContext.start;
     selectedEndDate = null;
     // On ouvre le calendrier sur le mois de fin pour guider l'utilisateur.
     const baseMonth = extensionContext.due || extensionContext.start;
-    calendarMonth = baseMonth ? new Date(`${baseMonth}T00:00:00`) : new Date()
+    calendarMonth = baseMonth ? new Date(`${baseMonth}T00:00:00`) : new Date();
   } else {
     selectedStartDate = null;
     selectedEndDate = null;
@@ -169,7 +170,8 @@ export function openModal(item, mode = 'reserve') {
   dom.modalBackdrop.classList.add('show');
   if (dom.reserveBtn) {
     // Libelles adaptes pour clarifier l'action en cours.
-    dom.reserveBtn.textContent = modalMode === 'maintenance'      ? 'Planifier maintenance
+    dom.reserveBtn.textContent = modalMode === 'maintenance'
+      ? 'Planifier maintenance'
       : (modalMode === 'extend' ? 'Prolonger' : 'Reserver');
   }
 }
@@ -273,7 +275,7 @@ function handleDayClick(dateStr) {
   if (modalMode === 'extend') {
     // En prolongation, le debut est fixe sur l'emprunt d'origine.
     if (!extensionContext?.start) return;
-    if (dateStr < extensionContext.start) return
+    if (dateStr < extensionContext.start) return;
     selectedStartDate = extensionContext.start;
     selectedEndDate = dateStr;
     const maxDays = maxReservationDays();
@@ -311,7 +313,7 @@ function handleDayClick(dateStr) {
     const range = selectionRange();
     // Maintenance accepte des periodes longues, pas les reservations classiques.
     const maxDays = modalMode === 'maintenance' ? 365 : maxReservationDays();
-    if (range && modalMode !== 'maintenance' && dateDiffDays(range.start, range.end) > maxDays) 
+    if (range && modalMode !== 'maintenance' && dateDiffDays(range.start, range.end) > maxDays) {
       selectedStartDate = dateStr;
       selectedEndDate = null;
     } else if (range && !isRangeFree(range.start, range.end)) {
@@ -383,7 +385,8 @@ function buildBlockedDates(periods) {
     const list = datesBetween(p.start, p.end || p.start);
     const type = (p.type || '').toLowerCase();
     // Maintenance prioritaire pour ne pas l'ecraser par une reservation.
-    list.forEach((d) => {      if (type === 'maintenance') 
+    list.forEach((d) => {
+      if (type === 'maintenance') {
         dates[d] = 'maintenance';
       } else if (!dates[d]) {
         dates[d] = 'reserve';
