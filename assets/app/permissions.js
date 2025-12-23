@@ -12,6 +12,7 @@ import { state } from './state.js';
 export function isAdmin() {
   // Match simple pour rester tolerant aux variantes de libelle.
   return (state.user?.role || '').toLowerCase().includes('admin');
+}
 /**
  * Teste si le role courant contient technicien.
  * Retourne false si l utilisateur est absent.

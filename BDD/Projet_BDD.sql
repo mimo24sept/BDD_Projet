@@ -244,13 +244,13 @@ ALTER TABLE `Categorie`
 -- AUTO_INCREMENT pour la table `Emprunt`
 --
 ALTER TABLE `Emprunt`
-  MODIFY `IDemprunt` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `IDemprunt` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT pour la table `Prolongation`
 --
 ALTER TABLE `Prolongation`
-  MODIFY `IDprolongation` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `IDprolongation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT pour la table `Materiel`
@@ -262,13 +262,13 @@ ALTER TABLE `Materiel`
 -- AUTO_INCREMENT pour la table `Rendu`
 --
 ALTER TABLE `Rendu`
-  MODIFY `IDrendu` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `IDrendu` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `Notification`
 --
 ALTER TABLE `Notification`
-  MODIFY `IDnotification` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `IDnotification` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT pour la table `Role`
