@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app/permissions.js
-  Role: regles de roles et permissions.
-  Calcule les acces admin/technicien/professeur.
-  Definit les limites de reservation.
-  Utilise pour filtrer onglets et actions.
+  Fichier: assets/app/permissions.js.
+  Centralise les regles de role pour garder un comportement uniforme.
+  Evite de dupliquer les conditions dans chaque module.
 */
 import { state } from './state.js';
 /**
@@ -12,8 +10,8 @@ import { state } from './state.js';
  */
 
 export function isAdmin() {
+  // Match simple pour rester tolerant aux variantes de libelle.
   return (state.user?.role || '').toLowerCase().includes('admin');
-}
 /**
  * Teste si le role courant contient technicien.
  * Retourne false si l utilisateur est absent.
@@ -40,7 +38,7 @@ export function hasMaintenanceAccess() {
 }
 /**
  * Renvoie la duree max autorisee pour une reservation.
- * 21 jours pour professeurs, 14 jours sinon.
+ * 21 Jours pour professeurs, 14 jours sinon.
  */
 
 export function maxReservationDays() {

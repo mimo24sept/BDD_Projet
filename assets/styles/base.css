@@ -1,10 +1,11 @@
 /*
-  Fichier: assets/styles/base.css
+  Fichier: assets/styles/base.css.
   Role: styles partages sur toutes les pages.
   Definit les variables de theme et resets.
   Contient les composants communs (boutons, inputs).
   Base utilisee par auth et app.
 */
+/* Tokens de theme pour partager couleurs, rayons et typo. */
 :root {
   --bg: #fdfdfb;
   --card: #ffffff;
@@ -22,8 +23,10 @@
   --font: 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+/* Box sizing global pour eviter les debordements surprenants. */
 * { box-sizing: border-box; }
 
+/* Fond leger et lisible + typo stable sur tout le site. */
 body {
   margin: 0;
   font-family: var(--font);
@@ -35,9 +38,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Lien visible sans surcharger la lecture. */
 a { color: var(--accent-strong); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* Identite visuelle compacte reutilisable. */
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark {
   width: 44px;
@@ -52,11 +57,14 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow);
 }
 
+/* Titres courts pour ne pas casser les en-tetes. */
 h1 { margin: 0; font-size: 22px; letter-spacing: -0.4px; }
 .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
 
+/* Container hero pour centrer les pages d'accueil. */
 .hero { max-width: 1200px; margin: 0 auto; padding: 0 22px 24px; }
 
+/* Carte generique pour unifier les blocs UI. */
 .panel {
   background: var(--card);
   border: 1px solid var(--line);
@@ -67,10 +75,12 @@ h1 { margin: 0; font-size: 22px; letter-spacing: -0.4px; }
   overflow: hidden;
 }
 
+/* Grilles utilitaires pour des layouts flexibles. */
 .grid { display: grid; gap: 16px; }
 .input-group { display: grid; gap: 8px; }
 label { color: var(--muted); font-size: 14px; }
 
+/* Auto-fit pour eviter le scroll horizontal sur petits ecrans. */
 .form-grid {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
@@ -78,6 +88,7 @@ label { color: var(--muted); font-size: 14px; }
 
 .form-grid-end { align-items: end; }
 
+/* Champs coherents pour une saisie lisible. */
 input, select, textarea {
   width: 100%;
   padding: 12px 14px;
@@ -89,6 +100,7 @@ input, select, textarea {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
 }
 
+/* Focus visible pour accessibilite et feedback. */
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
@@ -96,6 +108,7 @@ input:focus, select:focus, textarea:focus {
   transform: translateY(-1px);
 }
 
+/* Bouton principal avec accent et ombre pour attirer l'action. */
 button {
   border: none;
   border-radius: 12px;
@@ -111,6 +124,7 @@ button {
 button:hover { transform: translateY(-1px); }
 button:active { transform: translateY(1px); }
 
+/* Variante neutre pour les actions secondaires. */
 button.ghost {
   background: transparent;
   color: var(--ink);
@@ -120,14 +134,19 @@ button.ghost {
 
 button.ghost:hover { border-color: var(--accent); color: var(--accent-strong); }
 
+/* Messages courts pour feedback d'action. */
 .message { font-size: 13px; color: var(--muted); }
 .message.ok { color: var(--success); }
 .message.err { color: var(--danger); }
 
+/* Texte secondaire pour les details. */
 .meta { color: var(--muted); font-size: 14px; }
 
+/* Separateur discret entre sections. */
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 
+/* Titre secondaire pour structurer les listes. */
 .small-title { font-weight: 800; font-size: 14px; color: var(--muted); }
 
+/* Mise en avant ponctuelle pour chiffres/labels. */
 .highlight { color: var(--accent-strong); font-weight: 800; }

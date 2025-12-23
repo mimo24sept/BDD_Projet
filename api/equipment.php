@@ -1,18 +1,20 @@
 <?php
 
 declare(strict_types=1);
-// API Equipement : catalogue, réservations, créations/suppressions et maintenance.
+// Endpoint unique materiel pour centraliser catalogue, reservations et maintenance.
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
+// Preflight CORS sans logique metier.
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
+// Connexion + session pour appliquer les regles par role.
 require __DIR__ . '/db.php';
 session_start();
 
@@ -24,11 +26,13 @@ try {
     exit;
 }
 
+// Colonne image ajoutee a la demande pour compatibilite avec d'anciennes bases.
 ensure_material_picture_column($pdo);
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
+// Session requise pour eviter l'exposition du catalogue complet.
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Accès refusé : veuillez vous connecter']);
@@ -36,16 +40,19 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 if ($method === 'GET') {
+    // Catalogue complet pour alimenter l'UI.
     list_equipment($pdo);
     exit;
 }
 
 if ($method === 'POST' && $action === 'reserve') {
+    // Reservation cote utilisateur.
     reserve_equipment($pdo, (int) $_SESSION['user_id']);
     exit;
 }
 
 if ($method === 'POST' && $action === 'create') {
+    // Creation reservee aux admins pour proteger le parc.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -56,6 +63,7 @@ if ($method === 'POST' && $action === 'create') {
 }
 
 if ($method === 'POST' && $action === 'delete') {
+    // Suppression reservee aux admins pour eviter les erreurs.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -66,6 +74,7 @@ if ($method === 'POST' && $action === 'delete') {
 }
 
 if ($method === 'POST' && $action === 'maintenance') {
+    // Maintenance reservee aux admins/techniciens.
     if (!is_admin() && !is_technician()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs ou techniciens']);
@@ -76,6 +85,7 @@ if ($method === 'POST' && $action === 'maintenance') {
 }
 
 if ($method === 'POST' && $action === 'maintenance_decide') {
+    // Decision admin sur les demandes de maintenance.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);

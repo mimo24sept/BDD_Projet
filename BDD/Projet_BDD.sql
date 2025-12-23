@@ -7,14 +7,19 @@
 -- Version du serveur : 10.11.6-MariaDB-0+deb12u1
 -- Version de PHP : 8.2.7
 
+-- Dump conserve pour rejouer schema + donnees rapidement.
+-- Mode SQL stable pour garder des IDs identiques.
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+-- Transaction globale pour importer schema + donnees en bloc.
 START TRANSACTION;
+-- Timezone fixe pour rendre les dates deterministes.
 SET time_zone = "+00:00";
 
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+-- Encodage UTF-8 complet pour conserver accents et emojis.
 /*!40101 SET NAMES utf8mb4 */;
 
 --

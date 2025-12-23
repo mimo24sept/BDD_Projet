@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app/api.js
-  Role: couche dappel API.
-  Envoie les requetes fetch vers le backend.
-  Normalise les donnees recues pour le state.
-  Centralise les erreurs et retours.
+  Fichier: assets/app/api.js.
+  Centralise les appels reseau pour garder un seul point de maintenance.
+  Normalise les reponses afin d'alimenter un state stable.
 */
 import { API } from './config.js';
 import { state } from './state.js';
@@ -21,6 +19,7 @@ import {
 
 export async function apiSession() {
   try {
+    // Credentials pour reutiliser la session PHP existante.
     const res = await fetch(API.auth, { credentials: 'include' });
     const data = await res.json();
     state.user = data || null;
@@ -39,6 +38,7 @@ export async function apiFetchEquipment() {
     const res = await fetch(API.equipment, { credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'API equipement');
+    // Normalisation pour simplifier les filtres et l'affichage.
     state.inventory = data.map((item) => {
       const rawCategories = Array.isArray(item.categories)
         ? item.categories
@@ -89,6 +89,7 @@ export async function apiFetchLoans() {
     const res = await fetch(API.dashboard, { credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'API emprunts');
+    // On exclut les rendus pour ne garder que l'actif dans la liste.
     state.loans = (data.loans || []).filter((l) => l.status !== 'rendu');
     const rawHistory = Array.isArray(data?.stats?.history) ? data.stats.history : (data.loans || []);
     const history = normalizeHistory(rawHistory);
@@ -122,6 +123,7 @@ export async function apiFetchLoans() {
 
 export async function apiFetchAdminLoans() {
   try {
+    // Scope=all pour charger les emprunts globaux cote admin.
     const res = await fetch(`${API.dashboard}?scope=all`, { credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'API emprunts admin');
@@ -145,6 +147,7 @@ export async function apiFetchAdminLoans() {
 
 export async function apiFetchAdminStats() {
   try {
+    // Route dediee pour eviter de charger tout le dashboard.
     const res = await fetch(`${API.dashboard}?action=admin_stats`, { credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'API stats');
@@ -339,8 +342,11 @@ export async function apiDecideReservationRequest(id, decision) {
 
 export async function apiLogout() {
   try {
+    // Echec silencieux pour ne pas bloquer la redirection.
     await fetch(`${API.auth}?action=logout`, { method: 'POST', credentials: 'include' });
-  } catch (e) {}
+  } catch (e) {
+    // Pas de remontee d'erreur pour ne pas bloquer la navigation.
+  }
 }
 /**
  * Cree un materiel via FormData (image incluse).
@@ -439,6 +445,7 @@ export async function apiDecideMaintenance(id, decision) {
 
 function normalizeHistory(list = []) {
   const today = new Date();
+  // Le backend peut renvoyer partiellement les flags, on les complete ici.
   return (Array.isArray(list) ? list : [])
     .filter((item) => (item.type || 'pret') !== 'maintenance')
     .map((item) => {

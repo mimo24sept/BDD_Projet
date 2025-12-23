@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app/utils.js
-  Role: utilitaires partages.
-  Formatage dates, libelles, badges et severites.
-  Helpers pour statuts et couleurs.
-  Sans dependances sur le DOM.
+  Fichier: assets/app/utils.js.
+  Centralise les helpers pour eviter la duplication entre modules.
+  Garde des formats stables (dates, labels, statuts) pour l'UI.
 */
 import { CONDITION_RANKS } from './config.js';
 /**
@@ -13,8 +11,8 @@ import { CONDITION_RANKS } from './config.js';
  */
 
 export function escapeHtml(str = '') {
-  return String(str)
-    .replace(/&/g, '&amp;')
+  // Echappement strict pour eviter les injections HTML.
+  return String(str)    .replace(/&/g, '&amp;'
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')

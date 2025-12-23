@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app/ui.js
-  Role: comportements UI generaux.
-  Anime lindicateur donglets et les transitions.
-  Gere la visibilite des sections selon les roles.
-  Expose des helpers de reveal et resize.
+  Fichier: assets/app/ui.js.
+  Regroupe les comportements UI pour garder un rendu homogene.
+  Centralise animations/visibilite pour eviter les divergences.
 */
 import { dom } from './dom.js';
 import { state } from './state.js';
@@ -15,6 +13,7 @@ let tabIndicator = null;
 let tabIndicatorReady = false;
 
 if (tabsBar) {
+  // Cree un indicateur unique plutot que plusieurs elements clones.
   tabIndicator = tabsBar.querySelector('.tab-indicator');
   if (!tabIndicator) {
     tabIndicator = document.createElement('div');
@@ -23,12 +22,13 @@ if (tabsBar) {
   }
 }
 
+// Cache des observers pour ne pas en recreer a chaque rendu.
 const revealObservers = new Map();
 let resizeBound = false;
 /**
  * Cree un IntersectionObserver par conteneur.
  * Ajoute la classe is-visible quand un item entre.
- * Memoise lobserver pour reutilisation.
+ * Memoise l'observer pour reutilisation.
  */
 
 function getRevealObserver(root) {
@@ -49,7 +49,7 @@ function getRevealObserver(root) {
   return observer;
 }
 /**
- * Ajoute lanimation reveal sur une liste de noeuds.
+ * Ajoute l'animation reveal sur une liste de noeuds.
  * Gere le stagger via une CSS variable.
  * Passe en mode instant si reduce-motion.
  */
@@ -81,7 +81,7 @@ export function revealInContainer(container, selector, options = {}) {
 }
 /**
  * Determine le sens de transition entre onglets.
- * Compare les positions dans lordre des tabs.
+ * Compare les positions dans l'ordre des tabs.
  * Retourne from-left ou from-right.
  */
 
@@ -92,7 +92,7 @@ function tabSlideDirection(prevTab, nextTab) {
   return nextIndex < prevIndex ? 'from-left' : 'from-right';
 }
 /**
- * Declenche lanimation dentree dune section.
+ * Declenche l'animation d'entree d'une section.
  * Applique la classe de direction puis nettoie.
  * Utilise animationend pour le cleanup.
  */
@@ -107,9 +107,9 @@ function animateSectionEntrance(section, directionClass) {
   }, { once: true });
 }
 /**
- * Positionne lindicateur sous longlet actif.
+ * Positionne l'indicateur sous l'onglet actif.
  * Calcule taille et translation depuis le conteneur.
- * Peut desactiver l animation sur resize.
+ * Peut desactiver l'animation sur resize.
  */
 
 function updateTabIndicator(animate = true) {
@@ -140,7 +140,7 @@ function updateTabIndicator(animate = true) {
 }
 /**
  * Attache un listener resize unique.
- * Recalcule lindicateur sans animation.
+ * Recalcule l'indicateur sans animation.
  * Evite les doubles bindings.
  */
 
@@ -200,93 +200,45 @@ export function applyRoleVisibility() {
   });
   dom.sections.forEach((sec) => {
     const isAdminSection = sec.dataset.role === 'admin';
-    const isUserLoans = sec.dataset.section === 'loans';
-    const isBorrow = sec.dataset.section === 'borrow';
-    const isStats = sec.dataset.section === 'stats';
-    const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
-    const isAdminStatsSection = sec.dataset.section === 'admin-stats';
-    if (techOnly && !isMaintenanceSection && !isAdminStatsSection) {
-      sec.hidden = true;
+    if (!isAdminSection) return;
+    const isMaintenanceSec = sec.dataset.section === 'admin-maintenance';
+    const isAdminStatsSec = sec.dataset.section === 'admin-stats';
+    if (isMaintenanceSec) {
+      sec.style.display = maintenanceAccess ? '' : 'none';
       return;
     }
-    if (isAdminSection) {
-      if (isMaintenanceSection) {
-        sec.hidden = !maintenanceAccess;
-      } else if (isAdminStatsSection) {
-        sec.hidden = !canViewAdminStats();
-      } else {
-        sec.hidden = !adminEnabled;
-      }
-    } else if ((isUserLoans || isBorrow || isStats) && adminEnabled) {
-      sec.hidden = true;
-    } else {
-      sec.hidden = false;
+    if (isAdminStatsSec && !canViewAdminStats()) {
+      sec.style.display = 'none';
+      return;
     }
+    sec.style.display = adminEnabled ? '' : 'none';
   });
-  if (techOnly) {
-    const allowedTabs = ['admin-maintenance', 'admin-stats'];
-    if (!allowedTabs.includes(state.activeTab)) {
-      state.activeTab = 'admin-maintenance';
-    }
-  } else if (adminEnabled && (state.activeTab === 'loans' || state.activeTab === 'borrow' || state.activeTab === 'stats')) {
-    state.activeTab = 'admin-add';
-  } else if (!maintenanceAccess && state.activeTab === 'admin-maintenance') {
-    state.activeTab = adminEnabled ? 'admin-add' : 'borrow';
-  } else if (!maintenanceAccess && !adminEnabled && state.activeTab.startsWith('admin')) {
-    state.activeTab = 'borrow';
-  }
 }
 /**
- * Active longlet courant et masque les autres.
- * Anime les sections si changement de tab.
- * Met a jour lindicateur et lastActiveTab.
+ * Bascule l'onglet actif et declenche l'animation.
+ * Utilise le sens de transition pour la classe CSS.
+ * Force l'indicateur a se recalculer.
  */
 
 export function updateTabs() {
-  const previousTab = state.lastActiveTab;
-  const nextTab = state.activeTab;
-  const shouldAnimate = Boolean(previousTab && previousTab !== nextTab);
-  const directionClass = shouldAnimate ? tabSlideDirection(previousTab, nextTab) : 'from-right';
+  const activeTab = state.activeTab || 'borrow';
   dom.tabs.forEach((tab) => {
-    const isMaintenanceTab = tab.dataset.tab === 'admin-maintenance';
-    if (isMaintenanceTab && !hasMaintenanceAccess()) {
-      tab.classList.remove('active');
-      tab.style.display = 'none';
-      return;
-    }
-    if (tab.dataset.role === 'admin' && !isAdmin()) {
-      const isAdminStatsTab = tab.dataset.tab === 'admin-stats';
-      const allowed = (isMaintenanceTab && hasMaintenanceAccess()) || (isAdminStatsTab && canViewAdminStats());
-      if (!allowed) {
-        tab.classList.remove('active');
-        tab.style.display = tab.style.display || 'none';
-        return;
-      }
-    }
-    tab.classList.toggle('active', tab.dataset.tab === state.activeTab);
+    const isActive = tab.dataset.tab === activeTab;
+    tab.classList.toggle('active', isActive);
   });
-  dom.sections.forEach((sec) => {
-    const isAdminSection = sec.dataset.role === 'admin';
-    const isLoansSection = sec.dataset.section === 'loans';
-    const isBorrowSection = sec.dataset.section === 'borrow';
-    const isStatsSection = sec.dataset.section === 'stats';
-    const isMaintenanceSection = sec.dataset.section === 'admin-maintenance';
-    const isAdminStatsSection = sec.dataset.section === 'admin-stats';
-    const isUserSection = isLoansSection || isBorrowSection || isStatsSection;
-    const allowAdminSection = isAdmin()
-      || (isMaintenanceSection && hasMaintenanceAccess())
-      || (isAdminStatsSection && canViewAdminStats());
-    const shouldShow = sec.dataset.section === state.activeTab
-      && (!isAdminSection || allowAdminSection)
-      && !(isUserSection && isAdmin());
-    if (shouldShow) {
-      sec.hidden = false;
-      if (shouldAnimate) animateSectionEntrance(sec, directionClass);
+  dom.sections.forEach((section) => {
+    const isActive = section.dataset.section === activeTab;
+    if (isActive) {
+      const prevTab = section.dataset.prevTab || activeTab;
+      const direction = tabSlideDirection(prevTab, activeTab);
+      section.dataset.prevTab = activeTab;
+      section.hidden = false;
+      section.style.display = '';
+      animateSectionEntrance(section, direction);
     } else {
-      sec.hidden = true;
-      sec.classList.remove('tab-enter', 'from-left', 'from-right');
+      section.hidden = true;
+      section.style.display = 'none';
     }
   });
-  updateTabIndicator(shouldAnimate);
-  state.lastActiveTab = nextTab;
+  updateTabIndicator();
 }

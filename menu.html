@@ -1,27 +1,36 @@
 <!DOCTYPE html>
 <!--
-  Fichier: menu.html
-  Role: tableau de bord de lapplication.
-  Contient les onglets, sections et la modale de reservation.
-  Charge les styles base/app et app.js.
-  Structure principale des interactions utilisateur.
+  Fichier: menu.html.
+  Page unique pour centraliser toutes les vues (catalogue, emprunts, admin).
+  Afin d'eviter de multiplier les pages et garder un seul flux d'interface.
+  La modale est commune (reservation/maintenance) pour limiter les doublons.
+  On charge base.css + app.css pour separer les styles globaux des styles specifiques a l'application.
 -->
 <html lang="fr">
 <head>
+  <!-- UTF-8 pour les accents et symboles francais sans probleme d'encodage. -->
   <meta charset="UTF-8" />
+  <!-- Viewport pour un rendu lisible sur mobile et tablette. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Parc materiels - Emprunts et reservations</title>
+  <!-- Un favicon pour identifier l'onglet et la marque. -->
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+  <!-- Preconnect pour accelerer le chargement de la police Google Fonts. -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Police Manrope pour un rendu moderne et coherent avec le design. -->
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Base.css pose les fondations (reset, tokens, elements). -->
   <link rel="stylesheet" href="./assets/styles/base.css" />
+  <!-- App.css contient les styles propres a ce tableau de bord. -->
   <link rel="stylesheet" href="./assets/styles/app.css" />
 </head>
 <body>
-  <!-- Coquille principale de l'appli (onglets, modale, listes) -->
+  <!-- Une coquille unique pour permettre a JS de masquer/afficher les sections.
+       Sans recharger la page, et garder l'etat utilisateur. -->
   <div id="app-shell">
     <header>
+      <!-- Bloc marque pour rappeler le contexte (parc GEII) en permanence. -->
       <div class="brand">
         <div class="brand-mark">GE</div>
         <div>
@@ -29,6 +38,7 @@
           <p class="subtitle">Emprunter / Reserver / Suivre</p>
         </div>
       </div>
+      <!-- Actions utilisateur toujours accessibles (statut + deconnexion). -->
       <div class="header-actions">
         <span class="user-chip" id="user-chip">Non connecte</span>
         <button type="button" class="ghost" id="logout-btn">Se deconnecter</button>
@@ -36,7 +46,8 @@
     </header>
 
     <main>
-      <!-- Navigation par onglets (filtré par rôle admin) -->
+      <!-- Navigation par onglets pour eviter plusieurs pages et rester rapide. -->
+           Data-role=admin permet a JS de masquer ces onglets si l'utilisateur n'est pas admin. -->
       <div class="tabs">
         <div class="tab active" data-tab="borrow">Emprunter un objet</div>
         <div class="tab" data-tab="loans">Mes emprunts</div>
@@ -48,9 +59,10 @@
         <div class="tab" data-tab="admin-accounts" data-role="admin">Comptes</div>
       </div>
 
+      <!-- Pile d'alertes centralisee pour ne pas repeter les messages dans chaque bloc. -->
       <div id="notifications" class="alert-stack" hidden></div>
 
-      <!-- Catalogue public avec filtres -->
+      <!-- Section par defaut (emprunter) pour mettre le catalogue en avant. -->
       <section class="panel" data-section="borrow">
         <div class="section-title section-title-spaced">
           <div>
@@ -59,17 +71,20 @@
         </div>
         <div class="filters">
           <div class="input-group">
+            <!-- Champ recherche pour reduire rapidement une longue liste. -->
             <input id="search" placeholder="recherche" />
           </div>
           <div class="input-group">
+            <!-- Tags pour filtrer sans clavier (plus rapide pour l'utilisateur). -->
             <div class="tag-bar" id="tag-bar"></div>
           </div>
         </div>
         <div class="spacer-sm"></div>
+        <!-- Zone scrollable pour garder l'entete visible et limiter la hauteur. -->
         <div id="catalog" class="catalog scroll-area"></div>
       </section>
 
-      <!-- Espace utilisateur : emprunts et stats -->
+      <!-- Onglet mes emprunts separe pour suivre ses demandes sans bruit admin. -->
       <section class="panel" data-section="loans" hidden>
         <div class="section-title">
           <div>
@@ -78,12 +93,15 @@
         </div>
         <div class="filters filters-spaced">
           <div class="input-group">
+            <!-- Recherche locale sur la liste d'emprunts. -->
             <input id="loan-search" placeholder="recherche" />
           </div>
         </div>
+        <!-- Liste scrollable pour conserver la structure de page. -->
         <div class="loans-list scroll-area" id="loans"></div>
       </section>
 
+      <!-- Synthese visuelle pour comprendre ses stats sans parcourir toute la liste. -->
       <section class="panel" data-section="stats" hidden>
         <div class="section-title">
           <div>
@@ -91,6 +109,7 @@
           </div>
         </div>
         <div class="stats stats-spaced">
+          <!-- Cartes cliquables pour filtrer l'historique par categorie. -->
           <div class="stat-card clickable active" id="user-stat-card-total">
             <div class="stat-label">Emprunts cette annee</div>
             <div class="stat-value" id="stat-total">0</div>
@@ -107,11 +126,13 @@
             <div class="stat-trend stat-trend-danger">Etat rendu inferieur</div>
           </div>
         </div>
+        <!-- Message pour guider quand la liste est vide ou filtre trop strict. -->
         <div id="user-stats-msg" class="message"></div>
+        <!-- Liste detaillee sous les cartes pour expliquer les chiffres. -->
         <div class="loans-list scroll-area" id="user-stats-list"></div>
       </section>
 
-      <!-- Admin : ajout + inventaire -->
+      <!-- Bloc admin separe et masque par defaut pour limiter l'exposition. -->
       <section class="panel" data-section="admin-add" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -119,12 +140,15 @@
           </div>
         </div>
         <div class="admin-add-grid">
+          <!-- Formulaire a gauche pour ajouter rapidement du materiel. -->
           <div class="admin-card">
             <form id="admin-form" class="grid form-grid">
               <div class="input-group">
+                <!-- Nom requis pour identifier l'objet dans tout le systeme. -->
                 <input id="admin-name" name="name" required placeholder="Nom" />
               </div>
               <div class="input-group">
+                <!-- Categories en checkbox pour autoriser plusieurs domaines. -->
                 <div class="choice-grid">
                   <label><input type="checkbox" name="admin-categories" value="Info" /> Info</label>
                   <label><input type="checkbox" name="admin-categories" value="Elen" /> Elen</label>
@@ -133,9 +157,11 @@
                 </div>
               </div>
               <div class="input-group">
+                <!-- Emplacement requis pour localiser l'objet rapidement. -->
                 <input id="admin-location" name="location" required placeholder="Emplacement" />
               </div>
               <div class="input-group">
+                <!-- Etat pour savoir si l'objet est pretable ou a surveiller. -->
                 <select id="admin-condition" name="condition" required>
                   <option value="">Etat</option>
                   <option value="Neuf">Neuf</option>
@@ -145,6 +171,7 @@
                 </select>
               </div>
               <div class="input-group">
+                <!-- Image pour reconnaitre l'objet sans ambiguite. -->
                 <label for="admin-picture">Image</label>
                 <input id="admin-picture" name="picture" type="file" accept="image/*" />
                 <div class="meta">JPG/PNG/WebP/GIF, 4 Mo max.</div>
@@ -154,18 +181,22 @@
             </form>
           </div>
 
+          <!-- Inventaire a droite pour verifier, trier et nettoyer le parc. -->
           <div class="admin-card">
             <div class="section-title section-title-start">
               <div>
                 <h3 class="section-heading">Rechercher, trier, retirer du parc</h3>
               </div>
+              <!-- Export PDF pour partager l'inventaire hors ligne. -->
               <button type="button" class="ghost" id="admin-export">Exporter PDF</button>
             </div>
             <div class="admin-tools">
               <div class="input-group">
+                <!-- Recherche admin pour trouver vite un objet. -->
                 <input id="admin-search" placeholder="Recherche" />
               </div>
               <div class="input-group">
+                <!-- Tri multi-criteres pour audit et maintenance. -->
                 <select id="admin-sort">
                   <option value="recent">Trier</option>
                   <option value="name">Nom (A-Z)</option>
@@ -175,17 +206,19 @@
                 </select>
               </div>
               <div class="input-group">
+                <!-- Tags pour filtrer rapidement par domaine. -->
                 <div class="tag-bar" id="admin-tag-bar"></div>
               </div>
             </div>
             <div class="admin-scroll">
+              <!-- Catalogue admin avec scroll pour garder les outils visibles. -->
               <div id="admin-inventory" class="catalog admin-catalog"></div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Admin : rendus et réservations -->
+      <!-- Ecran dedie aux retours pour limiter les erreurs de statut. -->
       <section class="panel" data-section="admin-returns" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -194,47 +227,55 @@
         </div>
         <div class="filters filters-spaced">
           <div class="input-group">
+            <!-- Recherche par emprunteur pour retrouver vite une fiche. -->
             <input id="admin-loan-search" placeholder="Recherche emprunteur" />
           </div>
         </div>
+        <!-- Grille de bulles pour visualiser rapidement les statuts. -->
         <div class="loans-list admin-bubble-grid admin-scroll" id="admin-loans"></div>
       </section>
 
-      <!-- Admin : maintenance -->
+      <!-- Section maintenance pour isoler les objets a verifier/reparer. -->
       <section class="panel" data-section="admin-maintenance" data-role="admin" hidden>
         <div class="section-title">
           <div>
             <h3 class="section-heading">Planifier une maintenance</h3>
           </div>
         </div>
+        <!-- Liste des maintenances en cours en haut pour prioriser. -->
         <div class="admin-bubble admin-scroll admin-bubble-spaced">
           <div class="loans-list" id="maintenance-list"></div>
         </div>
         <div class="divider"></div>
         <div class="filters">
           <div class="input-group">
+            <!-- Recherche rapide pour trouver un objet a passer en maintenance. -->
             <input id="maintenance-search" placeholder="Recherche" />
           </div>
           <div class="input-group">
+            <!-- Tags pour filtrer par categorie. -->
             <div class="tag-bar" id="maintenance-tag-bar"></div>
           </div>
         </div>
         <div class="spacer-sm"></div>
         <div class="admin-scroll">
+          <!-- Catalogue a scroller pour garder les filtres visibles. -->
           <div id="maintenance-catalog" class="catalog"></div>
         </div>
       </section>
       
-      <!-- Admin : comptes -->
+      <!-- Gestion des comptes a part pour limiter les manipulations sensibles. -->
       <section class="panel" data-section="admin-accounts" data-role="admin" hidden>
         <div class="section-title">
           <div>
             <h3 class="section-heading">Gestion des comptes</h3>
           </div>
         </div>
+        <!-- Liste des comptes en scroll pour garder le cadre stable. -->
         <div class="loans-list admin-scroll" id="accounts-list"></div>
       </section>
 
+      <!-- Statistiques admin isolees pour ne pas surcharger les vues utilisateurs. -->
       <section class="panel" data-section="admin-stats" data-role="admin" hidden>
         <div class="section-title">
           <div>
@@ -242,6 +283,7 @@
           </div>
         </div>
         <div class="stats stats-spaced">
+          <!-- Cartes cliquables pour filtrer et comprendre l'activite. -->
           <div class="stat-card clickable" id="admin-stat-card-total">
             <div class="stat-label">Objets empruntés (année)</div>
             <div class="stat-value" id="admin-stat-total">0</div>
@@ -261,15 +303,19 @@
         </div>
         <div class="filters filters-inline">
           <div class="input-group">
+            <!-- Recherche pour filtrer par emprunteur ou materiel. -->
             <input id="admin-stats-search" placeholder="Recherche emprunteur ou matériel" />
           </div>
         </div>
+        <!-- Message d'etat pour expliquer les resultats vides ou filtres. -->
         <div id="admin-stats-msg" class="message"></div>
+        <!-- Liste detaillee pour justifier les statistiques affichees. -->
         <div class="loans-list admin-scroll" id="admin-stats-list"></div>
       </section>
     </main>
 
-    <!-- Modale partagée (réservation / maintenance) -->
+    <!-- Une seule modale reutilisable pour reservation/maintenance,.
+         Ce qui reduit la duplication et simplifie la logique JS. -->
     <div class="modal-backdrop" id="modal">
       <div class="modal">
         <div class="top">
@@ -280,12 +326,14 @@
         <div class="divider"></div>
         <div class="modal-actions">
           <div id="modal-msg" class="message"></div>
+          <!-- Bouton unique dont le libelle/action est adapte par JS. -->
           <button id="reserve-btn" type="button">Reserver</button>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- App.js charge la logique dynamique (onglets, API, modale). -->
   <script type="module" src="./assets/app.js"></script>
 </body>
 </html>

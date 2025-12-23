@@ -1,17 +1,19 @@
 <?php
 declare(strict_types=1);
-// API Tableau de bord : emprunts utilisateur/admin, rendus, annulations et stats.
+// Endpoint unique du tableau de bord pour centraliser emprunts, stats et decisions admin.
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
+// Preflight CORS sans logique metier.
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
+// Session requise pour filtrer les emprunts par utilisateur.
 session_start();
 
 require_once __DIR__ . '/db.php';
@@ -24,10 +26,12 @@ try {
     exit;
 }
 
+// Creation \"lazy\" des tables additionnelles pour eviter une migration manuelle.
 ensure_prolongation_table($pdo);
 ensure_maintenance_request_table($pdo);
 ensure_reservation_request_table($pdo);
 
+// On bloque ici pour eviter d'exposer des emprunts sans session.
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Connectez-vous pour voir vos emprunts']);
@@ -38,6 +42,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
 if ($method === 'GET' && $action === 'admin_stats') {
+    // Stats globales accessibles aux admins et techniciens.
     if (!is_admin() && !is_technician()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs ou techniciens']);
@@ -54,6 +59,7 @@ if ($method === 'GET' && $action === 'admin_stats') {
 }
 
 if ($method === 'POST' && $action === 'return') {
+    // Retour traite uniquement par admin/technicien.
     if (!is_admin() && !is_technician()) {
         http_response_code(403);
         echo json_encode(['error' => 'Retour réservé aux administrateurs ou techniciens']);
@@ -64,6 +70,7 @@ if ($method === 'POST' && $action === 'return') {
 }
 
 if ($method === 'POST' && $action === 'admin_cancel') {
+    // Annulation admin reservee.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -74,16 +81,19 @@ if ($method === 'POST' && $action === 'admin_cancel') {
 }
 
 if ($method === 'POST' && $action === 'cancel_request') {
+    // Demande d'annulation utilisateur.
     request_cancel($pdo, (int) $_SESSION['user_id']);
     exit;
 }
 
 if ($method === 'POST' && $action === 'extend_request') {
+    // Demande de prolongation utilisateur.
     request_extension($pdo, (int) $_SESSION['user_id']);
     exit;
 }
 
 if ($method === 'POST' && $action === 'extend_decide') {
+    // Decision admin sur prolongation.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -94,6 +104,7 @@ if ($method === 'POST' && $action === 'extend_decide') {
 }
 
 if ($method === 'POST' && $action === 'reservation_decide') {
+    // Decision admin sur reservation.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -104,6 +115,7 @@ if ($method === 'POST' && $action === 'reservation_decide') {
 }
 
 try {
+    // Scope permet d'afficher soit ses emprunts, soit tout (admin/tech).
     $scope = $_GET['scope'] ?? 'mine';
     $targetUser = ($scope === 'all' && (is_admin() || is_technician())) ? null : (int) $_SESSION['user_id'];
     $loans = fetch_loans($pdo, $targetUser);

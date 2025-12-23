@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app/render.js
-  Role: rendus des sections et listes.
-  Construit les cartes, listes et stats.
-  Attache les actions aux elements rendus.
-  Orchestre les vues admin et utilisateur.
+  Fichier: assets/app/render.js.
+  Centralise les rendus pour garder une UI coherente.
+  Regroupe creation DOM + actions afin de limiter les effets de bord.
 */
 import { BASE_TAGS } from './config.js';
 import { state } from './state.js';
@@ -54,8 +52,9 @@ import {
  */
 
 export function renderApp() {
+  // Ordre important: permissions puis sections pour eviter des flashs de contenu.
   applyRoleVisibility();
-  updateTabs();
+  updateTabs()
   renderNotifications();
   renderCatalog();
   renderAdminCatalog();
@@ -79,8 +78,9 @@ export function renderApp() {
 
 export function renderNotifications() {
   if (!dom.notificationsEl) return;
+  // On ajoute les alertes systeme avant les notifications utilisateur.
   const base = Array.isArray(state.notifications) ? state.notifications : [];
-  const overdue = buildOverdueAlerts();
+  const overdue = buildOverdueAlerts()
   const lastDay = buildLastDayAlerts();
   const list = [...lastDay, ...overdue, ...base];
   if (!list.length) {
@@ -180,8 +180,9 @@ export function renderAdminCatalog() {
   });
 
   const statusWeight = (status = '') => {
+    // Poids pour stabiliser le tri par statut.
     const map = { disponible: 0, reserve: 1, emprunte: 1, pret: 1, maintenance: 2, hs: 3 };
-    return map[status.toLowerCase()] ?? 4;
+    return map[status.toLowerCase()] ?? 4
   };
 
   const sorted = filtered.slice().sort((a, b) => {
@@ -340,8 +341,8 @@ export function renderMaintenanceAgenda() {
     return;
   }
   const isAdminUser = isAdmin();
-  const pendingRequests = (state.maintenanceRequests || [])
-    .filter((r) => (r.status || '').toLowerCase() === 'pending');
+  // Les demandes pending doivent etre visibles avant les maintenances planifiees.
+  const pendingRequests = (state.maintenanceRequests || [])    .filter((r) => (r.status || '').toLowerCase() === 'pending')
   const maints = state.adminLoans
     .filter((l) => (l.type || '').toLowerCase() === 'maintenance')
     .filter((l) => l.status !== 'rendu');
@@ -485,8 +486,9 @@ export function exportInventoryPdf() {
     alert('Aucun matériel à exporter.');
     return;
   }
+  // Popup dediee pour declencher l'impression sans modifier l'UI courante.
   const popup = window.open('', '_blank', 'width=900,height=700');
-  if (!popup) {
+  if (!popup) 
     alert("Impossible d'ouvrir la fenêtre d'export (bloqueur de pop-up ?).");
     return;
   }
@@ -619,8 +621,8 @@ export function renderAccounts() {
 export function renderCatalog() {
   if (!dom.catalogEl) return;
   dom.catalogEl.innerHTML = '';
-  const filtered = state.inventory.filter((item) => {
-    const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.tags.join(' ')}`.toLowerCase();
+  // Filtre client pour rester reactif sans recharger le backend.
+  const filtered = state.inventory.filter((item) => {    const matchText = `${item.name} ${item.serial || ''} ${item.category} ${item.tags.join(' ')}`.toLowerCase()
     const okSearch = matchText.includes(state.filters.search);
     const okTags = !state.filters.tags.length
       || state.filters.tags.every((tag) => item.tags.includes(tag));
@@ -666,8 +668,8 @@ export function renderLoans() {
   dom.loansEl.innerHTML = '';
   const adminFlag = isAdmin();
   const today = normalizeDateOnly(new Date());
-  const filteredLoans = state.loans.filter((loan) => {
-    if (!state.loanSearch) return true;
+  // Tri par severite pour mettre les urgences en haut.
+  const filteredLoans = state.loans.filter((loan) => {    if (!state.loanSearch) return true
     const haystack = `${loan.name || ''} ${loan.status || ''}`.toLowerCase();
     return haystack.includes(state.loanSearch);
   });
@@ -826,8 +828,9 @@ export function renderAdminLoans() {
     dom.adminLoansEl.innerHTML = '<p class="meta">Accès réservé aux administrateurs.</p>';
     return;
   }
+  // Colonnes separees pour distinguer actif vs prioritaire.
   const layout = document.createElement('div');
-  layout.className = 'admin-bubble-columns';
+  layout.className = 'admin-bubble-columns'
   const activeCol = document.createElement('div');
   activeCol.className = 'admin-bubble-col';
   const priorityCol = document.createElement('div');
@@ -877,8 +880,9 @@ export function renderAdminLoans() {
 
   const renderList = (target, list, title, opts = {}) => {
     if (!list.length) return;
+    // Helper local pour mutualiser les actions (retour/annulation).
     const block = document.createElement('div');
-    block.className = 'admin-subblock';
+    block.className = 'admin-subblock'
     if (opts.variant) block.classList.add(`admin-${opts.variant}`);
     block.innerHTML = '';
     list.forEach((loan) => {
@@ -1280,8 +1284,9 @@ export function renderAdminStatsList() {
   const allowedViews = allowedAdminStatsViews();
   const view = allowedViews.includes(state.adminStatsView) ? state.adminStatsView : (allowedViews[0] || 'degrades');
   state.adminStatsView = view;
+  // Filtre cote front pour garder la navigation fluide.
   const all = Array.isArray(state.adminHistory) ? state.adminHistory : [];
-  const filtered = all.filter((item) => {
+  const filtered = all.filter((item) => 
     const isMaint = Boolean(item.is_maint);
     const matchesView = view === 'maint'
       ? isMaint

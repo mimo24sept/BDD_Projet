@@ -1,10 +1,11 @@
 /*
-  Fichier: assets/styles/app.css
+  Fichier: assets/styles/app.css.
   Role: styles du tableau de bord.
   Mise en page des onglets, cartes et listes.
   Habillage des modales et elements admin.
   Complete base.css avec les variantes app.
 */
+/* En-tete centre pour garder le contenu aligne avec les panels. */
 header {
   padding: 24px 22px 12px;
   max-width: 1200px;
@@ -17,6 +18,7 @@ header {
 
 .header-actions { display: flex; gap: 10px; align-items: center; }
 
+/* Colonne principale du dashboard. */
 main {
   max-width: 1200px;
   margin: 0 auto;
@@ -25,12 +27,14 @@ main {
   gap: 18px;
 }
 
+/* Etat par defaut des panneaux (animation geree en JS). */
 .panel[data-section] {
   opacity: 1;
   transform: translateX(0);
   will-change: transform, opacity;
 }
 
+/* Animation d'entree pour le changement d'onglet. */
 .panel.tab-enter {
   --panel-slide-x: 24px;
   animation: panelSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -39,11 +43,13 @@ main {
 .panel.tab-enter.from-left { --panel-slide-x: -24px; }
 .panel.tab-enter.from-right { --panel-slide-x: 24px; }
 
+/* Slide court pour rendre le changement visible sans lenteur. */
 @keyframes panelSlideIn {
   from { opacity: 0; transform: translateX(var(--panel-slide-x)) translateY(6px); }
   to { opacity: 1; transform: translateX(0) translateY(0); }
 }
 
+/* Base des items reveals pour animer les listes. */
 .reveal-item {
   opacity: 0;
   transform: translateY(14px);
@@ -63,6 +69,7 @@ main {
   transition: opacity 0.45s ease, transform 0.25s ease, filter 0.45s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.25s ease;
 }
 
+/* Barre d'onglets type pill pour navigation rapide. */
 .tabs {
   display: flex;
   gap: 8px;
@@ -74,6 +81,7 @@ main {
   position: relative;
 }
 
+/* Onglet flexible pour repartir l'espace egalement. */
 .tab {
   flex: 1;
   padding: 12px 14px;
@@ -93,6 +101,7 @@ main {
   box-shadow: none;
 }
 
+/* Indicateur anime pour suivre l'onglet actif. */
 .tab-indicator {
   position: absolute;
   top: 0;
@@ -117,6 +126,7 @@ main {
     opacity 0.2s ease;
 }
 
+/* Filtres responsives en grille pour eviter les sauts de ligne. */
 .filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -129,6 +139,7 @@ main {
 
 .spacer-sm { height: 12px; }
 
+/* Deux colonnes admin: formulaire + inventaire. */
 .admin-add-grid {
   display: grid;
   grid-template-columns: minmax(280px, 340px) 1fr;
@@ -136,6 +147,7 @@ main {
   align-items: start;
 }
 
+/* Carte admin reutilisable pour unifier les blocs. */
 .admin-card {
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -153,6 +165,7 @@ main {
   align-items: end;
 }
 
+/* Grille de choix pour selection multiple lisible. */
 .choice-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -178,6 +191,7 @@ main {
   box-shadow: 0 8px 18px rgba(255,140,50,0.12);
 }
 
+/* Barre de tags pour filtrage rapide. */
 .tag-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .tag-chip {
@@ -199,6 +213,7 @@ main {
   transform: translateY(-1px);
 }
 
+/* Grille de cartes responsive pour le catalogue. */
 .catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 .scroll-area {
   max-height: 65vh;
@@ -214,6 +229,7 @@ main {
 }
 .admin-scroll .card { min-width: 0; }
 
+/* Carte generique pour items catalogue et admin. */
 .card {
   background: #fff;
   border: 1px solid var(--line);
@@ -255,6 +271,7 @@ main {
 
 .card h3 { margin: 0; }
 
+/* Badge compact pour statut et alertes. */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -280,6 +297,7 @@ main {
 .section-title-start { align-items: flex-start; }
 .section-heading { margin: 2px 0 0; }
 
+/* Cartes de stats en grille fluide. */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .stats-spaced { margin: 12px 0; }
 
@@ -294,6 +312,7 @@ main {
 .stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.08); border-color: var(--accent-soft); }
 
 .loans-list { display: grid; gap: 12px; }
+/* Colonnes admin pour separer les flux. */
 .admin-bubble-grid {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
@@ -332,6 +351,7 @@ main {
 .admin-subblock .small-title { text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
 .admin-subblock.admin-alert { border-color: #fecdd3; background: #fff1f2; }
 
+/* Pill utilisateur pour mettre en avant un emprunteur. */
 .user-pill {
   display: inline-flex;
   align-items: center;
@@ -344,6 +364,7 @@ main {
   letter-spacing: 0.2px;
 }
 
+/* Ligne d'emprunt compacte pour lister rapidement. */
 .loan-item {
   background: #fff;
   border: 1px solid var(--line);
@@ -360,6 +381,7 @@ main {
 .progress { width: 100%; height: 8px; background: #f2f4f7; border-radius: 999px; overflow: hidden; }
 .progress > div { height: 100%; background: linear-gradient(120deg, var(--accent), var(--accent-strong)); }
 
+/* Overlay pour focaliser l'attention sur la modale. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -384,6 +406,7 @@ main {
 .hero-info { display: grid; gap: 6px; }
 .modal-calendar { background: #f9fafb; border: 1px dashed var(--line); border-radius: 14px; padding: 12px; }
 
+/* Alertes empilees pour ne pas masquer le contenu. */
 .alert-stack { display: grid; gap: 8px; margin: 6px 0 4px; }
 .alert-banner {
   display: flex;
@@ -409,6 +432,7 @@ main {
   flex-shrink: 0;
 }
 
+/* Chip utilisateur pour rappeler la session en cours. */
 .user-chip {
   background: #fff6ed;
   border: 1px solid var(--accent-soft);
@@ -418,6 +442,7 @@ main {
   font-weight: 700;
 }
 
+/* Variantes de severite pour la lecture rapide. */
 .loan-item.loan-ok { border-color: var(--line); }
 .loan-item.loan-soon { border-color: var(--warning); background: #fff7ed; }
 .loan-item.loan-urgent { border-color: #fb923c; background: #fff4e5; }
@@ -438,6 +463,7 @@ main {
 .loan-item.loan-overdue .progress > div { background: #ef4444; }
 .loan-item.loan-cancel .progress > div { background: #f97316; }
 
+/* Navigation calendrier simple et compacte. */
 .calendar-nav { display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .calendar-nav button { padding:8px 12px; }
 .calendar-grid {
@@ -446,6 +472,7 @@ main {
   gap: 8px;
   margin-top: 10px;
 }
+/* Cellules cliquables avec feedback visuel clair. */
 .day-cell {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -470,17 +497,20 @@ main {
 }
 .day-cell.empty { background: transparent; border: none; box-shadow: none; cursor: default; }
 
+/* Ajustements mobiles pour eviter les colonnes trop serrees. */
 @media (max-width: 720px) {
   header { flex-direction: column; align-items: flex-start; }
   .header-actions { width: 100%; justify-content: space-between; }
   .loan-item { flex-direction: column; align-items: flex-start; }
 }
 
+/* Une colonne pour les blocs admin sur ecrans moyens. */
 @media (max-width: 840px) {
   .admin-add-grid { grid-template-columns: 1fr; }
   .admin-bubble-columns { grid-template-columns: 1fr; }
 }
 
+/* Desactive les animations si motion reduite. */
 @media (prefers-reduced-motion: reduce) {
   .panel.tab-enter { animation: none; }
   .reveal-item { transition: none; opacity: 1; transform: none; filter: none; }

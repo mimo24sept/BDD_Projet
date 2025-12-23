@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app/calendar.js
-  Role: logique du calendrier de reservation.
-  Gere la selection de dates et la validation.
-  Calcule les dates bloquees et disponibilites.
-  Pilote la modale de reservation/maintenance.
+  Fichier: assets/app/calendar.js.
+  Concentre la logique dates pour eviter les divergences entre UI et regles.
+  Reutilise la meme modale pour reservation, prolongation et maintenance.
 */
 import { state } from './state.js';
 import { dom } from './dom.js';
@@ -90,22 +88,25 @@ export function openExtendModal(loan) {
 export function openModal(item, mode = 'reserve') {
   if (!dom.modalTitle || !dom.modalBody || !dom.modalBackdrop) return;
   modalMode = mode;
-  if (modalMode !== 'extend') {
-    extensionContext = null;
+  // On nettoie le contexte si on change de mode pour eviter un melange d'etats.
+  if (modalMode !== 'extend') {    extensionContext = null
   }
   state.modalItem = item;
   blockedWeeks = Array.isArray(item.reserved_weeks) ? item.reserved_weeks : [];
   reservationPeriods = Array.isArray(item.reservations) ? item.reservations : [];
+  // Map rapide pour verifier la dispo jour par jour.
   blockedDates = buildBlockedDates(reservationPeriods);
-  if (modalMode === 'extend' && extensionContext?.start) {
+  if (modalMode === 'extend' && extensionContext?.start) 
+    // On retire les dates de l'emprunt courant pour autoriser sa propre prolongation.
     const ownSpan = datesBetween(extensionContext.start, extensionContext.due || extensionContext.start);
-    ownSpan.forEach((d) => {
+    ownSpan.forEach((d) => 
       delete blockedDates[d];
     });
     selectedStartDate = extensionContext.start;
     selectedEndDate = null;
+    // On ouvre le calendrier sur le mois de fin pour guider l'utilisateur.
     const baseMonth = extensionContext.due || extensionContext.start;
-    calendarMonth = baseMonth ? new Date(`${baseMonth}T00:00:00`) : new Date();
+    calendarMonth = baseMonth ? new Date(`${baseMonth}T00:00:00`) : new Date()
   } else {
     selectedStartDate = null;
     selectedEndDate = null;
@@ -167,8 +168,8 @@ export function openModal(item, mode = 'reserve') {
   updateAvailabilityMessage();
   dom.modalBackdrop.classList.add('show');
   if (dom.reserveBtn) {
-    dom.reserveBtn.textContent = modalMode === 'maintenance'
-      ? 'Planifier maintenance'
+    // Libelles adaptes pour clarifier l'action en cours.
+    dom.reserveBtn.textContent = modalMode === 'maintenance'      ? 'Planifier maintenance
       : (modalMode === 'extend' ? 'Prolonger' : 'Reserver');
   }
 }
@@ -270,8 +271,9 @@ export function renderCalendar() {
 function handleDayClick(dateStr) {
   const todayStr = new Date().toISOString().slice(0, 10);
   if (modalMode === 'extend') {
+    // En prolongation, le debut est fixe sur l'emprunt d'origine.
     if (!extensionContext?.start) return;
-    if (dateStr < extensionContext.start) return;
+    if (dateStr < extensionContext.start) return
     selectedStartDate = extensionContext.start;
     selectedEndDate = dateStr;
     const maxDays = maxReservationDays();
@@ -307,8 +309,9 @@ function handleDayClick(dateStr) {
       selectedEndDate = dateStr;
     }
     const range = selectionRange();
+    // Maintenance accepte des periodes longues, pas les reservations classiques.
     const maxDays = modalMode === 'maintenance' ? 365 : maxReservationDays();
-    if (range && modalMode !== 'maintenance' && dateDiffDays(range.start, range.end) > maxDays) {
+    if (range && modalMode !== 'maintenance' && dateDiffDays(range.start, range.end) > maxDays) 
       selectedStartDate = dateStr;
       selectedEndDate = null;
     } else if (range && !isRangeFree(range.start, range.end)) {
@@ -379,8 +382,8 @@ function buildBlockedDates(periods) {
   periods.forEach((p) => {
     const list = datesBetween(p.start, p.end || p.start);
     const type = (p.type || '').toLowerCase();
-    list.forEach((d) => {
-      if (type === 'maintenance') {
+    // Maintenance prioritaire pour ne pas l'ecraser par une reservation.
+    list.forEach((d) => {      if (type === 'maintenance') 
         dates[d] = 'maintenance';
       } else if (!dates[d]) {
         dates[d] = 'reserve';

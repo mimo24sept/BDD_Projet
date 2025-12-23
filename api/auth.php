@@ -1,24 +1,29 @@
 <?php
 
 declare(strict_types=1);
-// API Auth : login/logout, inscription, rôles et liste des utilisateurs (admin).
+// Endpoint unique pour centraliser auth + gestion des roles.
+// JSON pour un front simple a consommer.
+// CORS ouvert pour faciliter les tests en local.
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
+// Preflight CORS sans logique metier.
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
+// Session requise pour connaitre l'utilisateur courant.
 session_start();
 require __DIR__ . '/db.php';
 
 try {
     $pdo = get_pdo();
 } catch (Throwable $e) {
+    // Echec rapide si la base est indisponible.
     http_response_code(500);
     echo json_encode(['error' => 'Connexion à la base impossible', 'details' => $e->getMessage()]);
     exit;
@@ -27,6 +32,7 @@ try {
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
+// GET renvoie soit la liste (admin) soit l'utilisateur courant.
 if ($method === 'GET') {
     if (($action === 'users') && is_admin()) {
         echo json_encode(list_users($pdo));
@@ -36,17 +42,20 @@ if ($method === 'GET') {
     exit;
 }
 
+// POST login explicite pour eviter les confusions avec d'autres actions.
 if ($method === 'POST' && $action === 'login') {
     login($pdo);
     exit;
 }
 
+// POST register pour conserver un flux d'inscription JSON.
 if ($method === 'POST' && $action === 'register') {
     register($pdo);
     exit;
 }
 
 if ($method === 'POST' && $action === 'set_role') {
+    // Seuls les admins peuvent modifier les roles.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -57,6 +66,7 @@ if ($method === 'POST' && $action === 'set_role') {
 }
 
 if ($method === 'POST' && $action === 'delete_user') {
+    // Seuls les admins peuvent supprimer des comptes.
     if (!is_admin()) {
         http_response_code(403);
         echo json_encode(['error' => 'Réservé aux administrateurs']);
@@ -67,6 +77,7 @@ if ($method === 'POST' && $action === 'delete_user') {
 }
 
 if ($method === 'POST' && $action === 'logout') {
+    // Logout simple pour invalider la session.
     logout();
     exit;
 }
@@ -74,19 +85,22 @@ if ($method === 'POST' && $action === 'logout') {
 http_response_code(405);
 echo json_encode(['error' => 'Method not allowed']);
 
-// Traite la connexion d'un utilisateur (vérifie identifiants et session).
+// Connexion utilisateur: verifie identifiants et pose la session.
 function login(PDO $pdo): void
 {
+    // Lecture JSON car le front envoie un payload applicatif.
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
     $login = trim($data['login'] ?? '');
     $password = (string) ($data['password'] ?? '');
 
+    // Validation minimale pour eviter une requete inutile.
     if ($login === '' || $password === '') {
         http_response_code(400);
         echo json_encode(['error' => 'Login et mot de passe requis']);
         return;
     }
 
+    // Recherche par email ou login (insensible a la casse).
     $stmt = $pdo->prepare(
         'SELECT u.IDuser, u.Couriel, u.MDP, u.NOMuser, u.IDrole, r.Role
          FROM `User` u
@@ -97,21 +111,24 @@ function login(PDO $pdo): void
     $stmt->execute([':loginMail' => $login, ':loginName' => $login]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    // Message generique pour ne pas donner d'indice sur le compte.
     if (!$user || !is_valid_password($password, (string) $user['MDP'])) {
         http_response_code(401);
         echo json_encode(['error' => 'Identifiants invalides']);
         return;
     }
 
+    // Colonne ajoutee a la volee pour les anciennes bases.
     ensure_last_login_column($pdo);
 
     try {
-        // Permet de tracer la dernière connexion ; ignore si la colonne manque.
+        // Mise a jour soft: on ne bloque pas la connexion si ca echoue.
         $upd = $pdo->prepare('UPDATE `User` SET LastLogin = NOW() WHERE IDuser = :id');
         $upd->execute([':id' => (int) $user['IDuser']]);
     } catch (Throwable $e) {
     }
 
+    // Session pour eviter de renvoyer un token a chaque requete.
     $_SESSION['user_id'] = (int) $user['IDuser'];
     $_SESSION['login'] = $user['NOMuser'] ?: $user['Couriel'];
     $_SESSION['role'] = $user['Role'] ?? 'Eleve';
@@ -119,7 +136,7 @@ function login(PDO $pdo): void
     echo json_encode(current_user());
 }
 
-// Déconnecte l'utilisateur courant et détruit la session.
+// Logout: nettoyer la session pour eviter les reutilisations.
 function logout(): void
 {
     $_SESSION = [];
@@ -127,9 +144,10 @@ function logout(): void
     echo json_encode(['message' => 'Déconnecté']);
 }
 
-// Inscrit un nouvel utilisateur (avec rôles multiples) et ouvre la session.
+// Inscription: creer un compte, verifier le role et ouvrir la session.
 function register(PDO $pdo): void
 {
+    // Lecture JSON pour rester homogene avec le front.
     $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
     $email = trim((string) ($data['email'] ?? ''));
     $login = trim((string) ($data['login'] ?? ''));
@@ -138,28 +156,33 @@ function register(PDO $pdo): void
     $roleChoice = strtolower(trim((string) ($data['role'] ?? 'eleve')));
     $secret = (string) ($data['secret'] ?? '');
 
+    // Champs indispensables pour eviter un compte incomplet.
     if ($email === '' || $login === '' || $password === '' || $confirm === '') {
         http_response_code(400);
         echo json_encode(['error' => 'Champs requis manquants']);
         return;
     }
+    // Format email valide pour limiter les erreurs.
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         http_response_code(400);
         echo json_encode(['error' => 'Email invalide']);
         return;
     }
+    // Confirmation pour limiter les fautes de saisie.
     if ($password !== $confirm) {
         http_response_code(400);
         echo json_encode(['error' => 'Mots de passe differents']);
         return;
     }
 
+    // Normalisation du role pour eviter des valeurs libres.
     $roleName = normalize_role_label($roleChoice);
     if ($roleName === '') {
         http_response_code(400);
         echo json_encode(['error' => 'Rôle invalide']);
         return;
     }
+    // Mot secret uniquement pour les roles sensibles.
     $needsSecret = in_array($roleName, ['Professeur', 'Technicien', 'Administrateur'], true);
     $expectedSecret = $roleName === 'Professeur' ? 'prof' : ($roleName === 'Technicien' ? 'tech' : 'admin');
     if ($needsSecret && $secret !== $expectedSecret) {
@@ -168,7 +191,7 @@ function register(PDO $pdo): void
         return;
     }
 
-    // Unicite email ou login.
+    // Unicite email ou login pour eviter des comptes ambigus.
     $dupe = $pdo->prepare('SELECT 1 FROM `User` WHERE LOWER(`Couriel`) = LOWER(:mail) OR LOWER(`NOMuser`) = LOWER(:login) LIMIT 1');
     $dupe->execute([':mail' => $email, ':login' => $login]);
     if ($dupe->fetchColumn()) {
@@ -330,14 +353,14 @@ function delete_user(PDO $pdo): void
         echo json_encode(['error' => 'Identifiant invalide']);
         return;
     }
-    // Récupérer le compte
+    // Récupérer le compte.
     $user = fetch_user_with_role($pdo, $id);
     if (!$user) {
         http_response_code(404);
         echo json_encode(['error' => 'Utilisateur introuvable']);
         return;
     }
-    // Ne pas supprimer d'admin
+    // Ne pas supprimer d'admin.
     if (is_role_admin((string) ($user['role'] ?? ''))) {
         http_response_code(403);
         echo json_encode(['error' => 'Impossible de supprimer un administrateur']);

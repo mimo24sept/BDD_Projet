@@ -1,14 +1,15 @@
 ﻿/*
-  Fichier: assets/login.js
-  Role: logique de connexion/inscription cote front.
-  Gere les bascules de formulaires et la visibilite du mot de passe.
-  Declenche lanimation ripple puis la redirection.
-  Centralise les appels auth vers lAPI.
+  Fichier: assets/login.js.
+  Toute la logique login/inscription est regroupee ici pour garder un point unique de maintenance cote front.
+  On gere les bascules de formulaires et la visibilite du mot de passe pour limiter les erreurs de saisie.
+  On declenche une animation ripple avant redirection pour donner un feedback de succes.
+  Centraliser les appels auth simplifie les evolutions d'API.
 */
-// Rôle : gérer la connexion/inscription côté front, puis lancer l'animation ripple avant de rediriger.
-
+// Ce fichier orchestre l'auth front et la transition visuelle vers le menu.
+// Centraliser l'URL d'auth evite les doublons dans les appels.
 const API = { auth: './api/auth.php' };
 
+// On met en cache les noeuds DOM pour eviter des querySelector repetes.
 const loginForm = document.querySelector('#login-form');
 const loginMsg = document.querySelector('#login-msg');
 const registerForm = document.querySelector('#register-form');
@@ -21,38 +22,45 @@ const loginBlock = document.querySelector('#login-block');
 const registerBlock = document.querySelector('#register-block');
 const authWall = document.querySelector('.auth-wall');
 const rippleOverlay = document.querySelector('#ripple-overlay');
+// On garde un flag pour ne brancher qu'un seul listener resize.
 let authLoaderResizeBound = false;
 /**
- * Ajuste le texte GEII pour quil remplisse la largeur de la barre.
- * Mesure la largeur des lettres et calcule un nouveau font-size.
- * Respecte le gap defini en CSS pour les espacements.
- * Ignore le recalcul si les elements sont absents.
+ * Ajuster le texte GEII pour remplir la barre donne un loader lisible.
+ * On mesure les lettres pour s'adapter aux polices chargees.
+ * On respecte le gap CSS pour garder la mise en page coherente.
+ * On sort si les elements manquent pour eviter des erreurs JS.
  */
 
 function fitLoaderLabel(loader) {
   const label = loader.querySelector('.loader-label');
   const track = loader.querySelector('.loader-track');
+  // Si l'overlay est incomplet, on ne force pas le recalcul.
   if (!label || !track) return;
   const gapValue = getComputedStyle(label).getPropertyValue('--letter-gap');
   const gap = Number.parseFloat(gapValue) || 5;
   const letters = Array.from(label.querySelectorAll('.label-base span'));
+  // Sans lettres, on n'a rien a mesurer.
   if (!letters.length) return;
   const baseSize = 120;
+  // On part d'une taille "safe" avant de mesurer.
   label.style.fontSize = `${baseSize}px`;
   const lettersWidth = letters.reduce((sum, span) => sum + span.getBoundingClientRect().width, 0);
   const targetWidth = track.getBoundingClientRect().width - gap * (letters.length - 1);
+  // Si les mesures sont invalides, on ne force pas une taille aberrante.
   if (lettersWidth <= 0 || targetWidth <= 0) return;
   label.style.fontSize = `${baseSize * (targetWidth / lettersWidth)}px`;
 }
 /**
- * Cree le loader de connexion si absent dans loverlay.
- * Injecte la structure HTML (lettres + barre) a la volee.
- * Declenche un ajustement de taille apres chargement des polices.
- * Installe un listener resize unique pour recalculer.
+ * On cree le loader seulement si besoin pour garder le DOM leger.
+ * Injection a la volee pour eviter un loader visible hors transition.
+ * On attend les polices pour eviter des mesures fausses.
+ * Un seul listener resize pour ne pas empiler les callbacks.
  */
 
 function ensureAuthLoader() {
+  // Si l'overlay n'existe pas sur la page, on sort proprement.
   if (!rippleOverlay) return;
+  // Ne pas recreer le loader s'il est deja present.
   if (rippleOverlay.querySelector('.auth-loader')) return;
   const loader = document.createElement('div');
   loader.className = 'auth-loader';
@@ -74,22 +82,25 @@ function ensureAuthLoader() {
   rippleOverlay.appendChild(loader);
   fitLoaderLabel(loader);
   if (document.fonts && document.fonts.ready) {
+    // Recalculer apres chargement des polices pour la bonne largeur.
     document.fonts.ready.then(() => fitLoaderLabel(loader));
   }
   if (!authLoaderResizeBound) {
     authLoaderResizeBound = true;
     window.addEventListener('resize', () => {
       const activeLoader = rippleOverlay.querySelector('.auth-loader');
+      // Recalculer seulement si le loader est visible.
       if (activeLoader) fitLoaderLabel(activeLoader);
     });
   }
 }
 
-// Active le bouton œil sur chaque champ mot de passe pour basculer texte/masqué.
+// L'oeil permet de verifier la saisie sans sacrifier la securite par defaut.
 function initPasswordToggles() {
   document.querySelectorAll('.password-field').forEach((wrapper) => {
     const input = wrapper.querySelector('input');
     const toggle = wrapper.querySelector('.password-toggle');
+    // Certains blocs peuvent etre absents selon la page.
     if (!input || !toggle) return;
     toggle.setAttribute('aria-pressed', 'false');
     toggle.addEventListener('click', () => {
@@ -102,34 +113,41 @@ function initPasswordToggles() {
   });
 }
 
-// Animation ripple puis redirection vers le tableau de bord après succès.
+// Une transition visuelle donne un feedback de succes avant la navigation.
 function playRippleAndRedirect() {
+  // Fallback direct si l'overlay n'existe pas.
   if (!rippleOverlay) {
     window.location.href = 'menu.html';
     return;
   }
+  // Eviter de relancer la transition plusieurs fois.
   if (document.body.classList.contains('auth-transition')) return;
   const prefersReduced = window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Respecter les preferences d'accessibilite.
   if (prefersReduced) {
     window.location.href = 'menu.html';
     return;
   }
   document.body.classList.add('auth-transition');
+  // Declencher l'animation de sortie du mur d'auth.
   if (authWall) authWall.classList.add('is-exiting');
   ensureAuthLoader();
   rippleOverlay.classList.add('show');
+  // Delai court pour laisser le ripple finir avant la redirection.
   setTimeout(() => { window.location.href = 'menu.html'; }, 1200);
 }
 
-// Affiche le champ "mot secret" uniquement si le rôle professeur est choisi.
+// Le mot secret n'est demande que pour les roles sensibles.
 function updateSecretVisibility() {
+  // Eviter une erreur si la page ne contient pas le select.
   if (!roleSelect || !secretRow) return;
   const needsSecret = ['professeur', 'technicien', 'administrateur'].includes(roleSelect.value);
   secretRow.hidden = !needsSecret;
   secretRow.style.display = needsSecret ? 'block' : 'none';
   const secretInput = secretRow.querySelector('input');
   if (secretInput) {
+    // Placeholder explicite pour limiter les confusions de role.
     const label = roleSelect.value === 'professeur'
       ? 'Mot de passe professeur (prof)'
       : roleSelect.value === 'technicien'
@@ -138,11 +156,12 @@ function updateSecretVisibility() {
     secretInput.placeholder = label;
   }
   if (!needsSecret && secretInput) {
+    // On efface pour ne pas envoyer un secret inutile.
     secretInput.value = '';
   }
 }
 
-// Bascule entre bloc login et bloc inscription.
+// On conserve les deux formulaires mais on en affiche un seul a la fois.
 function switchMode(mode) {
   const isLogin = mode === 'login';
   if (loginForm) {
@@ -162,20 +181,25 @@ function switchMode(mode) {
     registerBlock.style.display = isLogin ? 'none' : 'block';
   }
   updateSecretVisibility();
+  // On nettoie les messages pour ne pas melanger les etats.
   if (loginMsg) loginMsg.textContent = '';
   if (registerMsg) registerMsg.textContent = '';
 }
 
+// Boutons explicites pour changer de mode sans navigation.
 if (toggleRegisterBtn) toggleRegisterBtn.addEventListener('click', () => switchMode('register'));
 if (backToLoginBtn) backToLoginBtn.addEventListener('click', () => switchMode('login'));
+// Mode par defaut au chargement pour simplifier l'acces.
 switchMode('login');
+// Activer la logique des boutons oeil au demarrage.
 initPasswordToggles();
 
-// Soumission du formulaire de connexion.
+// On intercepte la soumission pour rester en SPA et afficher un message.
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const login = loginForm.elements['login'].value.trim();
   const password = loginForm.elements['password'].value;
+  // Validation minimale cote front pour eviter un appel vide.
   if (!login || !password) return;
   loginMsg.textContent = 'Connexion en cours...';
   loginMsg.className = 'message';
@@ -189,10 +213,11 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 if (roleSelect && secretRow) {
+  // Maj immediate du champ secret au changement de role.
   roleSelect.addEventListener('change', updateSecretVisibility);
 }
 
-// Soumission du formulaire de création de compte.
+// On gere la creation de compte sans recharger la page.
 if (registerForm) {
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -202,6 +227,7 @@ if (registerForm) {
     const confirm = registerForm.elements['confirm'].value;
     const role = registerForm.elements['role'].value;
     const secret = registerForm.elements['secret'].value;
+    // Validation minimale pour eviter les erreurs triviales.
     if (!email || !login || !password || !confirm) return;
     registerMsg.textContent = 'Création du compte...';
     registerMsg.className = 'message';
@@ -215,8 +241,8 @@ if (registerForm) {
   });
 }
 
-// Appels API bas niveau.
-// Envoie les identifiants au backend et renvoie la réponse JSON.
+// Isoler les appels API facilite les tests et la maintenance.
+// Credentials=include pour recuperer la session PHP.
 async function apiLogin(payload) {
   const res = await fetch(`${API.auth}?action=login`, {
     method: 'POST',
@@ -226,11 +252,14 @@ async function apiLogin(payload) {
   });
   let data = null;
   try {
+    // On tente un JSON pour afficher les erreurs du backend.
     data = await res.json();
   } catch (parseErr) {
+    // Message clair si le serveur ne repond pas en JSON.
     throw new Error('Reponse non valide (PHP non lance ?)');
   }
   if (!res.ok) {
+    // On remonte le message serveur pour guider l'utilisateur.
     const err = new Error(data?.error || 'Erreur de connexion');
     err.status = res.status;
     throw err;
@@ -238,7 +267,7 @@ async function apiLogin(payload) {
   return data;
 }
 
-// Crée un compte via l’API d’authentification et renvoie la réponse JSON.
+// Meme pattern que login pour uniformiser les erreurs.
 async function apiRegister(payload) {
   const res = await fetch(`${API.auth}?action=register`, {
     method: 'POST',
@@ -248,11 +277,14 @@ async function apiRegister(payload) {
   });
   let data = null;
   try {
+    // On tente un JSON pour lire l'erreur renvoyee par PHP.
     data = await res.json();
   } catch (parseErr) {
+    // Message explicite si le backend ne repond pas correctement.
     throw new Error('Reponse non valide (PHP non lance ?)');
   }
   if (!res.ok) {
+    // Priorite au message serveur si dispo.
     const err = new Error(data?.error || 'Erreur de creation');
     err.status = res.status;
     throw err;

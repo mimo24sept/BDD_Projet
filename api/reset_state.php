@@ -1,17 +1,19 @@
 <?php
 declare(strict_types=1);
-// Réinitialise la base de démo : tout disponible, emprunts/rendus supprimés (admin).
+// Endpoint de reset pour repartir d'un etat de demo propre et reproductible.
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
+// Preflight CORS sans logique metier.
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
+// Session requise pour verifier le role admin.
 session_start();
 require_once __DIR__ . '/db.php';
 
@@ -43,11 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 try {
+    // Transaction pour garder un etat coherent si une requete echoue.
     $pdo->beginTransaction();
-    // Tout repasser disponible.
+    // On remet tout disponible pour repartir d'un stock utilisable.
     $pdo->exec('UPDATE `Materiel` SET Dispo = "Oui"');
 
-    // Supprimer emprunts et rendus pour partir d’un état vierge.
+    // Supprimer emprunts et rendus pour repartir d'un historique vierge.
     $pdo->exec('DELETE FROM `Rendu`');
     $pdo->exec('DELETE FROM `Emprunt`');
 

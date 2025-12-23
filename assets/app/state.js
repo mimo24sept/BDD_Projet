@@ -1,10 +1,9 @@
 /*
-  Fichier: assets/app/state.js
-  Role: stockage central de letat front.
-  Definit les valeurs initiales des filtres et listes.
-  Partage le state entre modules de rendu et dAPI.
-  Source de verite cote interface.
+  Fichier: assets/app/state.js.
+  Source unique pour garder l'UI coherente entre modules.
+  Valeurs par defaut pour demarrer sans erreurs de lecture.
 */
+// Objet partage pour eviter les etats dupliques.
 export const state = {
   user: null,
   inventory: [],

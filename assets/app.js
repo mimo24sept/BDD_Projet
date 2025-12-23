@@ -1,9 +1,7 @@
 /*
-  Fichier: assets/app.js
-  Role: point dentree du tableau de bord.
-  Initialise letat, branche les events et lance les chargements.
-  Coordonne les rendus et les redirections.
-  Sappuie sur les modules du dossier assets/app/.
+  Fichier: assets/app.js.
+  Point d'entree unique pour garder un flux d'initialisation clair.
+  Regroupe le wiring des evenements et le chargement initial des donnees.
 */
 import { API } from './app/config.js';
 import { state } from './app/state.js';
@@ -48,12 +46,14 @@ import { setAuthUI, setupTabIndicatorResize, updateTabs } from './app/ui.js';
 import { placeholderImage } from './app/utils.js';
 
 if (!dom.appShell) {
-  // Stop early if we are not on the dashboard page.
+  // Sortie rapide pour eviter d'accrocher des events hors dashboard.
 } else {
+  // Prepare l'indicateur d'onglets avant les interactions.
   setupTabIndicatorResize();
 
   if (dom.logoutBtn) {
     dom.logoutBtn.addEventListener('click', async () => {
+      // Logout puis nettoyage local pour eviter un etat stale.
       await apiLogout();
       state.user = null;
       window.location.href = 'index.html';
@@ -64,6 +64,7 @@ if (!dom.appShell) {
     tab.addEventListener('click', () => {
       const nextTab = tab.dataset.tab;
       if (state.activeTab === nextTab) return;
+      // Stocke l'onglet actif pour maintenir l'etat UI.
       state.activeTab = nextTab;
       updateTabs();
     });
@@ -71,6 +72,7 @@ if (!dom.appShell) {
 
   if (dom.searchInput) {
     dom.searchInput.addEventListener('input', () => {
+      // Filtre instantane pour eviter un aller-retour reseau.
       state.filters.search = dom.searchInput.value.toLowerCase();
       renderCatalog();
     });
@@ -101,6 +103,7 @@ if (!dom.appShell) {
   }
   if (dom.statsEls.cards.total) {
     dom.statsEls.cards.total.addEventListener('click', () => {
+      // Vue "total" par defaut pour la synthese.
       state.userStatsView = 'total';
       renderStats();
       renderUserStatsList();
@@ -162,6 +165,7 @@ if (!dom.appShell) {
   }
   if (dom.adminExportBtn) {
     dom.adminExportBtn.addEventListener('click', () => {
+      // Export declenche uniquement par action explicite.
       exportInventoryPdf();
     });
   }
@@ -187,6 +191,7 @@ if (!dom.appShell) {
         return;
       }
       if (modalMode === 'extend') {
+        // Prolongation: on ne touche que la date de fin.
         const todayStr = new Date().toISOString().slice(0, 10);
         const baseDue = extensionContext?.due || '';
         if (!extensionContext?.loanId) {
@@ -225,6 +230,7 @@ if (!dom.appShell) {
         return;
       }
       if (modalMode === 'reserve' && !state.user) {
+        // Reserve uniquement si l'utilisateur est connecte.
         dom.modalMsg.textContent = 'Connectez-vous pour reserver';
         dom.modalMsg.className = 'message err';
         return;
@@ -256,6 +262,7 @@ if (!dom.appShell) {
         let pendingMaintenance = false;
         let pendingReservation = false;
         if (modalMode === 'maintenance') {
+          // Maintenance peut ecraser des reservations, confirmation necessaire.
           const dates = datesBetween(range.start, range.end);
           const overrides = dates.filter((d) => blockedDates[d] && blockedDates[d] !== 'maintenance').length;
           const techOnly = isTechnician() && !isAdmin();
@@ -274,6 +281,7 @@ if (!dom.appShell) {
             dom.modalMsg.className = 'message ok';
           }
         } else {
+          // Reservation standard via endpoint equipement.
           const res = await fetch(`${API.equipment}?action=reserve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -314,6 +322,7 @@ if (!dom.appShell) {
     dom.adminForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!isAdmin()) return;
+      // Validation rapide cote front avant l'upload.
       const selectedCats = Array.from(dom.adminInputs.categories || [])
         .filter((c) => c.checked)
         .map((c) => c.value);
@@ -365,9 +374,8 @@ if (!dom.appShell) {
     });
   }
   /**
-   * Sequence principale de demarrage du dashboard.
-   * Charge la session, ajuste le role et recupere les donnees.
-   * Declenche les rendus initiaux une fois les appels termines.
+   * Demarrage unique pour charger session + donnees avant rendu.
+   * Evite un affichage partiel qui pourrait tromper l'utilisateur.
    */
   (async function start() {
     await apiSession();
@@ -376,6 +384,7 @@ if (!dom.appShell) {
       return;
     }
     if (isTechnician() && !isAdmin()) {
+      // Les techniciens arrivent directement sur la maintenance.
       state.adminStatsView = 'degrades';
       state.activeTab = 'admin-maintenance';
     }
