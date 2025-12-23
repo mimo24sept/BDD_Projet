@@ -136,11 +136,11 @@ body.auth-transition .auth-card::after {
 .auth-loader {
   display: grid;
   place-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  --loader-width: min(320px, 72vw);
-  --loader-height: 14px;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  --loader-width: min(2400px, 100vw);
+  --loader-height: 22px;
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.2s ease, transform 0.3s ease;
@@ -155,7 +155,7 @@ body.auth-transition .auth-card::after {
   width: var(--loader-width);
   height: var(--loader-height);
   padding: 0;
-  border-radius: 999px;
+  border-radius: 4px;
   background: transparent;
   box-shadow: none;
   overflow: hidden;
@@ -164,30 +164,35 @@ body.auth-transition .auth-card::after {
 .loader-bar {
   position: absolute;
   inset: 0;
-  border-radius: 999px;
+  border-radius: 4px;
   background: linear-gradient(90deg, #ffc59a 0%, #ff8c32 45%, #ff6a00 100%);
   transform: scaleX(0);
   transform-origin: left center;
-  animation: loaderFill 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: loaderFill 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   box-shadow: none;
 }
 /* Texte large pour renforcer l'identite visuelle. */
 .loader-label {
   position: relative;
   width: var(--loader-width);
-  font-weight: 800;
+  font-family: 'Archivo Black', 'Manrope', system-ui, sans-serif;
+  font-weight: 400;
   text-transform: uppercase;
   font-size: 120px;
-  line-height: 0.9;
-  --letter-gap: 5px;
+  line-height: 0.76;
+  --letter-gap: -36px;
+  letter-spacing: -0.14em;
 }
 .label-layer {
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
-  gap: var(--letter-gap);
+  gap: 0;
   width: 100%;
   letter-spacing: 0;
+}
+.label-layer span + span {
+  margin-left: -36px;
 }
 .loader-label .label-base {
   color: transparent;
@@ -201,13 +206,16 @@ body.auth-transition .auth-card::after {
   justify-content: space-between;
   color: transparent;
   clip-path: inset(0 100% 0 0);
-  animation: loaderText 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: loaderText 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .loader-label .label-fill span {
-  background: linear-gradient(90deg, #ff8c32, #ff6a00);
+  background: #ff8c32;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 106, 0, 0.9);
+  text-shadow: 2px 2px 0 rgba(255, 106, 0, 0.6);
+  paint-order: stroke fill;
 }
 /* Cercles utilises par l'animation ripple (cache par defaut). */
 .ripple-circle {

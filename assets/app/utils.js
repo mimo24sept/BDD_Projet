@@ -146,19 +146,39 @@ export function formatConditionLabel(value = '') {
   return value || 'N/C';
 }
 /**
+ * Genere les options HTML a partir dune liste d etats.
+ * Selectionne letat courant si fourni.
+ * Echappe les valeurs pour securite.
+ */
+
+export function buildConditionOptions(conditions = [], selected = '') {
+  const selectedNorm = normalizeCondition(selected);
+  return conditions
+    .map((c) => {
+      const value = normalizeCondition(c) || c;
+      const label = formatConditionLabel(c);
+      const isSelected = selectedNorm && value === selectedNorm;
+      return `<option value="${escapeHtml(value)}"${isSelected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    })
+    .join('');
+}
+/**
  * Genere le HTML des options de retour.
  * Sappuie sur allowedReturnConditions.
- * Echappe les valeurs pour securite.
  */
 
 export function buildReturnOptions(baseCondition = '') {
   const allowed = allowedReturnConditions(baseCondition);
-  return allowed
-    .map((c) => {
-      const value = normalizeCondition(c) || c;
-      return `<option value="${escapeHtml(value)}">${escapeHtml(formatConditionLabel(c))}</option>`;
-    })
-    .join('');
+  return buildConditionOptions(allowed, baseCondition);
+}
+/**
+ * Genere le HTML des options pour une fin de maintenance.
+ * Autorise les ameliorations par rapport a letat courant.
+ */
+
+export function buildMaintenanceOptions(baseCondition = '') {
+  const ordered = ['neuf', 'bon', 'passable', 'reparation nécessaire'];
+  return buildConditionOptions(ordered, baseCondition);
 }
 /**
  * Detecte si l objet est en reparation necessaire.

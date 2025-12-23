@@ -625,7 +625,7 @@ function return_pret(PDO $pdo, int $userId): void
         $currentMat->execute([':mid' => $materielId]);
         $prevCondition = strtolower((string) ($currentMat->fetchColumn() ?: 'bon'));
 
-        $condition = $isMaintenanceLoan ? 'bon' : ($condition !== '' ? $condition : $prevCondition);
+        $condition = $condition !== '' ? $condition : $prevCondition;
         $condition = normalize_condition($condition);
         $prevConditionNorm = normalize_condition($prevCondition);
 

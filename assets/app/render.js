@@ -14,6 +14,7 @@ import {
 } from './permissions.js';
 import {
   barColorForProgress,
+  buildMaintenanceOptions,
   buildReturnOptions,
   dueSeverity,
   escapeHtml,
@@ -434,6 +435,9 @@ export function renderMaintenanceAgenda() {
     const visualSeverity = hasStarted ? severityVisual(severity) : 'ok';
     const barColor = barColorForProgress(progress, visualSeverity);
     const statusLabel = hasStarted ? severityLabel(severity) : 'Planifiée';
+    const baseCondition = m.condition || '';
+    const conditionLabel = formatConditionLabel(baseCondition);
+    const optionsHtml = buildMaintenanceOptions(baseCondition);
     const row = document.createElement('div');
     row.className = `loan-item loan-${visualSeverity}`;
     row.innerHTML = `
@@ -441,19 +445,25 @@ export function renderMaintenanceAgenda() {
          <div class="small-title">Maintenance planifiée - ${escapeHtml(statusLabel)}</div>
          <div style="font-weight:800">${escapeHtml(m.name)}</div>
          <div class="loan-meta">Du ${formatDisplayDate(m.start)} au ${formatDisplayDate(m.due)} — ${escapeHtml(m.user || 'Administrateur')}</div>
+         <div class="loan-meta">Etat actuel: ${escapeHtml(conditionLabel)}</div>
          <div class="progress" aria-hidden="true"><div style="width:${progress}%; background:${barColor}"></div></div>
        </div>
         <div class="admin-actions">
+          <select data-cond="${m.id}">
+            ${optionsHtml}
+          </select>
           <button type="button" class="ghost" data-id="${m.id}">Fin de maintenance</button>
         </div>
       `;
     const btn = row.querySelector('button');
+    const cond = row.querySelector('select');
     if (btn) {
       btn.addEventListener('click', async () => {
         btn.disabled = true;
         btn.textContent = 'Clôture...';
         try {
-          await apiReturnLoan(m.id, '');
+          const condition = cond ? cond.value : '';
+          await apiReturnLoan(m.id, condition);
           await Promise.all([apiFetchAdminLoans(), apiFetchEquipment()]);
           renderApp();
         } catch (err) {
