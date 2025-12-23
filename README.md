@@ -11,7 +11,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 
 - **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (boot + events), `assets/app/` (`api.js`, `render.js`, `calendar.js`, `ui.js`, `utils.js`, `state.js`, `dom.js`, `permissions.js`, `config.js`), `assets/login.js` (auth), `assets/styles/base.css` + `assets/styles/auth.css` + `assets/styles/app.css` (UI).
 - **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations/prolongations), `api/reset_state.php` (reset), `api/config.php` (DSN).
-- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`, `Prolongation`). Créations lazy : `MaintenanceRequest`, `ReservationRequest`, colonne `User.LastLogin`, colonne `Materiel.Image`.
+- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`, `Prolongation`, `MaintenanceRequest`, `ReservationRequest`). Créations lazy : colonne `User.LastLogin`, colonne `Materiel.Image` (et tables de demandes si absentes).
 
 </details>
 
@@ -122,7 +122,7 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
    php -S 127.0.0.1:8000 -t .
    ```
    Ouvrir `http://127.0.0.1:8000/index.html`.
-5. Comptes de test (dump) : admin `admin/admin`, user `testtruc/1234`. Secrets de création : prof=`prof`, technicien=`tech`, admin=`admin`.
+5. Comptes de test (dump) : admin `admin/admin`, élève `testtruc/1234`, prof `prof/prof`, technicien `tech/tech`, élève en retard `retard/retard` (déclenche une demande de réservation). Secrets de création : prof=`prof`, technicien=`tech`, admin=`admin`.
 
 ## Dépannage
 - **401/403** : session expirée ou rôle insuffisant (admin requis). Reconnexion ou vérifier cookies.
