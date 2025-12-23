@@ -42,13 +42,9 @@ CREATE TABLE `Categorie` (
 --
 
 INSERT INTO `Categorie` (`IDcategorie`, `Categorie`) VALUES
-(1, 'Info'),
-(2, 'Elen'),
-(3, 'Ener'),
-(4, 'Auto'),
-(5, 'Oscilloscope'),
-(6, 'Outil de mesure'),
-(7, 'Generateur');
+(1, 'Oscilloscope'),
+(2, 'Outil de mesure'),
+(3, 'Generateur');
 
 -- --------------------------------------------------------
 
@@ -65,21 +61,6 @@ CREATE TABLE `Emprunt` (
   `ETATemprunt` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Déchargement des données de la table `Emprunt`
---
-
-INSERT INTO `Emprunt` (`IDemprunt`, `IDmateriel`, `IDuser`, `DATEdebut`, `DATEfin`, `ETATemprunt`) VALUES
-(1, 1, 1, DATE_SUB(CURDATE(), INTERVAL 2 DAY), DATE_ADD(CURDATE(), INTERVAL 5 DAY), 'En cours'),
-(2, 2, 1, DATE_SUB(CURDATE(), INTERVAL 1 DAY), DATE_ADD(CURDATE(), INTERVAL 6 DAY), 'Annulation demandee'),
-(3, 3, 3, DATE_SUB(CURDATE(), INTERVAL 3 DAY), DATE_ADD(CURDATE(), INTERVAL 4 DAY), 'En cours'),
-(4, 4, 4, DATE_SUB(CURDATE(), INTERVAL 1 DAY), DATE_ADD(CURDATE(), INTERVAL 2 DAY), 'Maintenance'),
-(5, 5, 5, DATE_SUB(CURDATE(), INTERVAL 20 DAY), DATE_SUB(CURDATE(), INTERVAL 10 DAY), 'En cours'),
-(6, 6, 5, DATE_SUB(CURDATE(), INTERVAL 25 DAY), DATE_SUB(CURDATE(), INTERVAL 15 DAY), 'Terminé'),
-(7, 7, 5, DATE_SUB(CURDATE(), INTERVAL 15 DAY), DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'Terminé'),
-(8, 8, 3, DATE_ADD(CURDATE(), INTERVAL 10 DAY), DATE_ADD(CURDATE(), INTERVAL 17 DAY), 'En cours'),
-(9, 2, 1, DATE_SUB(CURDATE(), INTERVAL 40 DAY), DATE_SUB(CURDATE(), INTERVAL 30 DAY), 'Terminé');
-
 -- --------------------------------------------------------
 
 --
@@ -93,14 +74,6 @@ CREATE TABLE `Prolongation` (
   `Status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
   `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Déchargement des données de la table `Prolongation`
---
-
-INSERT INTO `Prolongation` (`IDprolongation`, `IDemprunt`, `DATEfinDemande`, `Status`, `CreatedAt`) VALUES
-(1, 3, DATE_ADD(CURDATE(), INTERVAL 10 DAY), 'pending', NOW()),
-(2, 1, DATE_ADD(CURDATE(), INTERVAL 8 DAY), 'rejected', DATE_SUB(NOW(), INTERVAL 1 DAY));
 
 -- --------------------------------------------------------
 
@@ -123,15 +96,8 @@ CREATE TABLE `Materiel` (
 -- Déchargement des données de la table `Materiel`
 --
 
-INSERT INTO `Materiel` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplacement`, `Dispo`, `NUMserie`, `Etat`, `Image`) VALUES
-(1, 'Oscilloscope Rigol DS1054Z', 5, 'B05', 'Non', 'OSC-001', 'Bon', NULL),
-(2, 'Multimetre Fluke 87V', 6, 'B01', 'Non', 'MM-087', 'Neuf', NULL),
-(3, 'Kit Raspberry Pi 4', 1, 'C02', 'Non', 'INF-004', 'Bon', NULL),
-(4, 'Alimentation 0-30V', 2, 'A07', 'Non', 'ELE-030', 'Passable', NULL),
-(5, 'Capteur energie', 3, 'D03', 'Non', 'ENE-101', 'Bon', NULL),
-(6, 'Robot line follower', 4, 'D05', 'Oui', 'AUT-210', 'Neuf', NULL),
-(7, 'Generateur de fonctions', 7, 'B02', 'Oui', 'GEN-210', 'Bon', NULL),
-(8, 'Analyseur logique USB', 1, 'C05', 'Oui', 'INF-LOG', 'Bon', NULL);
+INSERT INTO `Materiel` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplacement`, `Dispo`, `NUMserie`, `Etat`) VALUES
+(1, 'Osc1', 1, 'B05', 'Non', 'DSOX1102A', 'Bon');
 
 -- --------------------------------------------------------
 
@@ -146,15 +112,6 @@ CREATE TABLE `Rendu` (
   `ETATrendu` text NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Déchargement des données de la table `Rendu`
---
-
-INSERT INTO `Rendu` (`IDrendu`, `IDemprunt`, `DATErendu`, `ETATrendu`) VALUES
-(1, 6, DATE_SUB(CURDATE(), INTERVAL 10 DAY), 'Bon -> Passable'),
-(2, 7, DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'Bon'),
-(3, 9, DATE_SUB(CURDATE(), INTERVAL 29 DAY), 'Bon');
-
 -- --------------------------------------------------------
 
 --
@@ -168,60 +125,6 @@ CREATE TABLE `Notification` (
   `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `Seen` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Déchargement des données de la table `Notification`
---
-
-INSERT INTO `Notification` (`IDnotification`, `IDuser`, `Message`, `CreatedAt`, `Seen`) VALUES
-(1, 1, 'Votre réservation a été annulée suite à une maintenance planifiée.', NOW(), 0),
-(2, 5, 'Votre demande de prolongation a été refusée.', NOW(), 0);
-
--- --------------------------------------------------------
-
---
--- Structure de la table `MaintenanceRequest`
---
-
-CREATE TABLE `MaintenanceRequest` (
-  `IDmaintenance` int(11) NOT NULL,
-  `IDmateriel` int(11) NOT NULL,
-  `IDuser` int(11) NOT NULL,
-  `DATEdebut` date NOT NULL,
-  `DATEfin` date NOT NULL,
-  `Status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-  `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Déchargement des données de la table `MaintenanceRequest`
---
-
-INSERT INTO `MaintenanceRequest` (`IDmaintenance`, `IDmateriel`, `IDuser`, `DATEdebut`, `DATEfin`, `Status`, `CreatedAt`) VALUES
-(1, 6, 4, DATE_ADD(CURDATE(), INTERVAL 3 DAY), DATE_ADD(CURDATE(), INTERVAL 5 DAY), 'pending', NOW());
-
--- --------------------------------------------------------
-
---
--- Structure de la table `ReservationRequest`
---
-
-CREATE TABLE `ReservationRequest` (
-  `IDreservation` int(11) NOT NULL,
-  `IDmateriel` int(11) NOT NULL,
-  `IDuser` int(11) NOT NULL,
-  `DATEdebut` date NOT NULL,
-  `DATEfin` date NOT NULL,
-  `Status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-  `CreatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Déchargement des données de la table `ReservationRequest`
---
-
-INSERT INTO `ReservationRequest` (`IDreservation`, `IDmateriel`, `IDuser`, `DATEdebut`, `DATEfin`, `Status`, `CreatedAt`) VALUES
-(1, 8, 5, DATE_ADD(CURDATE(), INTERVAL 4 DAY), DATE_ADD(CURDATE(), INTERVAL 6 DAY), 'pending', NOW());
 
 -- --------------------------------------------------------
 
@@ -264,11 +167,8 @@ CREATE TABLE `User` (
 --
 
 INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `IDrole`, `DATEcreation`) VALUES
-(1, 'test.test@gmail.com', '1234', 'testtruc', 1, CURDATE()),
-(2, 'admin@geii.fr', 'admin', 'admin', 4, CURDATE()),
-(3, 'prof@geii.fr', 'prof', 'prof', 2, CURDATE()),
-(4, 'tech@geii.fr', 'tech', 'tech', 3, CURDATE()),
-(5, 'retard@geii.fr', 'retard', 'retard', 1, CURDATE());
+(1, 'test.test@gmail.com', '1234', 'testtruc', 1, '2025-11-24'),
+(2, 'admin@geii.fr', 'admin', 'admin', 4, '2025-11-24');
 
 --
 -- Index pour les tables déchargées
@@ -319,22 +219,6 @@ ALTER TABLE `Notification`
   ADD KEY `idx_notification_user_seen` (`IDuser`, `Seen`);
 
 --
--- Index pour la table `MaintenanceRequest`
---
-ALTER TABLE `MaintenanceRequest`
-  ADD PRIMARY KEY (`IDmaintenance`),
-  ADD KEY `idx_maint_req_material` (`IDmateriel`),
-  ADD KEY `idx_maint_req_user` (`IDuser`);
-
---
--- Index pour la table `ReservationRequest`
---
-ALTER TABLE `ReservationRequest`
-  ADD PRIMARY KEY (`IDreservation`),
-  ADD KEY `idx_res_req_material` (`IDmateriel`),
-  ADD KEY `idx_res_req_user` (`IDuser`);
-
---
 -- Index pour la table `Role`
 --
 ALTER TABLE `Role`
@@ -347,20 +231,6 @@ ALTER TABLE `User`
   ADD PRIMARY KEY (`IDuser`);
 
 --
--- Contraintes pour la table `MaintenanceRequest`
---
-ALTER TABLE `MaintenanceRequest`
-  ADD CONSTRAINT `fk_maint_req_material` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_maint_req_user` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE;
-
---
--- Contraintes pour la table `ReservationRequest`
---
-ALTER TABLE `ReservationRequest`
-  ADD CONSTRAINT `fk_res_req_material` FOREIGN KEY (`IDmateriel`) REFERENCES `Materiel` (`IDmateriel`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_res_req_user` FOREIGN KEY (`IDuser`) REFERENCES `User` (`IDuser`) ON DELETE CASCADE;
-
---
 -- AUTO_INCREMENT pour les tables déchargées
 --
 
@@ -368,7 +238,7 @@ ALTER TABLE `ReservationRequest`
 -- AUTO_INCREMENT pour la table `Categorie`
 --
 ALTER TABLE `Categorie`
-  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `Emprunt`
@@ -386,7 +256,7 @@ ALTER TABLE `Prolongation`
 -- AUTO_INCREMENT pour la table `Materiel`
 --
 ALTER TABLE `Materiel`
-  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT pour la table `Rendu`
@@ -401,18 +271,6 @@ ALTER TABLE `Notification`
   MODIFY `IDnotification` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT pour la table `MaintenanceRequest`
---
-ALTER TABLE `MaintenanceRequest`
-  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
--- AUTO_INCREMENT pour la table `ReservationRequest`
---
-ALTER TABLE `ReservationRequest`
-  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
 -- AUTO_INCREMENT pour la table `Role`
 --
 ALTER TABLE `Role`
@@ -422,7 +280,7 @@ ALTER TABLE `Role`
 -- AUTO_INCREMENT pour la table `User`
 --
 ALTER TABLE `User`
-  MODIFY `IDuser` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `IDuser` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
