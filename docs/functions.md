@@ -9,45 +9,79 @@
 
 | Fonction | Logique rapide |
 | --- | --- |
+| `fitLoaderLabel` | Ajuste la taille du texte GEII pour remplir la barre du loader. |
+| `ensureAuthLoader` | Injecte le loader au besoin et installe un resize unique. |
 | `initPasswordToggles` | Parcourt les champs mot de passe, branche le bouton œil (toggle `type` + aria). |
 | `playRippleAndRedirect` | Lance l’animation ripple si dispo puis redirige vers `menu.html` (sinon redirection directe). |
-| `updateSecretVisibility` | Affiche/masque le champ “mot secret” selon le rôle sélectionné (professeur). |
+| `updateSecretVisibility` | Affiche/masque le champ “mot secret” selon le rôle (prof/tech/admin). |
 | `switchMode` | Bascule entre formulaires login/register, rafraîchit l’UI et les messages. |
 | `apiLogin` / `apiRegister` | POST JSON vers `api/auth.php`, parse la réponse, lève en cas d’erreur HTTP. |
 
 </details>
 
 <details>
-<summary><strong>assets/app.js — API & état</strong></summary>
+<summary><strong>assets/app.js (bootstrap & événements)</strong></summary>
 
-- `apiSession` : GET session, met `state.user` ou null.
-- `apiFetchEquipment` : charge le catalogue, normalise catégories/tags, ordonne les réservations, ajoute placeholders/description.
-- `apiFetchLoans` : récupère prêts + stats + notifications non lues (annulations admin/maintenance), filtres, construit l’historique via `normalizeHistory`, récupère aussi les demandes de maintenance et de réservation.
-- `apiFetchAdminLoans` / `apiFetchAdminStats` : emprunts globaux et stats admin (si admin), remonte aussi les demandes de maintenance et de réservation.
-- `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser` : comptes via `api/auth.php`.
-- `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel`, `apiRequestExtension`, `apiDecideExtension`, `apiDecideReservationRequest` : actions retour/annulation/prolongation/validation réservations, puis rafraîchissement.
-- `apiCreateEquipment`, `apiDeleteEquipment`, `apiSetMaintenance`, `apiDecideMaintenance` : CRUD/maintenance matériel (upload image possible côté création), demandes de maintenance et validation admin, lèvent si erreur HTTP.
+- Branche les listeners (onglets, recherches, admin form, modale).
+- Charge session + données, applique les règles de rôle, déclenche `renderApp`.
+- Orchestre les actions de réservation/maintenance avec appels API puis re-render.
 
 </details>
 
 <details>
-<summary><strong>assets/app.js — rendu & helpers</strong></summary>
+<summary><strong>assets/app/api.js (appels API)</strong></summary>
 
-- `setAuthUI` / `isAdmin` / `applyRoleVisibility` : UI selon rôle/session.
-- `render` : orchestrateur des sous-rendus (tabs, tags, catalogues, prêts, stats).
-- `updateTabs` : active l’onglet courant, cache les autres sections.
-- `renderNotifications` : affiche les alertes d’annulation en bannière (notifications non lues).
-- Tags : `renderTags`, `renderAdminTags`, `renderMaintenanceTags` (chips filtrants + “Tous”).
-- Catalogues : `renderAdminCatalog`, `renderMaintenanceCatalog`, `renderCatalog` (recherche, tags, tri, cartes).
-- Maintenance : `renderMaintenanceAgenda` (liste, sévérité, bouton fin de maintenance, bloc des demandes “en attente” avec boutons valider/refuser côté admin).
-- Comptes : `renderAccounts` (login/email/rôle + actions).
-- Prêts user : `renderLoans` (tri sévérité/date, progression, actions rendre/annuler/prolonger).
-- Prêts admin : `renderAdminLoans` (2 colonnes : en cours vs annulations/résas à venir + bulles pour validations de réservations et demandes de prolongation).
-- Stats user/admin : `renderStats`, `renderUserStatsList`, `renderAdminStats`, `renderAdminStatsList`.
-- Etats matériel : `normalizeCondition`, `conditionRank`, `allowedReturnConditions`, `formatConditionLabel`, `buildReturnOptions`.
-- Modale/réservation : `openModal`, `closeModal`, `statusBadge`, `escapeHtml`, `formatDisplayDate`, `formatDateLocal`, `canonicalCategory`, `needsRepair`, `placeholderImage`.
-- Calendrier/dates : `isoWeekKey`, `weeksBetween`, `buildBlockedDates`, `isRangeFree`, `datesBetween`, `renderCalendar`, `handleDayClick`, `selectionRange`, `isDateSelected`, `isDateInSelection`, `dateDiffDays`, `nextAvailableDate`, `weekStartFromDate`, `addDays`, `parseManualInput`, `formatManualInput`, `handleManualDateInput`, `syncManualInputs`, `updateAvailabilityMessage`.
-- Sévérité : `dueSeverity`, `severityColor`, `severityLabel`.
+- `apiSession`, `apiFetchEquipment`, `apiFetchLoans`, `apiFetchAdminLoans`, `apiFetchAdminStats`.
+- `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser`.
+- `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel`, `apiRequestExtension`, `apiDecideExtension`, `apiDecideReservationRequest`.
+- `apiCreateEquipment`, `apiDeleteEquipment`, `apiSetMaintenance`, `apiDecideMaintenance`, `apiLogout`.
+
+</details>
+
+<details>
+<summary><strong>assets/app/render.js (rendu UI)</strong></summary>
+
+- `renderApp`, `renderNotifications`, `renderTags`, `renderAdminTags`, `renderMaintenanceTags`.
+- `renderCatalog`, `renderAdminCatalog`, `renderMaintenanceCatalog`.
+- `renderLoans`, `renderAdminLoans`, `renderMaintenanceAgenda`, `renderAccounts`.
+- `renderStats`, `renderUserStatsList`, `renderAdminStats`, `renderAdminStatsList`.
+- `exportInventoryPdf` (fenêtre d’impression dédiée).
+
+</details>
+
+<details>
+<summary><strong>assets/app/calendar.js (calendrier & modale)</strong></summary>
+
+- `openModal`, `openExtendModal`, `closeModal`, `getModalMode`, `getExtensionContext`, `getBlockedDates`.
+- `renderCalendar`, `handleDayClick`, `selectionRange`, `isRangeFree`.
+- `buildBlockedDates`, `datesBetween`, `updateAvailabilityMessage`, `nextAvailableDate`.
+
+</details>
+
+<details>
+<summary><strong>assets/app/ui.js (UI/onglets)</strong></summary>
+
+- `setAuthUI`, `applyRoleVisibility`, `updateTabs`.
+- `setupTabIndicatorResize`, `revealInContainer`.
+
+</details>
+
+<details>
+<summary><strong>assets/app/utils.js (helpers)</strong></summary>
+
+- Dates & format : `formatDisplayDate`, `formatDateLocal`, `isoWeekKey`, `weeksBetween`, `datesBetween`.
+- Catégories & états : `canonicalCategory`, `normalizeCondition`, `conditionRank`, `allowedReturnConditions`, `formatConditionLabel`.
+- UI : `placeholderImage`, `escapeHtml`, `statusBadge`, `dueSeverity`.
+
+</details>
+
+<details>
+<summary><strong>assets/app/state.js / dom.js / permissions.js / config.js</strong></summary>
+
+- `state` : source unique de l’état front.
+- `dom` : cache des nœuds DOM.
+- `permissions` : helpers `isAdmin`, `isTechnician`, `isProfessor`, `hasMaintenanceAccess`, `maxReservationDays`, `canViewAdminStats`.
+- `config` : endpoints API + tags + rangs d’état.
 
 </details>
 
@@ -60,10 +94,10 @@
 
 | Fonction | Logique |
 | --- | --- |
-| `login` | Lit JSON login/mdp, cherche par email/login, vérifie hash ou clair, met `LastLogin`, crée session (id/login/role). |
-| `logout` | Vide la session, message JSON. |
-| `register` | Valide email/mdp, protège rôle prof (mot secret), vérifie doublons, insère user, ouvre session. |
-| `current_user` | Renvoie user en session ou null. |
+| `login` | Lit JSON login/mdp, cherche par email/login, vérifie hash ou clair, met `LastLogin`, crée la session. |
+| `logout` | Vide la session, renvoie un JSON de confirmation. |
+| `register` | Valide email/mdp, protège rôles prof/tech/admin via secret, crée l’utilisateur et ouvre la session. |
+| `current_user` | Renvoie l’utilisateur en session ou null. |
 | `is_valid_password` | Accepte hash ou clair (dump). |
 | `lookup_role_id`, `list_users`, `normalize_role`, `set_role`, `delete_user`, `fetch_user_with_role`, `is_role_admin`, `is_admin`, `ensure_last_login_column` | Helpers rôles/colonnes, CRUD users admin-only, protections admin. |
 
@@ -75,11 +109,10 @@
 | Fonction | Logique |
 | --- | --- |
 | `list_equipment` | Jointure matériel/catégorie, périodes actives (prêt/maintenance), tags, semaines bloquées. |
-| `reserve_equipment` | Vérifie ID, dates valides/ordonnées, conflit actif, refuse le passé, bloque dispo si période courante, insère emprunt ; si ≥3 retards (hors admin/tech) → crée une `ReservationRequest` “pending”. |
-| `set_maintenance` | Vérifie ID/dates, (admin ou technicien) : si chevauchement et technicien → enregistre une `MaintenanceRequest` “pending”; côté admin, supprime les emprunts chevauchants en notifiant les utilisateurs impactés, bloque dispo si période courante, insère l’emprunt maintenance. |
-| `set_maintenance` | Vérifie ID/dates, (admin ou technicien) : si chevauchement et technicien → enregistre une `MaintenanceRequest` “pending”; côté admin, écourte les réservations chevauchées (fin la veille de la maintenance quand c’est possible, annule sinon) avec notification, bloque dispo si période courante, insère l’emprunt maintenance. |
-| `decide_maintenance_request` | Admin : approuve/refuse une `MaintenanceRequest`, applique le même raccourcissement/annulation sur les réservations impactées et notifie les utilisateurs, insère l’emprunt maintenance. |
-| `create_equipment` / `delete_equipment` | CRUD admin, génère référence, gère l’image optionnelle, renvoie item/statut. |
+| `reserve_equipment` | Vérifie ID/dates/conflits, refuse le passé, bloque dispo si période courante ; si ≥3 retards (hors admin/tech) → `ReservationRequest` “pending”. |
+| `set_maintenance` | Admin : raccourcit/annule les réservations chevauchantes + notifie ; technicien : demande “pending” si chevauchement. |
+| `decide_maintenance_request` | Admin : approuve/refuse une `MaintenanceRequest`, applique les mêmes ajustements + notifications. |
+| `create_equipment` / `delete_equipment` | CRUD admin, gère l’image optionnelle, renvoie item/statut. |
 | Helpers | `fetch_active_loans`, `fetch_equipment_by_id`, `map_status`, `merge_tags`, `normalize_categories`, `generate_reference`, `build_reference_prefix`, `transliterate_to_ascii`, `weeks_between`, `period_is_current`, `iso_week_key`, `adjust_overlapping_reservations`, `count_user_delays`, `ensure_maintenance_request_table`, `ensure_reservation_request_table`, `ensure_material_picture_column`, `store_uploaded_picture`, `is_admin`. |
 
 </details>
@@ -92,16 +125,25 @@
 | `fetch_loans` | Emprunts (user ou globaux si admin), garde matériel supprimé, calcule progression/type. |
 | `compute_start_date` | Début par défaut (J-7) si seule la fin existe. |
 | `progress_percent` | Ratio temps écoulé / durée totale. |
-| `build_stats` | (hors maintenance) retards (due < aujourd’hui ou rendu tardif), dégradations, totaux annuels, historique trié. |
+| `build_stats` | (hors maintenance) retards, dégradations, totaux annuels, historique trié. |
 | `build_admin_stats` | Retards/dégradations/maintenances de l’année, historique avec user + état de retour. |
-| `request_extension` / `decide_extension` | Crée une demande de prolongation côté user, puis validation/refus admin (contrôle durée max selon rôle, conflits, notification user). |
-| `return_pret` | Admin-only (technicien autorisé pour les maintenances) : contrôle accès, empêche double rendu, borne l’état, remet `Dispo` si plus d’emprunt actif, insère rendu (flag dégradation). |
+| `request_extension` / `decide_extension` | Crée une demande de prolongation côté user, puis validation/refus admin (contrôle durée max, conflits, notification). |
+| `return_pret` | Admin/technicien : contrôle accès, empêche double rendu, borne l’état, remet `Dispo`, insère rendu (flag dégradation). |
 | `request_cancel` | User/admin : vérifie accès + non-rendu, marque `Annulation demandee`. |
 | `admin_cancel` | Admin : supprime l’emprunt non rendu, notifie l’utilisateur, remet `Dispo` si aucune autre résa active aujourd’hui. |
-| `enqueue_notification` / `consume_notifications` | Stocke les notifications en base (annulation admin/maintenance) et renvoie les non lues en les marquant comme vues. |
-| `fetch_maintenance_requests` / `fetch_reservation_requests` | Liste les demandes “pending” (maintenance ou réservation) global admin ou filtrées par demandeur. |
-| `decide_reservation_request` | Admin : valide/refuse une `ReservationRequest`, re-vérifie conflit/durée/validité, crée l’emprunt et notifie l’utilisateur. |
-| `ensure_prolongation_table` / `ensure_maintenance_request_table` / `ensure_reservation_request_table` | Création lazy des tables `Prolongation`, `MaintenanceRequest` et `ReservationRequest`. |
+| `enqueue_notification` / `consume_notifications` | Stocke les notifications en base et renvoie les non lues. |
+| `fetch_maintenance_requests` / `fetch_reservation_requests` | Liste les demandes “pending” (maintenance ou réservation). |
+| `decide_reservation_request` | Admin : valide/refuse une `ReservationRequest`, re-vérifie conflit/durée/validité. |
+| `ensure_prolongation_table` / `ensure_maintenance_request_table` / `ensure_reservation_request_table` | Création lazy des tables associées. |
 | Helpers | `normalize_condition`, `condition_rank`, `is_degradation`, `is_admin`. |
+
+</details>
+
+<details>
+<summary><strong>api/install.php / api/reset_state.php / api/db.php</strong></summary>
+
+- `api/install.php` : import idempotent du dump SQL (si tables absentes).
+- `api/reset_state.php` : reset démo (dispo matériel + suppression emprunts/rendus), admin-only.
+- `api/db.php` : connexion PDO centralisée via `api/config.php`.
 
 </details>

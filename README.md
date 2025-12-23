@@ -9,9 +9,9 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 <details open>
 <summary><strong>🧭 Architecture rapide</strong></summary>
 
-- **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (logique & rendu), `assets/login.js` (auth), `assets/styles/base.css` + `assets/styles/auth.css` + `assets/styles/app.css` (UI).
+- **Frontend** : `index.html` (auth), `menu.html` (app), `assets/app.js` (boot + events), `assets/app/` (`api.js`, `render.js`, `calendar.js`, `ui.js`, `utils.js`, `state.js`, `dom.js`, `permissions.js`, `config.js`), `assets/login.js` (auth), `assets/styles/base.css` + `assets/styles/auth.css` + `assets/styles/app.css` (UI).
 - **Backend** : `api/auth.php` (login/register/rôle), `api/equipment.php` (catalogue, réservations, maintenance), `api/dashboard.php` (emprunts, stats, rendus, annulations/prolongations), `api/reset_state.php` (reset), `api/config.php` (DSN).
-- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`, `Prolongation`, `MaintenanceRequest`).
+- **Données** : `BDD/Projet_BDD.sql` (tables `User`, `Role`, `Materiel`, `Categorie`, `Emprunt`, `Rendu`, `Notification`, `Prolongation`). Créations lazy : `MaintenanceRequest`, `ReservationRequest`, colonne `User.LastLogin`, colonne `Materiel.Image`.
 
 </details>
 
@@ -21,10 +21,10 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 - Rôles : `Eleve` (utilisateur), `Professeur` (réservation jusqu’à 3 semaines, secret `prof`), `Technicien` (maintenance uniquement, secret `tech`), `Administrateur` (secret `admin`).
 - Réservation : pas de passé, durée max 14 jours (21 jours pour professeur), dates bloquées si déjà réservées/maintenance.
 - Prolongation : demande utilisateur, validation admin obligatoire, limite de durée selon le rôle et sans chevauchement avec une autre réservation/maintenance.
-- Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Terminé`.
+- Statuts prêt : `En cours`, `Annulation demandee`, `Maintenance`, `Maintenance terminee`, `Terminé`.
 - Etats matériel : `neuf`, `bon`, `passable`, `reparation nécessaire` (on ne peut pas améliorer l’état au retour).
 - `Materiel.Dispo` passe à “Non” dès qu’une réservation couvre aujourd’hui ; “Oui” quand plus aucun prêt actif.
-- Blocage retards : si un élève/professeur cumule 3 retards (prêts rendus en retard ou en retard non rendus), toute nouvelle réservation est refusée tant qu’un administrateur ne l’autorise pas.
+- Blocage retards : si un élève/professeur cumule 3 retards (prêts rendus en retard ou en retard non rendus), toute nouvelle réservation passe en demande `pending` pour validation administrateur.
 - Actions <span style="color:#d9534f;font-weight:600;">admin uniquement</span> : création/suppression matériel, rendus/annulations directes, stats globales, comptes. Maintenance : administrateur ou technicien ; si une maintenance technicien chevauche des réservations, elle part en demande “en attente” pour validation admin (sans suppression tant que non validée).
 - Annulations par admin ou maintenance : l’utilisateur concerné reçoit une notification (bannière) au prochain chargement de l’application.
 
@@ -46,41 +46,66 @@ Application web pour réserver, emprunter, rendre et maintenir le parc d’équi
 <details open>
 <summary><strong>🧱 Guide de code (survol)</strong></summary>
 
-- **assets/app.js** : état global, appels API (`api*`), rendus (catalogue, prêts user/admin, stats), modale + calendrier (blocage passé, durée max selon rôle, dates occupées), normalisation états (`normalizeCondition`, `conditionRank`, `buildBlockedDates`, `isoWeekKey`).
-- **assets/login.js** : bascule login/register, bouton œil mdp, `apiLogin`/`apiRegister`.
+- **assets/app.js** : point d’entrée, branche les listeners, charge session + données, orchestre modale/réservation/maintenance.
+- **assets/app/api.js** : appels fetch et normalisation des réponses dans le state.
+- **assets/app/render.js** : rendu UI (catalogue, prêts, maintenance, comptes, stats) + export PDF.
+- **assets/app/calendar.js** : sélection des dates, blocage périodes, logique de modale.
+- **assets/app/ui.js** : indicateur d’onglets, reveal, visibilité selon rôle.
+- **assets/app/utils.js** : helpers de format/normalisation (dates, catégories, états, placeholders).
+- **assets/app/state.js** / **assets/app/dom.js** / **assets/app/config.js** / **assets/app/permissions.js** : état, cache DOM, endpoints, règles de rôles.
+- **assets/login.js** : bascule login/register, bouton œil, loader ripple, `apiLogin`/`apiRegister`.
 - **api/auth.php** : sessions, rôles, LastLogin, CRUD users (admin).
-- **api/equipment.php** : catalogue + périodes actives, réservations (refus passé/conflits), maintenance (supprime réservations chevauchantes), CRUD matériel (admin).
-- **api/dashboard.php** : prêts + historique (garde matériel supprimé), rendus (contrôle état et dispo), annulations user/admin, stats retards/dégradations/maintenances.
+- **api/equipment.php** : catalogue + périodes actives, réservations (refus passé/conflits), maintenance (ajustements + demandes), CRUD matériel (admin).
+- **api/dashboard.php** : prêts + historique, rendus (contrôle état et dispo), annulations user/admin, stats retards/dégradations/maintenances.
+- **api/install.php** / **api/reset_state.php** : initialisation via dump SQL et reset démo.
 
 </details>
 
 ## 🔍 Détail des principales fonctions (logique interne)
 - **Frontend (`assets/app.js`)**
-  - `renderAdminLoans` : split en deux colonnes (gauche = prêts en cours avec retour/état, droite = annulations à traiter + réservations à venir annulables). Génère dynamiquement les boutons, applique des styles d’alerte sur les demandes, et réactualise les listes après chaque action.
-  - `renderCalendar` + `handleDayClick` : construit la grille du mois courant (précalcule les cellules, bloque les dates passées ou réservées, navigation mois ±1). Le clic choisit début/fin, vérifie longueur max (14/21j selon rôle) et rejette les plages occupées.
-  - `updateAvailabilityMessage` : vérifie plage sélectionnée (non passée si réservation, durée dans la limite du rôle, libre via `isRangeFree`) et met à jour le bouton/modale avec message ok/erreur.
-  - `apiReturnLoan` / `apiAdminCancelLoan` / `apiRequestCancel` : envoient l’action au backend, rafraîchissent ensuite les listes (`apiFetchLoans` + re-render) pour garder l’UI cohérente.
-  - `normalizeCondition` / `conditionRank` / `buildReturnOptions` : bornent les états disponibles à la baisse (impossible d’améliorer un état au retour), et formattent les options du select de retour.
-  - `buildBlockedDates` / `isRangeFree` : transforment les périodes d’emprunt/maintenance en map de dates bloquées (maintenance prioritaire), utilisées par le calendrier et la validation.
+  - Boot: charge session + données, applique les règles de rôle, branche les listeners (tabs, recherches, admin form).
+  - Modale: orchestre la réservation/maintenance et déclenche les appels API + rendu.
+- **Frontend (`assets/app/api.js`)**
+  - `apiSession`, `apiFetchEquipment`, `apiFetchLoans`, `apiFetchAdminLoans`, `apiFetchAdminStats` : lectures API + normalisation.
+  - `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser` : gestion des comptes.
+  - `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel`, `apiRequestExtension`, `apiDecideExtension`, `apiDecideReservationRequest`.
+  - `apiCreateEquipment`, `apiDeleteEquipment`, `apiSetMaintenance`, `apiDecideMaintenance`, `apiLogout`.
+- **Frontend (`assets/app/render.js`)**
+  - `renderApp` : orchestre notifications, tags, catalogues, prêts, stats.
+  - `renderCatalog`, `renderLoans`, `renderAdminLoans`, `renderMaintenanceCatalog`, `renderMaintenanceAgenda`, `renderAccounts`.
+  - `renderStats`, `renderUserStatsList`, `renderAdminStats`, `renderAdminStatsList`.
+  - `exportInventoryPdf` : ouvre une fenêtre d’impression dédiée.
+- **Frontend (`assets/app/calendar.js`)**
+  - `openModal`, `openExtendModal`, `closeModal` : gestion de la modale.
+  - `renderCalendar`, `handleDayClick`, `selectionRange`, `isRangeFree`.
+  - `buildBlockedDates`, `datesBetween`, `updateAvailabilityMessage`, `nextAvailableDate`.
+- **Frontend (`assets/app/ui.js` / `assets/app/utils.js`)**
+  - UI: `applyRoleVisibility`, `updateTabs`, `setupTabIndicatorResize`, `revealInContainer`, `setAuthUI`.
+  - Utils: `formatDisplayDate`, `formatDateLocal`, `canonicalCategory`, `needsRepair`, `placeholderImage`, `normalizeCondition`, `conditionRank`, `allowedReturnConditions`, `dueSeverity`.
 - **Frontend (`assets/login.js`)**
-  - `initPasswordToggles` : attache les boutons œil aux champs mdp (aria, type text/password).
-  - `switchMode` / `updateSecretVisibility` : alternent login/register et affichent le champ secret pour prof uniquement.
-  - `apiLogin` / `apiRegister` : POST JSON vers `api/auth.php`, gèrent les erreurs et déclenchent l’animation ripple avant redirection.
+  - `fitLoaderLabel`, `ensureAuthLoader`, `initPasswordToggles`, `playRippleAndRedirect`.
+  - `updateSecretVisibility`, `switchMode`, `apiLogin`, `apiRegister`.
 - **Backend Auth (`api/auth.php`)**
-  - `login` : récupère user par email ou login, vérifie hash ou mot de passe en clair (dump initial), met à jour `LastLogin`, stocke l’id/role en session.
-  - `register` : valide email/mots de passe, rôle professeur protégé par secret côté front, crée l’utilisateur et ouvre la session.
+  - `login` : récupère user par email ou login, vérifie hash ou clair (dump initial), met à jour `LastLogin`, stocke l’id/role en session.
+  - `register` : valide email/mots de passe, rôle prof/tech/admin protégé par secret, crée l’utilisateur et ouvre la session.
   - `set_role` / `delete_user` : sécurisées admin, empêchent de retirer/supprimer un admin existant par erreur.
 - **Backend Catalogue/Reservations (`api/equipment.php`)**
-  - `list_equipment` : jointure matériel + catégories, récupère les réservations/maintenances actives et les encode en périodes/semaines pour le front.
-  - `reserve_equipment` : refuse identifiant invalide, dates mal formées, période inversée, conflit d’emprunt, et toute date de début passée ; bloque la dispo si la réservation commence maintenant.
-  - `set_maintenance` : annule les réservations chevauchantes (hors maintenances existantes), crée une entrée maintenance et met à jour la dispo si période courante.
-  - `create_equipment` / `delete_equipment` : CRUD admin, renvoient l’équipement mis à jour pour rafraîchir le front.
+  - `list_equipment` : jointure matériel + catégories, périodes actives, tags, réservations/maintenance.
+  - `reserve_equipment` : valide dates + conflits, refuse le passé, crée une `ReservationRequest` si 3+ retards (hors admin/tech).
+  - `set_maintenance` : technicien → demande pending si chevauchement ; admin → raccourcit/annule les réservations chevauchantes et notifie.
+  - `decide_maintenance_request` : admin valide/refuse une demande, applique les mêmes ajustements.
+  - `create_equipment` / `delete_equipment` : CRUD admin, upload image, renvoi item pour rafraîchir l’UI.
 - **Backend Emprunts/Stats (`api/dashboard.php`)**
-  - `fetch_loans` : renvoie les emprunts (utilisateur ou tous côté admin) en conservant ceux dont le matériel a été supprimé (nom “Matériel supprimé”), calcule la progression et le type.
-  - `return_pret` : contrôle droits (admin), empêche le double rendu, borne l’état retourné (pas d’amélioration), met `Materiel.Dispo` à “Oui” si plus d’emprunt actif sur la période, insère le rendu (flag dégradation si état moindre).
-  - `request_cancel` : marque un prêt comme “Annulation demandee” après contrôle d’accès et non-rendu.
-  - `admin_cancel` : supprime un emprunt non rendu, puis remet la dispo du matériel à “Oui” si aucune autre réservation active ne couvre la date courante.
-  - `build_stats` / `build_admin_stats` : calculent retards (dates de fin < aujourd’hui ou rendus tardifs), dégradations (état rendu vs emprunt), maintenances, et fournissent l’historique trié.
+  - `fetch_loans` : renvoie les emprunts (user ou globaux), conserve matériel supprimé, calcule progression/type.
+  - `return_pret` : contrôle accès, empêche double rendu, borne l’état, met `Dispo`, insère le rendu (flag dégradation).
+  - `request_cancel` / `admin_cancel` : annulation user/admin + notifications.
+  - `request_extension` / `decide_extension` : demandes de prolongation + validation admin.
+  - `decide_reservation_request` : admin valide/refuse une `ReservationRequest` après contrôles.
+  - `build_stats` / `build_admin_stats` : retards, dégradations, maintenances, historiques.
+- **Backend utilitaires**
+  - `api/install.php` : import idempotent du dump SQL.
+  - `api/reset_state.php` : remet l’état démo (dispo, emprunts, rendus).
+  - `api/db.php` : connexion PDO centralisée via `api/config.php`.
 
 ## Installation et lancement
 1. Cloner puis se placer dans le dossier :
