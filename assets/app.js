@@ -45,6 +45,14 @@ import {
 import { setAuthUI, setupTabIndicatorResize, updateTabs } from './app/ui.js';
 import { placeholderImage } from './app/utils.js';
 
+function buildQueryWithFlag() {
+  const params = new URLSearchParams(window.location.search || '');
+  const flag = params.get('i');
+  if (!flag) params.set('i', '1');
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
 if (!dom.appShell) {
   // Sortie rapide pour eviter d'accrocher des events hors dashboard.
 } else {
@@ -56,7 +64,7 @@ if (!dom.appShell) {
       // Logout puis nettoyage local pour eviter un etat stale.
       await apiLogout();
       state.user = null;
-      const suffix = `${window.location.search || ''}${window.location.hash || ''}`;
+      const suffix = `${buildQueryWithFlag()}${window.location.hash || ''}`;
       window.location.href = `${BASE_PATH}index.html${suffix}`;
     });
   }
@@ -381,7 +389,7 @@ if (!dom.appShell) {
   (async function start() {
     await apiSession();
     if (!state.user) {
-      const suffix = `${window.location.search || ''}${window.location.hash || ''}`;
+      const suffix = `${buildQueryWithFlag()}${window.location.hash || ''}`;
       window.location.href = `${BASE_PATH}index.html${suffix}`;
       return;
     }

@@ -23,6 +23,14 @@ const BASE_PATH = getBasePath();
 const API = { auth: `${BASE_PATH}api/auth.php` };
 const appUrl = (target) => `${BASE_PATH}${target}`;
 
+function buildQueryWithFlag() {
+  const params = new URLSearchParams(window.location.search || '');
+  const flag = params.get('i');
+  if (!flag) params.set('i', '1');
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
 // On met en cache les noeuds DOM pour eviter des querySelector repetes.
 const loginForm = document.querySelector('#login-form');
 const loginMsg = document.querySelector('#login-msg');
@@ -129,7 +137,7 @@ function initPasswordToggles() {
 
 // Une transition visuelle donne un feedback de succes avant la navigation.
 function playRippleAndRedirect() {
-  const suffix = `${window.location.search || ''}${window.location.hash || ''}`;
+  const suffix = `${buildQueryWithFlag()}${window.location.hash || ''}`;
   const targetUrl = `${appUrl('menu.html')}${suffix}`;
   // Fallback direct si l'overlay n'existe pas.
   if (!rippleOverlay) {
