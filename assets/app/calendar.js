@@ -175,6 +175,103 @@ export function openModal(item, mode = 'reserve') {
       : (modalMode === 'extend' ? 'Prolonger' : 'Reserver');
   }
 }
+
+/**
+ * Ouvre la modale en mode edition materiel (admin).
+ * Reutilise la meme coquille que le calendrier.
+ */
+export function openEditModal(item) {
+  if (!dom.modalTitle || !dom.modalBody || !dom.modalBackdrop) return;
+  modalMode = 'edit';
+  state.modalItem = item;
+  blockedWeeks = [];
+  reservationPeriods = [];
+  blockedDates = {};
+  selectedStartDate = null;
+  selectedEndDate = null;
+  calendarMonth = null;
+  extensionContext = null;
+
+  const availableCategories = ['Info', 'Elen', 'Ener', 'Auto', 'Outils'];
+  const rawCategories = Array.isArray(item?.categories) && item.categories.length
+    ? item.categories
+    : String(item?.category || '')
+      .split(/[,;]+/)
+      .map((cat) => cat.trim())
+      .filter(Boolean);
+  const selectedCategories = new Set(rawCategories.map((cat) => String(cat).toLowerCase()));
+  const categoriesHtml = availableCategories.map((cat) => {
+    const checked = selectedCategories.has(cat.toLowerCase()) ? 'checked' : '';
+    return `<label><input type="checkbox" name="edit-categories" value="${escapeHtml(cat)}" ${checked} /> ${escapeHtml(cat)}</label>`;
+  }).join('');
+  const rawCondition = String(item?.condition || '').toLowerCase();
+  const conditionValue = rawCondition.includes('reparation') || rawCondition.includes('réparation')
+    ? 'Reparation Necessaire'
+    : rawCondition.includes('passable')
+      ? 'Passable'
+      : rawCondition.includes('neuf')
+        ? 'Neuf'
+        : rawCondition.includes('bon')
+          ? 'Bon'
+          : '';
+  const conditionOptions = [
+    { value: '', label: 'Etat' },
+    { value: 'Neuf', label: 'Neuf' },
+    { value: 'Bon', label: 'Bon' },
+    { value: 'Passable', label: 'Passable' },
+    { value: 'Reparation Necessaire', label: 'Réparation nécessaire' },
+  ];
+  const conditionOptionsHtml = conditionOptions.map((opt) => {
+    const selected = opt.value === conditionValue ? 'selected' : '';
+    return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+  }).join('');
+
+  dom.modalTitle.textContent = `Modifier ${item?.name || 'matériel'}`;
+  dom.modalBody.innerHTML = `
+      <div class="small-title">Mettre à jour les informations</div>
+      <form class="grid form-grid edit-modal-form" data-edit-form>
+        <div class="input-group">
+          <label for="edit-name">Nom</label>
+          <input id="edit-name" name="name" required value="${escapeHtml(item?.name || '')}" />
+        </div>
+        <div class="input-group">
+          <label>Catégories</label>
+          <div class="choice-grid">${categoriesHtml}</div>
+        </div>
+        <div class="input-group">
+          <label for="edit-location">Emplacement</label>
+          <input id="edit-location" name="location" required value="${escapeHtml(item?.location || '')}" />
+        </div>
+        <div class="input-group">
+          <label for="edit-condition">Etat</label>
+          <select id="edit-condition" name="condition" required>${conditionOptionsHtml}</select>
+        </div>
+        <div class="input-group">
+          <label for="edit-picture">Nouvelle image</label>
+          <input id="edit-picture" name="picture" type="file" accept="image/*" />
+          <div class="meta">JPG/PNG/WebP/GIF, 4 Mo max.</div>
+        </div>
+      </form>
+    `;
+
+  const editForm = dom.modalBody.querySelector('[data-edit-form]');
+  if (editForm) {
+    editForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (dom.reserveBtn) dom.reserveBtn.click();
+    });
+  }
+
+  if (dom.modalMsg) {
+    dom.modalMsg.textContent = '';
+    dom.modalMsg.className = 'message';
+  }
+  if (dom.reserveBtn) {
+    dom.reserveBtn.textContent = 'Enregistrer';
+    dom.reserveBtn.disabled = false;
+  }
+  dom.modalBackdrop.classList.add('show');
+}
 /**
  * Reinitialise letat de la modale.
  * Cache loverlay et oublie la selection.

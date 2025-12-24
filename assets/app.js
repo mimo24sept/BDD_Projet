@@ -18,6 +18,7 @@ import {
   apiRequestExtension,
   apiSession,
   apiSetMaintenance,
+  apiUpdateEquipment,
 } from './app/api.js';
 import {
   closeModal,
@@ -290,8 +291,101 @@ if (!dom.appShell) {
 
   if (dom.reserveBtn) {
     dom.reserveBtn.addEventListener('click', async () => {
-      const range = selectionRange();
       const modalMode = getModalMode();
+      if (modalMode === 'edit') {
+        if (!isAdmin()) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Réservé aux administrateurs';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        const form = dom.modalBody?.querySelector('[data-edit-form]');
+        if (!form || !state.modalItem?.id) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Formulaire introuvable';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        const name = String(form.querySelector('input[name="name"]')?.value || '').trim();
+        const location = String(form.querySelector('input[name="location"]')?.value || '').trim();
+        const condition = String(form.querySelector('select[name="condition"]')?.value || '');
+        const categories = Array.from(form.querySelectorAll('input[name="edit-categories"]:checked'))
+          .map((input) => input.value);
+        const pictureInput = form.querySelector('input[name="picture"]');
+        const picture = pictureInput && pictureInput.files && pictureInput.files[0]
+          ? pictureInput.files[0]
+          : null;
+        if (!name || !location) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Nom et emplacement requis.';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (!condition) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Etat requis.';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (!categories.length) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Sélectionnez au moins une catégorie.';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (picture && !picture.type.startsWith('image/')) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Format image non supporté';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (picture && picture.size > 4 * 1024 * 1024) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Image trop lourde (4 Mo max)';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (dom.modalMsg) {
+          dom.modalMsg.textContent = 'Mise a jour...';
+          dom.modalMsg.className = 'message';
+        }
+        dom.reserveBtn.disabled = true;
+        dom.reserveBtn.textContent = 'Enregistrement...';
+        try {
+          await apiUpdateEquipment({
+            id: state.modalItem.id,
+            name,
+            location,
+            condition,
+            categories,
+            picture,
+          });
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Materiel mis a jour';
+            dom.modalMsg.className = 'message ok';
+          }
+          closeModal();
+          await Promise.all([apiFetchEquipment(), apiFetchAdminLoans()]);
+          renderApp();
+        } catch (err) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = err?.message || 'Mise a jour impossible';
+            dom.modalMsg.className = 'message err';
+          }
+        } finally {
+          dom.reserveBtn.disabled = false;
+          dom.reserveBtn.textContent = 'Enregistrer';
+        }
+        return;
+      }
+      const range = selectionRange();
       const extensionContext = getExtensionContext();
       const blockedDates = getBlockedDates();
       if (!range) {

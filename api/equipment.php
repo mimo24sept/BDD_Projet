@@ -62,6 +62,17 @@ if ($method === 'POST' && $action === 'create') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'update') {
+    // Mise a jour reservee aux admins pour proteger le parc.
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    update_equipment($pdo);
+    exit;
+}
+
 if ($method === 'POST' && $action === 'delete') {
     // Suppression reservee aux admins pour eviter les erreurs.
     if (!is_admin()) {
@@ -822,6 +833,140 @@ function create_equipment(PDO $pdo): void
         $pdo->rollBack();
         http_response_code(500);
         echo json_encode(['error' => 'Insertion impossible', 'details' => $e->getMessage()]);
+    }
+}
+
+// Met a jour un équipement existant (admin).
+function update_equipment(PDO $pdo): void
+{
+    $contentType = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
+    if (str_contains($contentType, 'multipart/form-data') || !empty($_POST) || !empty($_FILES)) {
+        $data = $_POST;
+    } else {
+        $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    }
+
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant manquant ou invalide']);
+        return;
+    }
+
+    $exists = $pdo->prepare('SELECT 1 FROM `Materiel` WHERE IDmateriel = :id LIMIT 1');
+    $exists->execute([':id' => $id]);
+    if (!$exists->fetchColumn()) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Matériel introuvable']);
+        return;
+    }
+
+    $fields = [];
+    $params = [':id' => $id];
+
+    if (array_key_exists('name', $data)) {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Nom manquant']);
+            return;
+        }
+        $fields[] = 'NOMmateriel = :name';
+        $params[':name'] = $name;
+    }
+
+    $categoryProvided = array_key_exists('categories', $data) || array_key_exists('category_id', $data);
+    if ($categoryProvided) {
+        $payloadCategories = $data['categories'] ?? [];
+        $categories = [];
+        if (is_array($payloadCategories)) {
+            foreach ($payloadCategories as $cat) {
+                $cat = ucfirst(strtolower(trim((string) $cat)));
+                if ($cat !== '') {
+                    $categories[] = $cat;
+                }
+            }
+        } elseif (is_string($payloadCategories) && trim($payloadCategories) !== '') {
+            $categories = normalize_categories($payloadCategories);
+        }
+        $categories = array_values(array_unique($categories));
+        $allowedCategories = ['Info', 'Elen', 'Ener', 'Auto', 'Outils'];
+        $categories = array_values(array_filter(
+            $categories,
+            static fn($c) => in_array($c, $allowedCategories, true)
+        ));
+        $categoryName = implode(', ', $categories);
+        $categoryId = (int) ($data['category_id'] ?? 0);
+
+        if ($categoryId <= 0 && $categoryName === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Catégorie manquante']);
+            return;
+        }
+
+        if ($categoryId <= 0) {
+            $cat = $pdo->prepare('SELECT IDcategorie FROM `Categorie` WHERE LOWER(`Categorie`) = LOWER(:cat) LIMIT 1');
+            $cat->execute([':cat' => $categoryName]);
+            $categoryId = (int) ($cat->fetchColumn() ?: 0);
+            if ($categoryId <= 0) {
+                $insCat = $pdo->prepare('INSERT INTO `Categorie` (Categorie) VALUES (:cat)');
+                $insCat->execute([':cat' => $categoryName ?: 'Non classe']);
+                $categoryId = (int) $pdo->lastInsertId();
+            }
+        }
+
+        $fields[] = 'IDcategorie = :cat';
+        $params[':cat'] = $categoryId;
+    }
+
+    if (array_key_exists('location', $data)) {
+        $location = trim((string) ($data['location'] ?? ''));
+        if ($location === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Emplacement manquant']);
+            return;
+        }
+        $fields[] = 'Emplacement = :loc';
+        $params[':loc'] = $location;
+    }
+
+    if (array_key_exists('condition', $data)) {
+        $condition = ucfirst(strtolower(trim((string) ($data['condition'] ?? ''))));
+        if ($condition !== '') {
+            $fields[] = 'Etat = :etat';
+            $params[':etat'] = $condition;
+        }
+    }
+
+    $picturePath = '';
+    if (!empty($_FILES['picture']) && is_array($_FILES['picture'])) {
+        try {
+            $picturePath = store_uploaded_picture($_FILES['picture']);
+        } catch (Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+            return;
+        }
+    }
+    if ($picturePath !== '') {
+        $fields[] = 'Image = :image';
+        $params[':image'] = $picturePath;
+    }
+
+    if (!$fields) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Aucune donnée à mettre à jour']);
+        return;
+    }
+
+    try {
+        $update = $pdo->prepare('UPDATE `Materiel` SET ' . implode(', ', $fields) . ' WHERE IDmateriel = :id');
+        $update->execute($params);
+        $updated = fetch_equipment_by_id($pdo, $id);
+        echo json_encode(['status' => 'ok', 'equipment' => $updated]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Mise à jour impossible', 'details' => $e->getMessage()]);
     }
 }
 

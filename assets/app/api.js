@@ -411,6 +411,33 @@ export async function apiCreateEquipment(payload) {
   return data?.equipment;
 }
 /**
+ * Met a jour un materiel via FormData (image incluse).
+ * Remonte les erreurs HTTP avec message.
+ * Renvoie le materiel mis a jour.
+ */
+
+export async function apiUpdateEquipment(payload) {
+  const form = new FormData();
+  if (payload?.id) form.append('id', payload.id);
+  if (payload?.name !== undefined) form.append('name', payload.name);
+  if (payload?.location !== undefined) form.append('location', payload.location);
+  if (payload?.condition !== undefined) form.append('condition', payload.condition);
+  (payload?.categories || []).forEach((cat) => form.append('categories[]', cat));
+  if (payload?.picture) form.append('picture', payload.picture);
+  const res = await fetch(`${API.equipment}?action=update`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data?.error || 'Mise a jour impossible');
+    err.status = res.status;
+    throw err;
+  }
+  return data?.equipment;
+}
+/**
  * Supprime un materiel par identifiant.
  * Remonte les erreurs HTTP avec message.
  * Renvoie la reponse JSON.

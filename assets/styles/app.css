@@ -181,6 +181,33 @@ main {
   gap: 12px;
 }
 
+.admin-edit {
+  margin-top: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #f9fafb;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-edit[hidden] {
+  display: none;
+}
+
+.edit-modal-form { margin-top: 10px; }
+
+.admin-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-edit-actions .message {
+  min-height: 16px;
+}
+
 .admin-tools {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

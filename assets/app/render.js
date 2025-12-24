@@ -30,7 +30,7 @@ import {
   statusBadge,
   statusLabelText,
 } from './utils.js';
-import { openExtendModal, openModal } from './calendar.js';
+import { openEditModal, openExtendModal, openModal } from './calendar.js';
 import { applyRoleVisibility, revealInContainer, updateTabs } from './ui.js';
 import {
   apiAdminCancelLoan,
@@ -222,12 +222,19 @@ export function renderAdminCatalog() {
         <div class="meta">Etat: ${escapeHtml(item.condition || 'N/C')} • Ref: ${escapeHtml(item.serial || 'N/C')}</div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0;">
           <div class="tags" style="margin:0;">${item.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>
-          <button type="button" class="ghost danger" data-del="${item.id}">Supprimer</button>
+          <div class="admin-actions">
+            <button type="button" class="ghost" data-edit="${item.id}">Modifier</button>
+            <button type="button" class="ghost danger" data-del="${item.id}">Supprimer</button>
+          </div>
         </div>
         <div class="message" data-error></div>
       `;
+    const editBtn = card.querySelector('button[data-edit]');
     const delBtn = card.querySelector('button[data-del]');
     const errEl = card.querySelector('[data-error]');
+    if (editBtn) {
+      editBtn.addEventListener('click', () => openEditModal(item));
+    }
     if (delBtn) {
       delBtn.addEventListener('click', async () => {
         if (!confirm('Supprimer définitivement ce matériel ?')) return;
