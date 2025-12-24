@@ -222,6 +222,7 @@ loginForm.addEventListener('submit', async (e) => {
   loginMsg.className = 'message';
   try {
     const data = await apiLogin({ login, password });
+    // Conserver le mdp temporaire pour pre-remplir le changement force.
     if (data?.must_change_password) {
       sessionStorage.setItem('temp_password', password);
     } else {

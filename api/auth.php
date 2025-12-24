@@ -194,6 +194,7 @@ function reset_password(PDO $pdo): void
         return;
     }
     $hash = password_hash($tempPassword, PASSWORD_DEFAULT);
+    // ForcePasswordReset oblige le changement au prochain login.
     $update = $pdo->prepare('UPDATE `User` SET MDP = :pwd, ForcePasswordReset = 1 WHERE IDuser = :id');
     try {
         $update->execute([':pwd' => $hash, ':id' => $id]);
@@ -247,6 +248,7 @@ function change_password(PDO $pdo): void
     }
 
     $hash = password_hash($next, PASSWORD_DEFAULT);
+    // Nettoie le flag de reset force apres un changement valide.
     $hasResetColumn = ensure_force_password_reset_column($pdo);
     $updateQuery = $hasResetColumn
         ? 'UPDATE `User` SET MDP = :pwd, ForcePasswordReset = 0 WHERE IDuser = :id'
@@ -264,7 +266,7 @@ function change_password(PDO $pdo): void
     echo json_encode(['status' => 'ok']);
 }
 
-// Genere un mot de passe temporaire: deux mots nature + 3 chiffres.
+// Genere un mot de passe temporaire: deux mots nature en minuscules + 3 chiffres concaténés.
 function generate_temp_password(): string
 {
     $words = [
@@ -394,6 +396,7 @@ function current_user(): ?array
         'id' => (int) $_SESSION['user_id'],
         'login' => $_SESSION['login'] ?? '',
         'role' => $_SESSION['role'] ?? 'Utilisateur',
+        // Utilise par le front pour forcer le changement de mdp.
         'must_change_password' => !empty($_SESSION['force_password_reset']),
     ];
 }

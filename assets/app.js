@@ -293,6 +293,7 @@ if (!dom.appShell) {
     dom.reserveBtn.addEventListener('click', async () => {
       const modalMode = getModalMode();
       if (modalMode === 'edit') {
+        // Edition en modale: lecture du formulaire puis update admin.
         if (!isAdmin()) {
           if (dom.modalMsg) {
             dom.modalMsg.textContent = 'Réservé aux administrateurs';

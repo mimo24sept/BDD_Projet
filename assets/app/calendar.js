@@ -178,7 +178,7 @@ export function openModal(item, mode = 'reserve') {
 
 /**
  * Ouvre la modale en mode edition materiel (admin).
- * Reutilise la meme coquille que le calendrier.
+ * Reutilise la coquille + bouton d'action de la modale principale.
  */
 export function openEditModal(item) {
   if (!dom.modalTitle || !dom.modalBody || !dom.modalBackdrop) return;
@@ -256,6 +256,7 @@ export function openEditModal(item) {
 
   const editForm = dom.modalBody.querySelector('[data-edit-form]');
   if (editForm) {
+    // Le submit natif delegue au bouton d'action global de la modale.
     editForm.addEventListener('submit', (event) => {
       event.preventDefault();
       if (dom.reserveBtn) dom.reserveBtn.click();

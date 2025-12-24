@@ -17,6 +17,8 @@
 | `switchMode` | Bascule entre formulaires login/register, rafraîchit l’UI et les messages. |
 | `apiLogin` / `apiRegister` | POST JSON vers `api/auth.php`, parse la réponse, lève en cas d’erreur HTTP. |
 
+Note : le submit login stocke le mot de passe temporaire en `sessionStorage` si `must_change_password`.
+
 </details>
 
 <details>
@@ -24,7 +26,8 @@
 
 - Branche les listeners (onglets, recherches, admin form, modale).
 - Charge session + données, applique les règles de rôle, déclenche `renderApp`.
-- Orchestre les actions de réservation/maintenance avec appels API puis re-render.
+- Orchestre les actions de réservation/maintenance/édition avec appels API puis re-render.
+- Force le changement de mot de passe si requis (panneau top-right).
 
 </details>
 
@@ -32,9 +35,9 @@
 <summary><strong>assets/app/api.js (appels API)</strong></summary>
 
 - `apiSession`, `apiFetchEquipment`, `apiFetchLoans`, `apiFetchAdminLoans`, `apiFetchAdminStats`.
-- `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser`.
+- `apiFetchUsers`, `apiSetUserRole`, `apiDeleteUser`, `apiResetPassword`, `apiChangePassword`.
 - `apiReturnLoan`, `apiAdminCancelLoan`, `apiRequestCancel`, `apiRequestExtension`, `apiDecideExtension`, `apiDecideReservationRequest`.
-- `apiCreateEquipment`, `apiDeleteEquipment`, `apiSetMaintenance`, `apiDecideMaintenance`, `apiLogout`.
+- `apiCreateEquipment`, `apiUpdateEquipment`, `apiDeleteEquipment`, `apiSetMaintenance`, `apiDecideMaintenance`, `apiLogout`.
 
 </details>
 
@@ -52,7 +55,7 @@
 <details>
 <summary><strong>assets/app/calendar.js (calendrier & modale)</strong></summary>
 
-- `openModal`, `openExtendModal`, `closeModal`, `getModalMode`, `getExtensionContext`, `getBlockedDates`.
+- `openModal`, `openExtendModal`, `openEditModal`, `closeModal`, `getModalMode`, `getExtensionContext`, `getBlockedDates`.
 - `renderCalendar`, `handleDayClick`, `selectionRange`, `isRangeFree`.
 - `buildBlockedDates`, `datesBetween`, `updateAvailabilityMessage`, `nextAvailableDate`.
 
@@ -97,9 +100,12 @@
 | `login` | Lit JSON login/mdp, cherche par email/login, vérifie hash ou clair, met `LastLogin`, crée la session. |
 | `logout` | Vide la session, renvoie un JSON de confirmation. |
 | `register` | Valide email/mdp, protège rôles prof/tech/admin via secret, crée l’utilisateur et ouvre la session. |
+| `change_password` | Change le mot de passe du compte courant et lève le flag de reset forcé. |
+| `reset_password` | Admin : génère un mot de passe temporaire et force le reset au prochain login. |
+| `generate_temp_password` | Produit deux mots nature + 3 chiffres concaténés. |
 | `current_user` | Renvoie l’utilisateur en session ou null. |
 | `is_valid_password` | Accepte hash ou clair (dump). |
-| `lookup_role_id`, `list_users`, `normalize_role`, `set_role`, `delete_user`, `fetch_user_with_role`, `is_role_admin`, `is_admin`, `ensure_last_login_column` | Helpers rôles/colonnes, CRUD users admin-only, protections admin. |
+| `lookup_role_id`, `list_users`, `normalize_role`, `set_role`, `delete_user`, `fetch_user_with_role`, `is_role_admin`, `is_admin`, `ensure_last_login_column`, `ensure_force_password_reset_column` | Helpers rôles/colonnes, CRUD users admin-only, protections admin. |
 
 </details>
 
@@ -112,7 +118,7 @@
 | `reserve_equipment` | Vérifie ID/dates/conflits, refuse le passé, bloque dispo si période courante ; si ≥3 retards (hors admin/tech) → `ReservationRequest` “pending”. |
 | `set_maintenance` | Admin : raccourcit/annule les réservations chevauchantes + notifie ; technicien : demande “pending” si chevauchement. |
 | `decide_maintenance_request` | Admin : approuve/refuse une `MaintenanceRequest`, applique les mêmes ajustements + notifications. |
-| `create_equipment` / `delete_equipment` | CRUD admin, gère l’image optionnelle, renvoie item/statut. |
+| `create_equipment` / `update_equipment` / `delete_equipment` | CRUD admin, gère l’image optionnelle, renvoie item/statut. |
 | Helpers | `fetch_active_loans`, `fetch_equipment_by_id`, `map_status`, `merge_tags`, `normalize_categories`, `generate_reference`, `build_reference_prefix`, `transliterate_to_ascii`, `weeks_between`, `period_is_current`, `iso_week_key`, `adjust_overlapping_reservations`, `count_user_delays`, `ensure_maintenance_request_table`, `ensure_reservation_request_table`, `ensure_material_picture_column`, `store_uploaded_picture`, `is_admin`. |
 
 </details>
