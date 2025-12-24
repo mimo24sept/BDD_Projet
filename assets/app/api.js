@@ -217,6 +217,42 @@ export async function apiDeleteUser(id) {
   }
   return data;
 }
+
+/**
+ * Reset le mot de passe d'un compte (admin).
+ * Retourne un mot de passe temporaire.
+ */
+export async function apiResetPassword(id) {
+  const res = await fetch(`${API.auth}?action=reset_password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ id }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || 'Reset impossible');
+  }
+  return data;
+}
+/**
+ * Met a jour le mot de passe du compte courant.
+ * Valide le mot de passe actuel cote serveur.
+ */
+
+export async function apiChangePassword(payload) {
+  const res = await fetch(`${API.auth}?action=change_password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || 'Mise a jour impossible');
+  }
+  return data;
+}
 /**
  * Marque un pret comme rendu avec un etat.
  * Declenche ensuite un refresh des emprunts.

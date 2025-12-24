@@ -7,6 +7,7 @@ import { API, BASE_PATH } from './app/config.js';
 import { state } from './app/state.js';
 import { dom } from './app/dom.js';
 import {
+  apiChangePassword,
   apiCreateEquipment,
   apiFetchAdminLoans,
   apiFetchAdminStats,
@@ -64,8 +65,109 @@ if (!dom.appShell) {
       // Logout puis nettoyage local pour eviter un etat stale.
       await apiLogout();
       state.user = null;
+      sessionStorage.removeItem('temp_password');
       const suffix = `${buildQueryWithFlag()}${window.location.hash || ''}`;
       window.location.href = `${BASE_PATH}index.html${suffix}`;
+    });
+  }
+
+  const resetPasswordForm = () => {
+    if (dom.passwordForm) dom.passwordForm.reset();
+    if (dom.passwordMsg) {
+      dom.passwordMsg.textContent = '';
+      dom.passwordMsg.className = 'message';
+    }
+  };
+
+  let passwordMenuOpen = false;
+  let forcePasswordChange = false;
+  const setPasswordMenuOpen = (open) => {
+    passwordMenuOpen = open;
+    if (dom.passwordPanel) dom.passwordPanel.hidden = !open;
+    if (dom.passwordToggleBtn) {
+      dom.passwordToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    if (open && dom.passwordInputs?.current) {
+      dom.passwordInputs.current.focus();
+    }
+    if (!open) resetPasswordForm();
+  };
+
+  const applyForcePasswordChange = (required) => {
+    forcePasswordChange = required;
+    document.body.classList.toggle('force-password', required);
+    if (required) {
+      setPasswordMenuOpen(true);
+      const tempPassword = sessionStorage.getItem('temp_password') || '';
+      if (dom.passwordInputs?.current) {
+        dom.passwordInputs.current.value = tempPassword;
+        if (tempPassword && dom.passwordInputs?.next) {
+          dom.passwordInputs.next.focus();
+        }
+      }
+      if (dom.passwordMsg) {
+        dom.passwordMsg.textContent = 'Veuillez changer votre mot de passe.';
+        dom.passwordMsg.className = 'message err';
+      }
+    }
+  };
+
+  if (dom.passwordToggleBtn && dom.passwordPanel && dom.passwordMenu) {
+    dom.passwordToggleBtn.addEventListener('click', () => {
+      if (forcePasswordChange) {
+        setPasswordMenuOpen(true);
+        return;
+      }
+      setPasswordMenuOpen(!passwordMenuOpen);
+    });
+    document.addEventListener('click', (event) => {
+      if (!passwordMenuOpen || forcePasswordChange) return;
+      if (!dom.passwordMenu.contains(event.target)) {
+        setPasswordMenuOpen(false);
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && passwordMenuOpen && !forcePasswordChange) {
+        setPasswordMenuOpen(false);
+      }
+    });
+  }
+
+  if (dom.passwordForm) {
+    dom.passwordForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const current = dom.passwordInputs?.current?.value || '';
+      const next = dom.passwordInputs?.next?.value || '';
+      const confirm = dom.passwordInputs?.confirm?.value || '';
+      if (!current || !next || !confirm) return;
+      if (!dom.passwordMsg) return;
+      if (next !== confirm) {
+        dom.passwordMsg.textContent = 'Mots de passe differents';
+        dom.passwordMsg.className = 'message err';
+        return;
+      }
+      if (next === current) {
+        dom.passwordMsg.textContent = 'Le nouveau mot de passe doit etre different';
+        dom.passwordMsg.className = 'message err';
+        return;
+      }
+      dom.passwordMsg.textContent = 'Mise a jour...';
+      dom.passwordMsg.className = 'message';
+      try {
+        await apiChangePassword({ current, next, confirm });
+        dom.passwordMsg.textContent = 'Mot de passe mis a jour';
+        dom.passwordMsg.className = 'message ok';
+        if (dom.passwordForm) dom.passwordForm.reset();
+        if (forcePasswordChange) {
+          applyForcePasswordChange(false);
+          if (state.user) state.user.must_change_password = false;
+        }
+        sessionStorage.removeItem('temp_password');
+        setTimeout(() => setPasswordMenuOpen(false), 900);
+      } catch (err) {
+        dom.passwordMsg.textContent = err?.message || 'Mise a jour impossible';
+        dom.passwordMsg.className = 'message err';
+      }
     });
   }
 
@@ -392,6 +494,9 @@ if (!dom.appShell) {
       const suffix = `${buildQueryWithFlag()}${window.location.hash || ''}`;
       window.location.href = `${BASE_PATH}index.html${suffix}`;
       return;
+    }
+    if (state.user?.must_change_password) {
+      applyForcePasswordChange(true);
     }
     if (isTechnician() && !isAdmin()) {
       // Les techniciens arrivent directement sur la maintenance.

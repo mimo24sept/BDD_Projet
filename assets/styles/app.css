@@ -17,6 +17,29 @@ header {
 }
 
 .header-actions { display: flex; gap: 10px; align-items: center; }
+.user-menu { position: relative; display: inline-flex; align-items: center; }
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, 90vw);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+.password-form { margin-top: 10px; gap: 10px; }
+.password-form input { padding: 10px 12px; }
+.password-actions { display: grid; gap: 8px; }
+.password-actions .message { min-height: 16px; }
+body.force-password main {
+  pointer-events: none;
+  filter: blur(1px) saturate(0.9);
+  opacity: 0.8;
+}
+body.force-password #password-toggle { border-color: var(--danger); color: var(--danger); }
 
 /* Colonne principale du dashboard. */
 main {
@@ -375,6 +398,16 @@ main {
   align-items: center;
   gap: 10px;
 }
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.reset-msg { margin-top: 6px; }
 
 .loan-meta { color: var(--muted); font-size: 14px; }
 

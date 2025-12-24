@@ -52,6 +52,29 @@
       <!-- Actions utilisateur toujours accessibles (statut + deconnexion). -->
       <div class="header-actions">
         <span class="user-chip" id="user-chip">Non connecte</span>
+        <div class="user-menu" id="password-menu">
+          <button type="button" class="ghost" id="password-toggle" aria-expanded="false" aria-controls="password-panel">
+            Modifier mdp
+          </button>
+          <div class="user-dropdown" id="password-panel" hidden>
+            <div class="small-title">Changer le mot de passe</div>
+            <form id="password-form" class="grid password-form">
+              <div class="input-group">
+                <input id="password-current" name="current" type="password" placeholder="Mot de passe actuel" autocomplete="current-password" required />
+              </div>
+              <div class="input-group">
+                <input id="password-next" name="next" type="password" placeholder="Nouveau mot de passe" autocomplete="new-password" required />
+              </div>
+              <div class="input-group">
+                <input id="password-confirm" name="confirm" type="password" placeholder="Confirmer le mot de passe" autocomplete="new-password" required />
+              </div>
+              <div class="password-actions">
+                <button type="submit">Mettre a jour</button>
+                <div id="password-msg" class="message"></div>
+              </div>
+            </form>
+          </div>
+        </div>
         <button type="button" class="ghost" id="logout-btn">Se deconnecter</button>
       </div>
     </header>

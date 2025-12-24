@@ -43,6 +43,7 @@ import {
   apiFetchEquipment,
   apiFetchLoans,
   apiFetchUsers,
+  apiResetPassword,
   apiReturnLoan,
   apiRequestCancel,
 } from './api.js';
@@ -592,11 +593,49 @@ export function renderAccounts() {
           <div class="small-title">${escapeHtml(acc.login || 'Utilisateur')}</div>
           <div class="loan-meta">${escapeHtml(acc.email || '')}</div>
           <div class="loan-meta">Créé le ${formatDisplayDate(acc.created)}</div>
+          <div class="message reset-msg" data-reset-msg></div>
         </div>
         <div class="admin-actions">
+          <button type="button" class="ghost" data-reset="${acc.id}">Reset MDP</button>
           <button type="button" class="ghost danger" data-del="${acc.id}">Supprimer</button>
         </div>
       `;
+    const resetBtn = row.querySelector('button[data-reset]');
+    const resetMsg = row.querySelector('[data-reset-msg]');
+    if (resetBtn) {
+      const isAdminRole = (acc.role || '').toLowerCase().includes('admin');
+      if (isAdminRole) {
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Admin';
+      } else {
+        resetBtn.addEventListener('click', async () => {
+          resetBtn.disabled = true;
+          resetBtn.textContent = 'Reset...';
+          if (resetMsg) {
+            resetMsg.textContent = '';
+            resetMsg.className = 'message reset-msg';
+          }
+          try {
+            const data = await apiResetPassword(acc.id);
+            const temp = data?.temp_password || '';
+            if (resetMsg) {
+              resetMsg.textContent = temp
+                ? `Mot de passe temporaire : ${temp}`
+                : 'Mot de passe temporaire généré.';
+              resetMsg.className = 'message reset-msg ok';
+            }
+          } catch (err) {
+            if (resetMsg) {
+              resetMsg.textContent = err?.message || 'Reset impossible';
+              resetMsg.className = 'message reset-msg err';
+            }
+          } finally {
+            resetBtn.disabled = false;
+            resetBtn.textContent = 'Reset MDP';
+          }
+        });
+      }
+    }
     const delBtn = row.querySelector('button[data-del]');
     if (delBtn) {
       const isAdminRole = (acc.role || '').toLowerCase().includes('admin');

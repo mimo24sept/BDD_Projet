@@ -221,7 +221,12 @@ loginForm.addEventListener('submit', async (e) => {
   loginMsg.textContent = 'Connexion en cours...';
   loginMsg.className = 'message';
   try {
-    await apiLogin({ login, password });
+    const data = await apiLogin({ login, password });
+    if (data?.must_change_password) {
+      sessionStorage.setItem('temp_password', password);
+    } else {
+      sessionStorage.removeItem('temp_password');
+    }
     playRippleAndRedirect();
   } catch (err) {
     loginMsg.textContent = err?.message || 'Connexion impossible';

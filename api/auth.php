@@ -54,6 +54,26 @@ if ($method === 'POST' && $action === 'register') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'reset_password') {
+    if (!is_admin()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Réservé aux administrateurs']);
+        exit;
+    }
+    reset_password($pdo);
+    exit;
+}
+
+if ($method === 'POST' && $action === 'change_password') {
+    if (!isset($_SESSION['user_id'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Non authentifie']);
+        exit;
+    }
+    change_password($pdo);
+    exit;
+}
+
 if ($method === 'POST' && $action === 'set_role') {
     // Seuls les admins peuvent modifier les roles.
     if (!is_admin()) {
@@ -100,14 +120,15 @@ function login(PDO $pdo): void
         return;
     }
 
+    $hasResetColumn = ensure_force_password_reset_column($pdo);
     // Recherche par email ou login (insensible a la casse).
-    $stmt = $pdo->prepare(
-        'SELECT u.IDuser, u.Couriel, u.MDP, u.NOMuser, u.IDrole, r.Role
-         FROM `User` u
+    $select = 'SELECT u.IDuser, u.Couriel, u.MDP, u.NOMuser, u.IDrole, r.Role';
+    $select .= $hasResetColumn ? ', u.ForcePasswordReset AS force_reset' : ', 0 AS force_reset';
+    $select .= ' FROM `User` u
          LEFT JOIN `Role` r ON r.IDrole = u.IDrole
          WHERE LOWER(u.Couriel) = LOWER(:loginMail) OR LOWER(u.NOMuser) = LOWER(:loginName)
-         LIMIT 1'
-    );
+         LIMIT 1';
+    $stmt = $pdo->prepare($select);
     $stmt->execute([':loginMail' => $login, ':loginName' => $login]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -132,8 +153,139 @@ function login(PDO $pdo): void
     $_SESSION['user_id'] = (int) $user['IDuser'];
     $_SESSION['login'] = $user['NOMuser'] ?: $user['Couriel'];
     $_SESSION['role'] = $user['Role'] ?? 'Eleve';
+    $_SESSION['force_password_reset'] = (int) ($user['force_reset'] ?? 0);
 
     echo json_encode(current_user());
+}
+
+// Reset admin: creer un mot de passe temporaire et forcer la mise a jour.
+function reset_password(PDO $pdo): void
+{
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $id = isset($data['id']) ? (int) $data['id'] : 0;
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Identifiant invalide']);
+        return;
+    }
+
+    $user = fetch_user_with_role($pdo, $id);
+    if (!$user) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Utilisateur introuvable']);
+        return;
+    }
+    if (is_role_admin((string) ($user['role'] ?? ''))) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Impossible de reinitialiser un administrateur']);
+        return;
+    }
+    if (!ensure_force_password_reset_column($pdo)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Impossible de preparer la colonne de reset']);
+        return;
+    }
+
+    try {
+        $tempPassword = generate_temp_password();
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Generation du mot de passe impossible']);
+        return;
+    }
+    $hash = password_hash($tempPassword, PASSWORD_DEFAULT);
+    $update = $pdo->prepare('UPDATE `User` SET MDP = :pwd, ForcePasswordReset = 1 WHERE IDuser = :id');
+    try {
+        $update->execute([':pwd' => $hash, ':id' => $id]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Reset impossible', 'details' => $e->getMessage()]);
+        return;
+    }
+
+    echo json_encode(['status' => 'ok', 'temp_password' => $tempPassword, 'id' => $id]);
+}
+
+// Mise a jour du mot de passe pour l'utilisateur en session.
+function change_password(PDO $pdo): void
+{
+    if (!isset($_SESSION['user_id'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Non authentifie']);
+        return;
+    }
+
+    $data = json_decode((string) file_get_contents('php://input'), true) ?: [];
+    $current = (string) ($data['current'] ?? '');
+    $next = (string) ($data['next'] ?? '');
+    $confirm = (string) ($data['confirm'] ?? '');
+
+    if ($current === '' || $next === '' || $confirm === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Champs requis manquants']);
+        return;
+    }
+    if ($next !== $confirm) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Mots de passe differents']);
+        return;
+    }
+    if ($next === $current) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Le nouveau mot de passe doit etre different']);
+        return;
+    }
+
+    $userId = (int) $_SESSION['user_id'];
+    $stmt = $pdo->prepare('SELECT MDP FROM `User` WHERE IDuser = :id LIMIT 1');
+    $stmt->execute([':id' => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row || !is_valid_password($current, (string) $row['MDP'])) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Mot de passe actuel invalide']);
+        return;
+    }
+
+    $hash = password_hash($next, PASSWORD_DEFAULT);
+    $hasResetColumn = ensure_force_password_reset_column($pdo);
+    $updateQuery = $hasResetColumn
+        ? 'UPDATE `User` SET MDP = :pwd, ForcePasswordReset = 0 WHERE IDuser = :id'
+        : 'UPDATE `User` SET MDP = :pwd WHERE IDuser = :id';
+    $update = $pdo->prepare($updateQuery);
+    try {
+        $update->execute([':pwd' => $hash, ':id' => $userId]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Mise a jour impossible', 'details' => $e->getMessage()]);
+        return;
+    }
+
+    $_SESSION['force_password_reset'] = 0;
+    echo json_encode(['status' => 'ok']);
+}
+
+// Genere un mot de passe temporaire: deux mots nature + 3 chiffres.
+function generate_temp_password(): string
+{
+    $words = [
+        'arbre', 'plante', 'fourmis', 'chien', 'nuage', 'soleil',
+        'lune', 'etoile', 'riviere', 'montagne', 'foret', 'fleur',
+        'herbe', 'feuille', 'pierre', 'rocher', 'ocean', 'mer',
+        'lac', 'pluie', 'neige', 'vent', 'orage', 'ciel',
+        'sable', 'terre', 'mousse', 'papillon', 'abeille', 'oiseau',
+        'renard', 'poisson',
+    ];
+    $max = count($words) - 1;
+    if ($max < 1) {
+        throw new RuntimeException('Liste insuffisante');
+    }
+    $first = random_int(0, $max);
+    $second = random_int(0, $max);
+    while ($second === $first && $max > 0) {
+        $second = random_int(0, $max);
+    }
+    $digits = str_pad((string) random_int(0, 999), 3, '0', STR_PAD_LEFT);
+    return $words[$first] . $words[$second] . $digits;
 }
 
 // Logout: nettoyer la session pour eviter les reutilisations.
@@ -226,6 +378,7 @@ function register(PDO $pdo): void
     $_SESSION['user_id'] = (int) $pdo->lastInsertId();
     $_SESSION['login'] = $login;
     $_SESSION['role'] = $roleName;
+    $_SESSION['force_password_reset'] = 0;
 
     echo json_encode(current_user());
 }
@@ -241,6 +394,7 @@ function current_user(): ?array
         'id' => (int) $_SESSION['user_id'],
         'login' => $_SESSION['login'] ?? '',
         'role' => $_SESSION['role'] ?? 'Utilisateur',
+        'must_change_password' => !empty($_SESSION['force_password_reset']),
     ];
 }
 
@@ -411,6 +565,27 @@ function ensure_last_login_column(PDO $pdo): bool
         $col = $pdo->query("SHOW COLUMNS FROM `User` LIKE 'LastLogin'")->fetch();
         if (!$col) {
             $pdo->exec('ALTER TABLE `User` ADD COLUMN `LastLogin` DATETIME NULL DEFAULT NULL');
+        }
+        $has = true;
+    } catch (Throwable $e) {
+        $has = false;
+    }
+    return $has;
+}
+
+// S'assure que la colonne ForcePasswordReset existe, la crée si besoin.
+function ensure_force_password_reset_column(PDO $pdo): bool
+{
+    static $checked = false;
+    static $has = false;
+    if ($checked) {
+        return $has;
+    }
+    $checked = true;
+    try {
+        $col = $pdo->query("SHOW COLUMNS FROM `User` LIKE 'ForcePasswordReset'")->fetch();
+        if (!$col) {
+            $pdo->exec('ALTER TABLE `User` ADD COLUMN `ForcePasswordReset` TINYINT(1) NOT NULL DEFAULT 0');
         }
         $has = true;
     } catch (Throwable $e) {
