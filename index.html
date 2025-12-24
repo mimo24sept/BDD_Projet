@@ -12,6 +12,17 @@
   <!-- Viewport pour un rendu correct sur mobile. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Connexion - Parc materiels</title>
+  <script>
+    // Force ?i=1 to avoid Infinityfree 404 when missing.
+    (function ensureQueryFlag() {
+      const url = new URL(window.location.href);
+      const flag = url.searchParams.get('i');
+      if (flag === null || flag === '') {
+        url.searchParams.set('i', '1');
+        window.location.replace(url.toString());
+      }
+    })();
+  </script>
   <!-- Favicon pour l'identite visuelle dans l'onglet. -->
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
   <!-- Preconnect pour accelerer le chargement de la police. -->

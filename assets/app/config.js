@@ -4,11 +4,25 @@
   Garde des tags/rangs communs pour un filtrage coherent.
   Sans effets de bord pour etre importable partout.
 */
+function getBasePath() {
+  let path = window.location.pathname || '/';
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.replace(/\/+$/, '');
+  }
+  if (path.endsWith('.html')) {
+    return path.slice(0, path.lastIndexOf('/') + 1);
+  }
+  if (path.endsWith('/')) return path;
+  return `${path}/`;
+}
+
+export const BASE_PATH = getBasePath();
+
 // Endpoints regroupes pour eviter les URL en dur dispersees.
 export const API = {
-  auth: './api/auth.php',
-  equipment: './api/equipment.php',
-  dashboard: './api/dashboard.php',
+  auth: `${BASE_PATH}api/auth.php`,
+  equipment: `${BASE_PATH}api/equipment.php`,
+  dashboard: `${BASE_PATH}api/dashboard.php`,
 };
 
 // Tags de base pour les filtres rapides en UI.

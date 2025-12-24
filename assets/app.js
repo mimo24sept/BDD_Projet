@@ -3,7 +3,7 @@
   Point d'entree unique pour garder un flux d'initialisation clair.
   Regroupe le wiring des evenements et le chargement initial des donnees.
 */
-import { API } from './app/config.js';
+import { API, BASE_PATH } from './app/config.js';
 import { state } from './app/state.js';
 import { dom } from './app/dom.js';
 import {
@@ -56,7 +56,8 @@ if (!dom.appShell) {
       // Logout puis nettoyage local pour eviter un etat stale.
       await apiLogout();
       state.user = null;
-      window.location.href = 'index.html';
+      const suffix = `${window.location.search || ''}${window.location.hash || ''}`;
+      window.location.href = `${BASE_PATH}index.html${suffix}`;
     });
   }
 
@@ -380,7 +381,8 @@ if (!dom.appShell) {
   (async function start() {
     await apiSession();
     if (!state.user) {
-      window.location.href = 'index.html';
+      const suffix = `${window.location.search || ''}${window.location.hash || ''}`;
+      window.location.href = `${BASE_PATH}index.html${suffix}`;
       return;
     }
     if (isTechnician() && !isAdmin()) {

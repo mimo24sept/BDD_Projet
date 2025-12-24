@@ -13,6 +13,17 @@
   <!-- Viewport pour un rendu lisible sur mobile et tablette. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Parc materiels - Emprunts et reservations</title>
+  <script>
+    // Force ?i=1 to avoid Infinityfree 404 when missing.
+    (function ensureQueryFlag() {
+      const url = new URL(window.location.href);
+      const flag = url.searchParams.get('i');
+      if (flag === null || flag === '') {
+        url.searchParams.set('i', '1');
+        window.location.replace(url.toString());
+      }
+    })();
+  </script>
   <!-- Un favicon pour identifier l'onglet et la marque. -->
   <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
   <!-- Preconnect pour accelerer le chargement de la police Google Fonts. -->

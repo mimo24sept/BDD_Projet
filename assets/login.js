@@ -7,7 +7,21 @@
 */
 // Ce fichier orchestre l'auth front et la transition visuelle vers le menu.
 // Centraliser l'URL d'auth evite les doublons dans les appels.
-const API = { auth: './api/auth.php' };
+function getBasePath() {
+  let path = window.location.pathname || '/';
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.replace(/\/+$/, '');
+  }
+  if (path.endsWith('.html')) {
+    return path.slice(0, path.lastIndexOf('/') + 1);
+  }
+  if (path.endsWith('/')) return path;
+  return `${path}/`;
+}
+
+const BASE_PATH = getBasePath();
+const API = { auth: `${BASE_PATH}api/auth.php` };
+const appUrl = (target) => `${BASE_PATH}${target}`;
 
 // On met en cache les noeuds DOM pour eviter des querySelector repetes.
 const loginForm = document.querySelector('#login-form');
@@ -115,27 +129,25 @@ function initPasswordToggles() {
 
 // Une transition visuelle donne un feedback de succes avant la navigation.
 function playRippleAndRedirect() {
+  const suffix = `${window.location.search || ''}${window.location.hash || ''}`;
+  const targetUrl = `${appUrl('menu.html')}${suffix}`;
   // Fallback direct si l'overlay n'existe pas.
   if (!rippleOverlay) {
-    window.location.href = 'menu.html';
+    window.location.href = targetUrl;
     return;
   }
   // Eviter de relancer la transition plusieurs fois.
   if (document.body.classList.contains('auth-transition')) return;
   const prefersReduced = window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Respecter les preferences d'accessibilite.
-  if (prefersReduced) {
-    window.location.href = 'menu.html';
-    return;
-  }
   document.body.classList.add('auth-transition');
   // Declencher l'animation de sortie du mur d'auth.
   if (authWall) authWall.classList.add('is-exiting');
   ensureAuthLoader();
   rippleOverlay.classList.add('show');
   // Delai court pour laisser le ripple finir avant la redirection.
-  setTimeout(() => { window.location.href = 'menu.html'; }, 1200);
+  const delay = prefersReduced ? 200 : 1200;
+  setTimeout(() => { window.location.href = targetUrl; }, delay);
 }
 
 // Le mot secret n'est demande que pour les roles sensibles.
