@@ -256,13 +256,3 @@ body.auth-transition .auth-card::after {
   35% { opacity: 0.8; }
   100% { opacity: 0; transform: translateX(40%) rotate(8deg); }
 }
-
-/* Respect des preferences accesibilite. */
-@media (prefers-reduced-motion: reduce) {
-  .auth-card { transition: none; }
-  body.auth-transition .auth-card { transform: none; opacity: 1; filter: none; }
-  body.auth-transition .auth-card::after { animation: none; }
-  .auth-loader { transition: none; opacity: 1; transform: none; }
-  .loader-bar { animation: none; transform: scaleX(1); }
-  .loader-label .label-fill { animation: none; clip-path: inset(0 0 0 0); }
-}

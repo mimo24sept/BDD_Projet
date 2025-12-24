@@ -146,16 +146,13 @@ function playRippleAndRedirect() {
   }
   // Eviter de relancer la transition plusieurs fois.
   if (document.body.classList.contains('auth-transition')) return;
-  const prefersReduced = window.matchMedia
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.body.classList.add('auth-transition');
   // Declencher l'animation de sortie du mur d'auth.
   if (authWall) authWall.classList.add('is-exiting');
   ensureAuthLoader();
   rippleOverlay.classList.add('show');
   // Delai court pour laisser le ripple finir avant la redirection.
-  const delay = prefersReduced ? 200 : 1200;
-  setTimeout(() => { window.location.href = targetUrl; }, delay);
+  setTimeout(() => { window.location.href = targetUrl; }, 1200);
 }
 
 // Le mot secret n'est demande que pour les roles sensibles.
