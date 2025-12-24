@@ -397,6 +397,9 @@ if (!dom.appShell) {
       // Les techniciens arrivent directement sur la maintenance.
       state.adminStatsView = 'degrades';
       state.activeTab = 'admin-maintenance';
+    } else if (isAdmin()) {
+      // Les admins arrivent sur l'ajout de materiel.
+      state.activeTab = 'admin-add';
     }
     setAuthUI();
     await Promise.all([apiFetchEquipment(), apiFetchLoans()]);
