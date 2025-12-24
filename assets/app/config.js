@@ -26,7 +26,7 @@ export const API = {
 };
 
 // Tags de base pour les filtres rapides en UI.
-export const BASE_TAGS = ['Info', 'Elen', 'Ener', 'Auto'];
+export const BASE_TAGS = ['Info', 'Elen', 'Ener', 'Auto', 'Outils'];
 
 // Rangs d'etat pour comparer degradations/ameliorations.
 export const CONDITION_RANKS = {

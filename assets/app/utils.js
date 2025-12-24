@@ -89,6 +89,7 @@ export function canonicalCategory(cat) {
   if (lower.startsWith('elen')) return 'Elen';
   if (lower.startsWith('ener')) return 'Ener';
   if (lower.startsWith('auto')) return 'Auto';
+  if (lower.startsWith('outil')) return 'Outils';
   return null;
 }
 /**

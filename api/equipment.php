@@ -760,7 +760,7 @@ function create_equipment(PDO $pdo): void
         $categories = normalize_categories($payloadCategories);
     }
     $categories = array_values(array_unique($categories));
-    $allowedCategories = ['Info', 'Elen', 'Ener', 'Auto'];
+    $allowedCategories = ['Info', 'Elen', 'Ener', 'Auto', 'Outils'];
     $categories = array_values(array_filter(
         $categories,
         static fn($c) => in_array($c, $allowedCategories, true)
@@ -1031,15 +1031,14 @@ function normalize_categories(string $value): array
 // Génère une référence unique pour un matériel.
 function generate_reference(PDO $pdo, string $name, array $categories = []): string
 {
-    // Base : 3 premières lettres du nom (translittérées), complétées en X si besoin.
-    $base = build_reference_prefix($name);
+    // Base : catégorie + code matériel (ex: INFO-OSC).
+    $base = build_reference_prefix($name, $categories);
 
-    // Cherche les références existantes qui partagent ce préfixe.
-    $stmt = $pdo->prepare('SELECT `NUMserie` FROM `Materiel` WHERE `NUMserie` LIKE :pfx');
-    $stmt->execute([':pfx' => $base . '%']);
+    // Numéro global pour rester cohérent avec les références déjà en base.
+    $stmt = $pdo->query('SELECT `NUMserie` FROM `Materiel`');
     $max = 0;
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $ref) {
-        if (preg_match('/^' . preg_quote($base, '/') . '-?(\\d+)$/i', (string) $ref, $m)) {
+        if (preg_match('/(\\d+)$/', (string) $ref, $m)) {
             $num = (int) $m[1];
             if ($num > $max) {
                 $max = $num;
@@ -1051,11 +1050,65 @@ function generate_reference(PDO $pdo, string $name, array $categories = []): str
     return sprintf('%s-%03d', $base, $next);
 }
 
-// Construit le préfixe de référence à partir du nom.
-function build_reference_prefix(string $name): string
+// Construit le préfixe de référence à partir du nom et de la catégorie.
+function build_reference_prefix(string $name, array $categories = []): string
+{
+    $categoryLabel = '';
+    if (!empty($categories)) {
+        $categoryLabel = (string) $categories[0];
+        if (str_contains($categoryLabel, ',')) {
+            $categoryLabel = trim(explode(',', $categoryLabel)[0]);
+        }
+    }
+    $categoryCode = build_reference_category_code($categoryLabel);
+    $itemCode = build_reference_item_code($name);
+    return sprintf('%s-%s', $categoryCode, $itemCode);
+}
+
+function build_reference_category_code(string $category): string
+{
+    $ascii = transliterate_to_ascii($category);
+    $lettersOnly = preg_replace('/[^A-Za-z]/', '', $ascii);
+    $clean = strtoupper($lettersOnly ?? '');
+    if ($clean === '') {
+        $clean = 'MAT';
+    }
+    $known = ['INFO', 'ELEN', 'ENER', 'AUTO', 'OUTI'];
+    foreach ($known as $code) {
+        if (str_starts_with($clean, $code)) {
+            return $code;
+        }
+    }
+    $code = substr($clean, 0, 4);
+    if (strlen($code) < 4) {
+        $code = str_pad($code, 4, 'X');
+    }
+    return $code;
+}
+
+function build_reference_item_code(string $name): string
 {
     $asciiName = transliterate_to_ascii($name);
-    // Garde uniquement les lettres (insensible à la casse), puis majuscule.
+    $normalized = strtolower($asciiName);
+    $keywordMap = [
+        'oscilloscope' => 'OSC',
+        'multimetre' => 'MM',
+        'arduino' => 'ARD',
+        'raspberry' => 'RPI',
+        'alimentation' => 'PSU',
+        'batterie' => 'BAT',
+        'obd' => 'OBD',
+        'hall' => 'HALL',
+        'automate' => 'PLC',
+        'soudage' => 'SOLD',
+    ];
+    foreach ($keywordMap as $keyword => $code) {
+        if (str_contains($normalized, $keyword)) {
+            return $code;
+        }
+    }
+
+    // Fallback: 3 premières lettres du nom (translittérées), complétées si besoin.
     $lettersOnly = preg_replace('/[^A-Za-z]/', '', $asciiName);
     $clean = strtoupper($lettersOnly ?? '');
     if ($clean === '') {
