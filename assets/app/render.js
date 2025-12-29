@@ -712,6 +712,11 @@ export function renderCatalog() {
   if (!filtered.length) {
     dom.catalogEl.innerHTML = '<p class="meta">Aucun materiel ne correspond au filtre.</p>';
   }
+
+  if (dom.resetFiltersBtn) {
+    const hasFilters = Boolean(state.filters.search) || state.filters.tags.length > 0;
+    dom.resetFiltersBtn.hidden = !hasFilters;
+  }
 }
 /**
  * Rend les emprunts de lutilisateur courant.

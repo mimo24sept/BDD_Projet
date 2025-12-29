@@ -28,6 +28,8 @@ try {
 
 // Colonne image ajoutee a la demande pour compatibilite avec d'anciennes bases.
 ensure_material_picture_column($pdo);
+// Colonne datasheet ajoutee pour liens ou fichiers PDF.
+ensure_material_datasheet_column($pdo);
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
@@ -123,7 +125,8 @@ function list_equipment(PDO $pdo): void
             cat.Categorie AS category,
             m.NUMserie AS numserie,
             m.Etat AS etat,
-            m.Image AS picture
+            m.Image AS picture,
+            m.Datasheet AS datasheet
         FROM `Materiel` m
         LEFT JOIN `Categorie` cat ON cat.IDcategorie = m.IDcategorie
         ORDER BY m.IDmateriel DESC'
@@ -147,6 +150,7 @@ function list_equipment(PDO $pdo): void
                 'status' => map_status($hasActiveNow, $hasMaintenanceNow),
                 'condition' => $row['etat'] ?? '',
                 'picture' => $row['picture'] ?? '',
+                'datasheet' => $row['datasheet'] ?? '',
                 'notes' => '',
                 'serial' => $row['numserie'] ?? '',
                 'tags' => [],
@@ -686,6 +690,27 @@ function ensure_material_picture_column(PDO $pdo): bool
     return $has;
 }
 
+// S'assure que la colonne Datasheet existe sur Materiel.
+function ensure_material_datasheet_column(PDO $pdo): bool
+{
+    static $checked = false;
+    static $has = false;
+    if ($checked) {
+        return $has;
+    }
+    $checked = true;
+    try {
+        $col = $pdo->query("SHOW COLUMNS FROM `Materiel` LIKE 'Datasheet'")->fetch();
+        if (!$col) {
+            $pdo->exec('ALTER TABLE `Materiel` ADD COLUMN `Datasheet` TEXT NULL');
+        }
+        $has = true;
+    } catch (Throwable $e) {
+        $has = false;
+    }
+    return $has;
+}
+
 // Enregistre une image uploadée et renvoie son chemin public.
 function store_uploaded_picture(array $file): string
 {
@@ -748,6 +773,68 @@ function store_uploaded_picture(array $file): string
     return 'assets/uploads/' . $filename;
 }
 
+// Enregistre un PDF datasheet et renvoie son chemin public.
+function store_uploaded_datasheet(array $file): string
+{
+    $error = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($error === UPLOAD_ERR_NO_FILE) {
+        return '';
+    }
+    if ($error !== UPLOAD_ERR_OK) {
+        $messages = [
+            UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (upload_max_filesize).',
+            UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux.',
+            UPLOAD_ERR_PARTIAL => 'Upload incomplet.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant.',
+            UPLOAD_ERR_CANT_WRITE => 'Ecriture du fichier impossible.',
+            UPLOAD_ERR_EXTENSION => 'Upload bloque par une extension PHP.',
+        ];
+        $message = $messages[$error] ?? 'Upload PDF impossible';
+        throw new RuntimeException($message);
+    }
+    $size = (int) ($file['size'] ?? 0);
+    if ($size <= 0) {
+        throw new RuntimeException('Fichier PDF invalide');
+    }
+    if ($size > 8 * 1024 * 1024) {
+        throw new RuntimeException('PDF trop lourd (8 Mo max)');
+    }
+
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    $mime = '';
+    if (class_exists('finfo') && $tmpName !== '') {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = (string) $finfo->file($tmpName);
+    }
+    $isPdf = in_array($mime, ['application/pdf', 'application/x-pdf'], true);
+    if (!$isPdf && $tmpName !== '' && is_readable($tmpName)) {
+        $head = file_get_contents($tmpName, false, null, 0, 5);
+        if (is_string($head) && strpos($head, '%PDF-') === 0) {
+            $isPdf = true;
+        }
+    }
+    if (!$isPdf) {
+        throw new RuntimeException('Format PDF requis');
+    }
+
+    $uploadDir = realpath(__DIR__ . '/../assets/uploads');
+    if (!$uploadDir) {
+        $uploadDir = __DIR__ . '/../assets/uploads';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0775, true);
+        }
+    }
+
+    $suffix = bin2hex(random_bytes(4));
+    $filename = sprintf('datasheet-%s-%s.pdf', date('Ymd-His'), $suffix);
+    $target = rtrim($uploadDir, '/') . '/' . $filename;
+    if (!move_uploaded_file($tmpName, $target)) {
+        throw new RuntimeException('Enregistrement PDF impossible');
+    }
+
+    return 'assets/uploads/' . $filename;
+}
+
 // Crée un nouvel équipement dans la base (admin).
 function create_equipment(PDO $pdo): void
 {
@@ -790,6 +877,26 @@ function create_equipment(PDO $pdo): void
             return;
         }
     }
+    $datasheetValue = '';
+    if (!empty($_FILES['datasheet_file']) && is_array($_FILES['datasheet_file'])) {
+        try {
+            $datasheetValue = store_uploaded_datasheet($_FILES['datasheet_file']);
+        } catch (Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+            return;
+        }
+    } else {
+        $datasheetUrl = trim((string) ($data['datasheet_url'] ?? ''));
+        if ($datasheetUrl !== '') {
+            if (!filter_var($datasheetUrl, FILTER_VALIDATE_URL) || !preg_match('/^https?:\\/\\//i', $datasheetUrl)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Lien datasheet invalide']);
+                return;
+            }
+            $datasheetValue = $datasheetUrl;
+        }
+    }
 
     if ($name === '' || ($categoryId <= 0 && $categoryName === '') || $location === '') {
         http_response_code(400);
@@ -813,8 +920,8 @@ function create_equipment(PDO $pdo): void
         $serial = generate_reference($pdo, $name, $categories ?: [$categoryName]);
 
         $insert = $pdo->prepare(
-            'INSERT INTO `Materiel` (NOMmateriel, IDcategorie, Emplacement, Dispo, NUMserie, Etat, Image)
-             VALUES (:name, :cat, :loc, "Oui", :serial, :etat, :image)'
+            'INSERT INTO `Materiel` (NOMmateriel, IDcategorie, Emplacement, Dispo, NUMserie, Etat, Image, Datasheet)
+             VALUES (:name, :cat, :loc, "Oui", :serial, :etat, :image, :datasheet)'
         );
         $insert->execute([
             ':name' => $name,
@@ -823,6 +930,7 @@ function create_equipment(PDO $pdo): void
             ':serial' => $serial,
             ':etat' => $condition ?: 'Bon',
             ':image' => $picturePath !== '' ? $picturePath : null,
+            ':datasheet' => $datasheetValue !== '' ? $datasheetValue : null,
         ]);
         $newId = (int) $pdo->lastInsertId();
         $pdo->commit();
@@ -951,6 +1059,35 @@ function update_equipment(PDO $pdo): void
     if ($picturePath !== '') {
         $fields[] = 'Image = :image';
         $params[':image'] = $picturePath;
+    }
+
+    $datasheetProvided = array_key_exists('datasheet_url', $data);
+    $datasheetValue = null;
+    if (!empty($_FILES['datasheet_file']) && is_array($_FILES['datasheet_file'])) {
+        $datasheetProvided = true;
+        try {
+            $datasheetValue = store_uploaded_datasheet($_FILES['datasheet_file']);
+        } catch (Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['error' => $e->getMessage()]);
+            return;
+        }
+    } elseif ($datasheetProvided) {
+        $datasheetUrl = trim((string) ($data['datasheet_url'] ?? ''));
+        if ($datasheetUrl !== '') {
+            if (!filter_var($datasheetUrl, FILTER_VALIDATE_URL) || !preg_match('/^https?:\\/\\//i', $datasheetUrl)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Lien datasheet invalide']);
+                return;
+            }
+            $datasheetValue = $datasheetUrl;
+        } else {
+            $datasheetValue = null;
+        }
+    }
+    if ($datasheetProvided) {
+        $fields[] = 'Datasheet = :datasheet';
+        $params[':datasheet'] = $datasheetValue;
     }
 
     if (!$fields) {
@@ -1096,7 +1233,8 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
             cat.Categorie AS category,
             m.NUMserie AS numserie,
             m.Etat AS etat,
-            m.Image AS picture
+            m.Image AS picture,
+            m.Datasheet AS datasheet
         FROM `Materiel` m
         LEFT JOIN `Categorie` cat ON cat.IDcategorie = m.IDcategorie
         WHERE m.IDmateriel = :id
@@ -1121,6 +1259,7 @@ function fetch_equipment_by_id(PDO $pdo, int $id): ?array
         'status' => map_status($hasActiveLoan, $hasMaintenanceNow),
         'condition' => $row['etat'] ?? '',
         'picture' => $row['picture'] ?? '',
+        'datasheet' => $row['datasheet'] ?? '',
         'notes' => '',
         'serial' => $row['numserie'] ?? '',
         'tags' => [],

@@ -118,6 +118,11 @@ export function openModal(item, mode = 'reserve') {
   const categoriesLabel = (item.categories && item.categories.length)
     ? item.categories.join(', ')
     : item.category;
+  const datasheetValue = String(item.datasheet || '').trim();
+  const datasheetLink = datasheetValue ? escapeHtml(datasheetValue) : '';
+  const datasheetHtml = datasheetLink
+    ? `<div class="meta">Fiche technique : <a class="datasheet-link" href="${datasheetLink}" target="_blank" rel="noopener">Consulter</a></div>`
+    : '';
   dom.modalBody.innerHTML = `
       <div class="modal-body-grid">
         <div class="modal-hero">
@@ -129,6 +134,7 @@ export function openModal(item, mode = 'reserve') {
               <div class="meta">Catégories : <strong>${escapeHtml(categoriesLabel || 'N/C')}</strong></div>
               <div class="meta">Référence : <strong>${escapeHtml(item.serial || 'N/C')}</strong></div>
               <div class="meta">Emplacement : <strong>${escapeHtml(item.location || 'Stock')}</strong></div>
+              ${datasheetHtml}
               <p class="meta">${escapeHtml(item.description || 'Description a venir')}</p>
             </div>
           </div>
@@ -225,6 +231,13 @@ export function openEditModal(item) {
     const selected = opt.value === conditionValue ? 'selected' : '';
     return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
   }).join('');
+  const datasheetValue = String(item?.datasheet || '').trim();
+  const hasDatasheet = datasheetValue !== '';
+  const isDatasheetUrl = /^https?:\/\//i.test(datasheetValue);
+  const datasheetUrlValue = isDatasheetUrl ? datasheetValue : '';
+  const datasheetLabel = hasDatasheet
+    ? `<div class="meta">Fiche actuelle : <a class="datasheet-link" href="${escapeHtml(datasheetValue)}" target="_blank" rel="noopener">Consulter</a></div>`
+    : '';
 
   dom.modalTitle.textContent = `Modifier ${item?.name || 'matériel'}`;
   dom.modalBody.innerHTML = `
@@ -250,6 +263,17 @@ export function openEditModal(item) {
           <label for="edit-picture">Nouvelle image</label>
           <input id="edit-picture" name="picture" type="file" accept="image/*" />
           <div class="meta">JPG/PNG/WebP/GIF, 4 Mo max.</div>
+        </div>
+        <div class="input-group">
+          <label for="edit-datasheet-url">Fiche technique (lien)</label>
+          <input id="edit-datasheet-url" name="datasheet-url" type="url" placeholder="https://exemple.com/datasheet.pdf" value="${escapeHtml(datasheetUrlValue)}" />
+          <div class="meta">Optionnel. HTTP/HTTPS uniquement.</div>
+        </div>
+        <div class="input-group">
+          <label for="edit-datasheet-file">Fiche technique (PDF)</label>
+          <input id="edit-datasheet-file" name="datasheet-file" type="file" accept="application/pdf" />
+          <div class="meta">Optionnel. PDF, 8 Mo max.</div>
+          ${datasheetLabel}
         </div>
       </form>
     `;

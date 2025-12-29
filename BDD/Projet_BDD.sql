@@ -113,7 +113,8 @@ CREATE TABLE `Materiel` (
   `Dispo` enum('Oui','Non') NOT NULL DEFAULT 'Non',
   `NUMserie` text NOT NULL,
   `Etat` text NOT NULL,
-  `Image` varchar(255) DEFAULT NULL
+  `Image` varchar(255) DEFAULT NULL,
+  `Datasheet` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --

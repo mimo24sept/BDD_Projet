@@ -55,6 +55,22 @@ function buildQueryWithFlag() {
   return query ? `?${query}` : '';
 }
 
+function isValidHttpUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (err) {
+    return false;
+  }
+}
+
+function isPdfFile(file) {
+  if (!file) return false;
+  if (file.type === 'application/pdf') return true;
+  return file.name && file.name.toLowerCase().endsWith('.pdf');
+}
+
 if (!dom.appShell) {
   // Sortie rapide pour eviter d'accrocher des events hors dashboard.
 } else {
@@ -189,6 +205,15 @@ if (!dom.appShell) {
       renderCatalog();
     });
   }
+  if (dom.resetFiltersBtn) {
+    dom.resetFiltersBtn.addEventListener('click', () => {
+      state.filters.search = '';
+      state.filters.tags = [];
+      if (dom.searchInput) dom.searchInput.value = '';
+      renderCatalog();
+      renderTags();
+    });
+  }
   if (dom.loanSearchInput) {
     dom.loanSearchInput.addEventListener('input', () => {
       state.loanSearch = dom.loanSearchInput.value.toLowerCase();
@@ -318,6 +343,12 @@ if (!dom.appShell) {
         const picture = pictureInput && pictureInput.files && pictureInput.files[0]
           ? pictureInput.files[0]
           : null;
+        const datasheetInput = form.querySelector('input[name="datasheet-file"]');
+        const datasheetFile = datasheetInput && datasheetInput.files && datasheetInput.files[0]
+          ? datasheetInput.files[0]
+          : null;
+        const datasheetUrlRaw = String(form.querySelector('input[name="datasheet-url"]')?.value || '').trim();
+        const datasheetUrl = datasheetFile ? '' : datasheetUrlRaw;
         if (!name || !location) {
           if (dom.modalMsg) {
             dom.modalMsg.textContent = 'Nom et emplacement requis.';
@@ -353,6 +384,27 @@ if (!dom.appShell) {
           }
           return;
         }
+        if (datasheetUrl && !isValidHttpUrl(datasheetUrl)) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Lien de fiche technique invalide';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (datasheetFile && !isPdfFile(datasheetFile)) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'Format PDF requis pour la fiche technique';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
+        if (datasheetFile && datasheetFile.size > 8 * 1024 * 1024) {
+          if (dom.modalMsg) {
+            dom.modalMsg.textContent = 'PDF trop lourd (8 Mo max)';
+            dom.modalMsg.className = 'message err';
+          }
+          return;
+        }
         if (dom.modalMsg) {
           dom.modalMsg.textContent = 'Mise a jour...';
           dom.modalMsg.className = 'message';
@@ -367,6 +419,8 @@ if (!dom.appShell) {
             condition,
             categories,
             picture,
+            datasheetUrl: datasheetUrl || undefined,
+            datasheetFile,
           });
           if (dom.modalMsg) {
             dom.modalMsg.textContent = 'Materiel mis a jour';
@@ -548,12 +602,32 @@ if (!dom.appShell) {
         dom.adminMsg.className = 'message err';
         return;
       }
+      const datasheetFile = dom.adminInputs.datasheetFile?.files?.[0] || null;
+      const datasheetUrlRaw = dom.adminInputs.datasheetUrl?.value?.trim() || '';
+      const datasheetUrl = datasheetFile ? '' : datasheetUrlRaw;
+      if (datasheetUrl && !isValidHttpUrl(datasheetUrl)) {
+        dom.adminMsg.textContent = 'Lien de fiche technique invalide';
+        dom.adminMsg.className = 'message err';
+        return;
+      }
+      if (datasheetFile && !isPdfFile(datasheetFile)) {
+        dom.adminMsg.textContent = 'Format PDF requis pour la fiche technique';
+        dom.adminMsg.className = 'message err';
+        return;
+      }
+      if (datasheetFile && datasheetFile.size > 8 * 1024 * 1024) {
+        dom.adminMsg.textContent = 'PDF trop lourd (8 Mo max)';
+        dom.adminMsg.className = 'message err';
+        return;
+      }
       const payload = {
         name: dom.adminInputs.name?.value?.trim(),
         categories: selectedCats,
         location: dom.adminInputs.location?.value?.trim(),
         condition: dom.adminInputs.condition?.value?.trim(),
         picture: pictureFile,
+        datasheetUrl: datasheetUrl || undefined,
+        datasheetFile,
       };
       dom.adminMsg.textContent = 'Enregistrement...';
       dom.adminMsg.className = 'message';

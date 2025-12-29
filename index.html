@@ -34,6 +34,8 @@
   <link rel="stylesheet" href="./assets/styles/base.css" />
   <!-- Auth.css pour la page de connexion. -->
   <link rel="stylesheet" href="./assets/styles/auth.css" />
+  <!-- Theme.js gere le mode sombre/clair selon le systeme et le choix utilisateur. -->
+  <script src="./assets/theme.js" defer></script>
 </head>
 <body>
   <!-- Overlay ripple pour masquer la transition apres login. -->
@@ -44,6 +46,20 @@
   </div>
   <!-- Conteneur plein ecran pour centrer la carte. -->
   <div class="auth-wall">
+    <button type="button" class="theme-toggle auth-theme-toggle" data-theme-toggle role="switch" aria-checked="false" aria-label="Mode couleur">
+      <span class="theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5Z" />
+        </svg>
+      </span>
+      <span class="theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      </span>
+      <span class="theme-toggle__thumb" aria-hidden="true"></span>
+    </button>
     <div class="panel auth-card">
       <!-- Branding pour garder le contexte. -->
       <div class="brand auth-brand">

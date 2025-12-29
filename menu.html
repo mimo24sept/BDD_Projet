@@ -35,6 +35,8 @@
   <link rel="stylesheet" href="./assets/styles/base.css" />
   <!-- App.css contient les styles propres a ce tableau de bord. -->
   <link rel="stylesheet" href="./assets/styles/app.css" />
+  <!-- Theme.js gere le mode sombre/clair selon le systeme et le choix utilisateur. -->
+  <script src="./assets/theme.js" defer></script>
 </head>
 <body>
   <!-- Une coquille unique pour permettre a JS de masquer/afficher les sections.
@@ -51,6 +53,20 @@
       </div>
       <!-- Actions utilisateur toujours accessibles (statut + deconnexion). -->
       <div class="header-actions">
+        <button type="button" class="theme-toggle" data-theme-toggle role="switch" aria-checked="false" aria-label="Mode couleur">
+          <span class="theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5Z" />
+            </svg>
+          </span>
+          <span class="theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+            </svg>
+          </span>
+          <span class="theme-toggle__thumb" aria-hidden="true"></span>
+        </button>
         <span class="user-chip" id="user-chip">Non connecte</span>
         <div class="user-menu" id="password-menu">
           <button type="button" class="ghost" id="password-toggle" aria-expanded="false" aria-controls="password-panel">
@@ -111,6 +127,9 @@
           <div class="input-group">
             <!-- Tags pour filtrer sans clavier (plus rapide pour l'utilisateur). -->
             <div class="tag-bar" id="tag-bar"></div>
+          </div>
+          <div class="filters-actions">
+            <button type="button" class="ghost reset-filters" id="reset-filters" hidden>Reinitialiser filtres</button>
           </div>
         </div>
         <div class="spacer-sm"></div>
@@ -210,6 +229,16 @@
                 <label for="admin-picture">Image</label>
                 <input id="admin-picture" name="picture" type="file" accept="image/*" />
                 <div class="meta">JPG/PNG/WebP/GIF, 4 Mo max.</div>
+              </div>
+              <div class="input-group">
+                <label for="admin-datasheet-url">Fiche technique (lien)</label>
+                <input id="admin-datasheet-url" name="datasheet-url" type="url" placeholder="https://exemple.com/datasheet.pdf" />
+                <div class="meta">Optionnel. HTTP/HTTPS uniquement.</div>
+              </div>
+              <div class="input-group">
+                <label for="admin-datasheet-file">Fiche technique (PDF)</label>
+                <input id="admin-datasheet-file" name="datasheet-file" type="file" accept="application/pdf" />
+                <div class="meta">Optionnel. PDF, 8 Mo max.</div>
               </div>
               <button type="submit">Ajouter</button>
               <div id="admin-msg" class="message"></div>

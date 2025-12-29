@@ -397,6 +397,8 @@ export async function apiCreateEquipment(payload) {
   if (payload?.condition) form.append('condition', payload.condition);
   (payload?.categories || []).forEach((cat) => form.append('categories[]', cat));
   if (payload?.picture) form.append('picture', payload.picture);
+  if (payload?.datasheetUrl !== undefined) form.append('datasheet_url', payload.datasheetUrl);
+  if (payload?.datasheetFile) form.append('datasheet_file', payload.datasheetFile);
   const res = await fetch(`${API.equipment}?action=create`, {
     method: 'POST',
     credentials: 'include',
@@ -424,6 +426,8 @@ export async function apiUpdateEquipment(payload) {
   if (payload?.condition !== undefined) form.append('condition', payload.condition);
   (payload?.categories || []).forEach((cat) => form.append('categories[]', cat));
   if (payload?.picture) form.append('picture', payload.picture);
+  if (payload?.datasheetUrl !== undefined) form.append('datasheet_url', payload.datasheetUrl);
+  if (payload?.datasheetFile) form.append('datasheet_file', payload.datasheetFile);
   const res = await fetch(`${API.equipment}?action=update`, {
     method: 'POST',
     credentials: 'include',

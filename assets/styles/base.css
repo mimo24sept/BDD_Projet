@@ -9,18 +9,201 @@
 :root {
   --bg: #fdfdfb;
   --card: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #f9fafb;
+  --surface-muted: #f2f4f8;
+  --surface-muted-2: #f6f7fb;
+  --surface-muted-3: #f2f4f7;
+  --surface-disabled: #f4f4f5;
   --ink: #1f2933;
   --muted: #6c727f;
   --line: #e7e9ee;
   --accent: #ff8c32;
   --accent-soft: #ffe4c8;
   --accent-strong: #ff6a00;
+  --accent-tint: #fff6ed;
+  --accent-tint-2: #fff7ed;
+  --accent-tint-3: #fff8f1;
+  --accent-tint-4: #fff7f0;
   --success: #22c55e;
+  --success-soft: #ecfdf3;
+  --success-ink: #137a36;
   --warning: #f97316;
+  --warning-soft: #fff7ed;
+  --warning-soft-2: #fff4e5;
+  --warning-border: #ffedd5;
+  --warning-ink: #c2410c;
+  --warning-ink-strong: #ea580c;
   --danger: #ef4444;
+  --danger-soft: #fff1f1;
+  --danger-soft-2: #fff1f2;
+  --danger-soft-3: #fee2e2;
+  --danger-border: #fca5a5;
+  --danger-ink: #b91c1c;
+  --info-soft: #e0f2fe;
+  --info-border: #bae6fd;
+  --info-ink: #0369a1;
   --shadow: 0 20px 60px rgba(16, 24, 40, 0.1);
+  --tab-indicator-glow: rgba(255, 255, 255, 0.8);
+  --modal-backdrop: rgba(15, 23, 42, 0.45);
+  --ripple-overlay: radial-gradient(120% 120% at 50% 45%, rgba(255,250,245,0.9) 0%, rgba(255,229,210,0.8) 28%, rgba(255,140,50,0.35) 55%, rgba(15,23,42,0.55) 85%);
+  --ripple-highlight: #ffffff;
+  --sheen-highlight: rgba(255, 255, 255, 0.8);
+  --page-bg: radial-gradient(circle at 12% 18%, rgba(255,140,50,0.12), transparent 28%),
+    radial-gradient(circle at 85% 8%, rgba(255,184,122,0.12), transparent 26%),
+    linear-gradient(180deg, #fefefe 0%, #f8fafc 60%, #f6f5ff 100%);
   --radius: 16px;
   --font: 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1012;
+    --card: #15171a;
+    --surface: #15171a;
+    --surface-alt: #121316;
+    --surface-muted: #1e2024;
+    --surface-muted-2: #1c1e22;
+    --surface-muted-3: #1a1c20;
+    --surface-disabled: #1f2125;
+    --ink: #f2f2f2;
+    --muted: #9aa0a6;
+    --line: #2a2d33;
+    --accent: #ff8c32;
+    --accent-soft: #5a3418;
+    --accent-strong: #ff6a00;
+    --accent-tint: #2b1a10;
+    --accent-tint-2: #2f1b0f;
+    --accent-tint-3: #3a2414;
+    --accent-tint-4: #2a1c13;
+    --success: #22c55e;
+    --success-soft: #0f2a1d;
+    --success-ink: #86efac;
+    --warning: #f97316;
+    --warning-soft: #2b1d0d;
+    --warning-soft-2: #3a2410;
+    --warning-border: #7c4a1f;
+    --warning-ink: #fdba74;
+    --warning-ink-strong: #fb923c;
+    --danger: #ef4444;
+    --danger-soft: #2b1315;
+    --danger-soft-2: #2f1418;
+    --danger-soft-3: #3a1820;
+    --danger-border: #7f1d1d;
+    --danger-ink: #fca5a5;
+    --info-soft: #0f2538;
+    --info-border: #1d4b6d;
+    --info-ink: #7dd3fc;
+    --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    --tab-indicator-glow: rgba(0, 0, 0, 0.35);
+    --modal-backdrop: rgba(8, 8, 10, 0.7);
+    --ripple-overlay: radial-gradient(120% 120% at 50% 45%, rgba(40,26,18,0.75) 0%, rgba(32,32,34,0.7) 28%, rgba(255,140,50,0.28) 55%, rgba(10,10,12,0.7) 85%);
+    --ripple-highlight: #1f2937;
+    --sheen-highlight: rgba(255, 255, 255, 0.2);
+    --page-bg: radial-gradient(circle at 12% 18%, rgba(255,140,50,0.08), transparent 30%),
+      radial-gradient(circle at 85% 8%, rgba(255,184,122,0.08), transparent 28%),
+      linear-gradient(180deg, #0f1012 0%, #131517 60%, #15171a 100%);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='light'] {
+  --bg: #fdfdfb;
+  --card: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #f9fafb;
+  --surface-muted: #f2f4f8;
+  --surface-muted-2: #f6f7fb;
+  --surface-muted-3: #f2f4f7;
+  --surface-disabled: #f4f4f5;
+  --ink: #1f2933;
+  --muted: #6c727f;
+  --line: #e7e9ee;
+  --accent: #ff8c32;
+  --accent-soft: #ffe4c8;
+  --accent-strong: #ff6a00;
+  --accent-tint: #fff6ed;
+  --accent-tint-2: #fff7ed;
+  --accent-tint-3: #fff8f1;
+  --accent-tint-4: #fff7f0;
+  --success: #22c55e;
+  --success-soft: #ecfdf3;
+  --success-ink: #137a36;
+  --warning: #f97316;
+  --warning-soft: #fff7ed;
+  --warning-soft-2: #fff4e5;
+  --warning-border: #ffedd5;
+  --warning-ink: #c2410c;
+  --warning-ink-strong: #ea580c;
+  --danger: #ef4444;
+  --danger-soft: #fff1f1;
+  --danger-soft-2: #fff1f2;
+  --danger-soft-3: #fee2e2;
+  --danger-border: #fca5a5;
+  --danger-ink: #b91c1c;
+  --info-soft: #e0f2fe;
+  --info-border: #bae6fd;
+  --info-ink: #0369a1;
+  --shadow: 0 20px 60px rgba(16, 24, 40, 0.1);
+  --tab-indicator-glow: rgba(255, 255, 255, 0.8);
+  --modal-backdrop: rgba(15, 23, 42, 0.45);
+  --ripple-overlay: radial-gradient(120% 120% at 50% 45%, rgba(255,250,245,0.9) 0%, rgba(255,229,210,0.8) 28%, rgba(255,140,50,0.35) 55%, rgba(15,23,42,0.55) 85%);
+  --ripple-highlight: #ffffff;
+  --sheen-highlight: rgba(255, 255, 255, 0.8);
+  --page-bg: radial-gradient(circle at 12% 18%, rgba(255,140,50,0.12), transparent 28%),
+    radial-gradient(circle at 85% 8%, rgba(255,184,122,0.12), transparent 26%),
+    linear-gradient(180deg, #fefefe 0%, #f8fafc 60%, #f6f5ff 100%);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0f1012;
+  --card: #15171a;
+  --surface: #15171a;
+  --surface-alt: #121316;
+  --surface-muted: #1e2024;
+  --surface-muted-2: #1c1e22;
+  --surface-muted-3: #1a1c20;
+  --surface-disabled: #1f2125;
+  --ink: #f2f2f2;
+  --muted: #9aa0a6;
+  --line: #2a2d33;
+  --accent: #ff8c32;
+  --accent-soft: #5a3418;
+  --accent-strong: #ff6a00;
+  --accent-tint: #2b1a10;
+  --accent-tint-2: #2f1b0f;
+  --accent-tint-3: #3a2414;
+  --accent-tint-4: #2a1c13;
+  --success: #22c55e;
+  --success-soft: #0f2a1d;
+  --success-ink: #86efac;
+  --warning: #f97316;
+  --warning-soft: #2b1d0d;
+  --warning-soft-2: #3a2410;
+  --warning-border: #7c4a1f;
+  --warning-ink: #fdba74;
+  --warning-ink-strong: #fb923c;
+  --danger: #ef4444;
+  --danger-soft: #2b1315;
+  --danger-soft-2: #2f1418;
+  --danger-soft-3: #3a1820;
+  --danger-border: #7f1d1d;
+  --danger-ink: #fca5a5;
+  --info-soft: #0f2538;
+  --info-border: #1d4b6d;
+  --info-ink: #7dd3fc;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --tab-indicator-glow: rgba(0, 0, 0, 0.35);
+  --modal-backdrop: rgba(8, 8, 10, 0.7);
+  --ripple-overlay: radial-gradient(120% 120% at 50% 45%, rgba(40,26,18,0.75) 0%, rgba(32,32,34,0.7) 28%, rgba(255,140,50,0.28) 55%, rgba(10,10,12,0.7) 85%);
+  --ripple-highlight: #1f2937;
+  --sheen-highlight: rgba(255, 255, 255, 0.2);
+  --page-bg: radial-gradient(circle at 12% 18%, rgba(255,140,50,0.08), transparent 30%),
+    radial-gradient(circle at 85% 8%, rgba(255,184,122,0.08), transparent 28%),
+    linear-gradient(180deg, #0f1012 0%, #131517 60%, #15171a 100%);
+  color-scheme: dark;
 }
 
 /* Box sizing global pour eviter les debordements surprenants. */
@@ -30,9 +213,8 @@
 body {
   margin: 0;
   font-family: var(--font);
-  background: radial-gradient(circle at 12% 18%, rgba(255,140,50,0.12), transparent 28%),
-              radial-gradient(circle at 85% 8%, rgba(255,184,122,0.12), transparent 26%),
-              linear-gradient(180deg, #fefefe 0%, #f8fafc 60%, #f6f5ff 100%);
+  background: var(--page-bg);
+  background-color: var(--bg);
   color: var(--ink);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -94,7 +276,7 @@ input, select, textarea {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   font-family: var(--font);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
@@ -134,6 +316,91 @@ button.ghost {
 
 button.ghost:hover { border-color: var(--accent); color: var(--accent-strong); }
 
+/* Toggle theme compacte avec slider. */
+.theme-toggle {
+  --toggle-width: 64px;
+  --toggle-height: 32px;
+  --thumb-size: 24px;
+  --thumb-offset: 4px;
+  --thumb-translate: 0px;
+  width: var(--toggle-width);
+  height: var(--toggle-height);
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: var(--shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.theme-toggle:hover,
+.theme-toggle:active {
+  transform: none;
+}
+
+.theme-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,140,50,0.2), var(--shadow);
+}
+
+.theme-toggle__icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.theme-toggle__thumb {
+  position: absolute;
+  top: var(--thumb-offset);
+  left: var(--thumb-offset);
+  width: var(--thumb-size);
+  height: var(--thumb-size);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  box-shadow: 0 8px 18px rgba(255,140,50,0.32);
+  transform: translateX(var(--thumb-translate));
+  transition: transform 0.25s ease;
+  z-index: 1;
+}
+
+.theme-toggle[data-theme-mode='light'] {
+  --thumb-translate: calc(var(--toggle-width) - var(--thumb-size) - (var(--thumb-offset) * 2));
+}
+
+.theme-toggle[data-theme-mode='dark'] .theme-toggle__icon--moon,
+.theme-toggle[data-theme-mode='light'] .theme-toggle__icon--sun {
+  color: var(--accent-strong);
+  opacity: 1;
+}
+
+.theme-toggle[data-theme-mode='dark'] .theme-toggle__icon--sun,
+.theme-toggle[data-theme-mode='light'] .theme-toggle__icon--moon {
+  opacity: 0.35;
+}
+
 /* Messages courts pour feedback d'action. */
 .message { font-size: 13px; color: var(--muted); }
 .message.ok { color: var(--success); }
@@ -141,6 +408,7 @@ button.ghost:hover { border-color: var(--accent); color: var(--accent-strong); }
 
 /* Texte secondaire pour les details. */
 .meta { color: var(--muted); font-size: 14px; }
+.datasheet-link { font-weight: 700; }
 
 /* Separateur discret entre sections. */
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
