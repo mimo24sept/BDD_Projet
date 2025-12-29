@@ -45,7 +45,9 @@ INSERT INTO `Categorie` (`IDcategorie`, `Categorie`) VALUES
 (1, 'Info'),
 (2, 'Elen'),
 (3, 'Ener'),
-(4, 'Auto');
+(4, 'Auto'),
+(5, 'Robotique'),
+(6, 'Meca');
 
 -- --------------------------------------------------------
 
@@ -70,12 +72,17 @@ INSERT INTO `Emprunt` (`IDemprunt`, `IDmateriel`, `IDuser`, `DATEdebut`, `DATEfi
 (1, 1, 3, DATE_SUB(CURDATE(), INTERVAL 3 DAY), DATE_ADD(CURDATE(), INTERVAL 7 DAY), 'Pret'),
 (2, 2, 3, DATE_SUB(CURDATE(), INTERVAL 20 DAY), DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'Pret'),
 (3, 3, 4, DATE_ADD(CURDATE(), INTERVAL 2 DAY), DATE_ADD(CURDATE(), INTERVAL 10 DAY), 'Reserve'),
-(4, 4, 4, DATE_SUB(CURDATE(), INTERVAL 30 DAY), DATE_SUB(CURDATE(), INTERVAL 22 DAY), 'Pret'),
+(4, 4, 4, DATE_SUB(CURDATE(), INTERVAL 30 DAY), DATE_SUB(CURDATE(), INTERVAL 22 DAY), 'Terminé'),
 (5, 5, 2, DATE_SUB(CURDATE(), INTERVAL 1 DAY), DATE_ADD(CURDATE(), INTERVAL 6 DAY), 'Maintenance'),
-(6, 6, 3, DATE_SUB(CURDATE(), INTERVAL 14 DAY), DATE_SUB(CURDATE(), INTERVAL 7 DAY), 'Pret'),
+(6, 6, 3, DATE_SUB(CURDATE(), INTERVAL 14 DAY), DATE_SUB(CURDATE(), INTERVAL 7 DAY), 'Terminé'),
 (7, 7, 4, DATE_ADD(CURDATE(), INTERVAL 12 DAY), DATE_ADD(CURDATE(), INTERVAL 20 DAY), 'Pret'),
 (8, 8, 3, DATE_SUB(CURDATE(), INTERVAL 5 DAY), DATE_ADD(CURDATE(), INTERVAL 1 DAY), 'Annulation demandee'),
-(9, 9, 2, DATE_SUB(CURDATE(), INTERVAL 60 DAY), DATE_SUB(CURDATE(), INTERVAL 50 DAY), 'Pret');
+(9, 9, 2, DATE_SUB(CURDATE(), INTERVAL 60 DAY), DATE_SUB(CURDATE(), INTERVAL 50 DAY), 'Terminé'),
+(10, 10, 2, DATE_SUB(CURDATE(), INTERVAL 40 DAY), DATE_SUB(CURDATE(), INTERVAL 35 DAY), 'Maintenance terminee'),
+(11, 11, 5, DATE_SUB(CURDATE(), INTERVAL 25 DAY), DATE_SUB(CURDATE(), INTERVAL 10 DAY), 'Terminé'),
+(12, 12, 5, DATE_SUB(CURDATE(), INTERVAL 50 DAY), DATE_SUB(CURDATE(), INTERVAL 40 DAY), 'Terminé'),
+(13, 13, 5, DATE_SUB(CURDATE(), INTERVAL 10 DAY), DATE_SUB(CURDATE(), INTERVAL 2 DAY), 'Pret'),
+(14, 14, 4, DATE_SUB(CURDATE(), INTERVAL 2 DAY), DATE_ADD(CURDATE(), INTERVAL 14 DAY), 'Pret');
 
 -- --------------------------------------------------------
 
@@ -97,7 +104,8 @@ CREATE TABLE `Prolongation` (
 
 INSERT INTO `Prolongation` (`IDprolongation`, `IDemprunt`, `DATEfinDemande`, `Status`, `CreatedAt`) VALUES
 (1, 1, DATE_ADD(CURDATE(), INTERVAL 12 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-(2, 2, DATE_ADD(CURDATE(), INTERVAL 4 DAY), 'rejected', DATE_SUB(NOW(), INTERVAL 6 DAY));
+(2, 2, DATE_ADD(CURDATE(), INTERVAL 4 DAY), 'rejected', DATE_SUB(NOW(), INTERVAL 6 DAY)),
+(3, 14, DATE_ADD(CURDATE(), INTERVAL 14 DAY), 'approved', DATE_SUB(NOW(), INTERVAL 2 DAY));
 
 -- --------------------------------------------------------
 
@@ -121,17 +129,21 @@ CREATE TABLE `Materiel` (
 -- Déchargement des données de la table `Materiel`
 --
 
-INSERT INTO `Materiel` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplacement`, `Dispo`, `NUMserie`, `Etat`) VALUES
-(1, 'Oscilloscope Keysight DSOX1102G', 2, 'B05', 'Non', 'ELEN-OSC-001', 'Bon'),
-(2, 'Multimetre Fluke 117', 2, 'B05', 'Non', 'ELEN-MM-002', 'Bon'),
-(3, 'Arduino Uno R3', 1, 'A12', 'Oui', 'INFO-ARD-003', 'Bon'),
-(4, 'Raspberry Pi 4', 1, 'A12', 'Oui', 'INFO-RPI-004', 'Passable'),
-(5, 'Alimentation DC 0-30V', 3, 'C03', 'Non', 'ENER-PSU-005', 'Reparation Necessaire'),
-(6, 'Capteur OBD-II', 4, 'D01', 'Oui', 'AUTO-OBD-006', 'Bon'),
-(7, 'Batterie Li-Ion 12V', 3, 'C07', 'Oui', 'ENER-BAT-007', 'Bon'),
-(8, 'Capteur courant Hall', 2, 'B03', 'Non', 'ELEN-HALL-008', 'Neuf'),
-(9, 'Automate Siemens Logo', 4, 'D04', 'Oui', 'AUTO-PLC-009', 'Neuf'),
-(10, 'Station de soudage Weller', 2, 'B07', 'Oui', 'ELEN-SOLD-010', 'Bon');
+INSERT INTO `Materiel` (`IDmateriel`, `NOMmateriel`, `IDcategorie`, `Emplacement`, `Dispo`, `NUMserie`, `Etat`, `Image`, `Datasheet`) VALUES
+(1, 'Oscilloscope Keysight DSOX1102G', 2, 'B05', 'Non', 'ELEN-OSC-001', 'Bon', 'assets/placeholder.svg', 'assets/placeholder.svg'),
+(2, 'Multimetre Fluke 117', 2, 'B05', 'Non', 'ELEN-MM-002', 'Bon', NULL, NULL),
+(3, 'Arduino Uno R3', 1, 'A12', 'Oui', 'INFO-ARD-003', 'Bon', 'assets/favicon.svg', 'assets/placeholder.svg'),
+(4, 'Raspberry Pi 4', 1, 'A12', 'Oui', 'INFO-RPI-004', 'Passable', NULL, NULL),
+(5, 'Alimentation DC 0-30V', 3, 'C03', 'Non', 'ENER-PSU-005', 'Reparation Necessaire', NULL, NULL),
+(6, 'Capteur OBD-II', 4, 'D01', 'Oui', 'AUTO-OBD-006', 'Bon', NULL, NULL),
+(7, 'Batterie Li-Ion 12V', 3, 'C07', 'Oui', 'ENER-BAT-007', 'Bon', NULL, NULL),
+(8, 'Capteur courant Hall', 2, 'B03', 'Non', 'ELEN-HALL-008', 'Neuf', NULL, NULL),
+(9, 'Automate Siemens Logo', 4, 'D04', 'Oui', 'AUTO-PLC-009', 'Neuf', NULL, NULL),
+(10, 'Station de soudage Weller', 2, 'B07', 'Oui', 'ELEN-SOLD-010', 'Bon', NULL, NULL),
+(11, 'Robot mobile TurtleBot', 5, 'E02', 'Oui', 'ROBO-TB-011', 'Bon', 'assets/placeholder.svg', 'assets/placeholder.svg'),
+(12, 'Imprimante 3D Prusa MK3', 6, 'E05', 'Oui', 'MECA-3D-012', 'Passable', NULL, NULL),
+(13, 'Carte FPGA Basys 3', 1, 'A05', 'Non', 'INFO-FPGA-013', 'Bon', NULL, 'assets/placeholder.svg'),
+(14, 'Oscilloscope Tektronix TBS1052', 2, 'B06', 'Non', 'ELEN-OSC-014', 'Bon', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -153,7 +165,10 @@ CREATE TABLE `Rendu` (
 INSERT INTO `Rendu` (`IDrendu`, `IDemprunt`, `DATErendu`, `ETATrendu`) VALUES
 (1, 4, DATE_SUB(CURDATE(), INTERVAL 20 DAY), 'degrade:bon->passable'),
 (2, 6, DATE_SUB(CURDATE(), INTERVAL 7 DAY), 'bon'),
-(3, 9, DATE_SUB(CURDATE(), INTERVAL 49 DAY), 'bon');
+(3, 9, DATE_SUB(CURDATE(), INTERVAL 49 DAY), 'bon'),
+(4, 10, DATE_SUB(CURDATE(), INTERVAL 34 DAY), 'bon'),
+(5, 11, DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'bon'),
+(6, 12, DATE_SUB(CURDATE(), INTERVAL 38 DAY), 'bon');
 
 -- --------------------------------------------------------
 
@@ -176,7 +191,9 @@ CREATE TABLE `Notification` (
 INSERT INTO `Notification` (`IDnotification`, `IDuser`, `Message`, `CreatedAt`, `Seen`) VALUES
 (1, 3, 'Votre réservation pour Oscilloscope Keysight arrive bientôt à échéance.', DATE_SUB(NOW(), INTERVAL 2 DAY), 0),
 (2, 3, 'Pensez à rendre le multimètre Fluke 117.', DATE_SUB(NOW(), INTERVAL 1 DAY), 0),
-(3, 4, 'Nouvelle réservation validée.', DATE_SUB(NOW(), INTERVAL 3 DAY), 1);
+(3, 4, 'Nouvelle réservation validée.', DATE_SUB(NOW(), INTERVAL 3 DAY), 1),
+(4, 5, 'Votre réservation pour Robot mobile TurtleBot a été annulée suite à une maintenance planifiée.', DATE_SUB(NOW(), INTERVAL 4 DAY), 0),
+(5, 4, 'Votre demande de prolongation a été approuvée.', DATE_SUB(NOW(), INTERVAL 2 DAY), 0);
 
 -- --------------------------------------------------------
 
@@ -200,7 +217,8 @@ CREATE TABLE `MaintenanceRequest` (
 
 INSERT INTO `MaintenanceRequest` (`IDmaintenance`, `IDmateriel`, `IDuser`, `DATEdebut`, `DATEfin`, `Status`, `CreatedAt`) VALUES
 (1, 9, 2, DATE_ADD(CURDATE(), INTERVAL 5 DAY), DATE_ADD(CURDATE(), INTERVAL 8 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-(2, 6, 2, DATE_ADD(CURDATE(), INTERVAL 15 DAY), DATE_ADD(CURDATE(), INTERVAL 17 DAY), 'approved', DATE_SUB(NOW(), INTERVAL 4 DAY));
+(2, 6, 2, DATE_ADD(CURDATE(), INTERVAL 15 DAY), DATE_ADD(CURDATE(), INTERVAL 17 DAY), 'approved', DATE_SUB(NOW(), INTERVAL 4 DAY)),
+(3, 12, 2, DATE_ADD(CURDATE(), INTERVAL 1 DAY), DATE_ADD(CURDATE(), INTERVAL 3 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 2 DAY));
 
 -- --------------------------------------------------------
 
@@ -224,7 +242,9 @@ CREATE TABLE `ReservationRequest` (
 
 INSERT INTO `ReservationRequest` (`IDreservation`, `IDmateriel`, `IDuser`, `DATEdebut`, `DATEfin`, `Status`, `CreatedAt`) VALUES
 (1, 9, 3, DATE_ADD(CURDATE(), INTERVAL 4 DAY), DATE_ADD(CURDATE(), INTERVAL 6 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 2 DAY)),
-(2, 10, 4, DATE_ADD(CURDATE(), INTERVAL 20 DAY), DATE_ADD(CURDATE(), INTERVAL 25 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 3 DAY));
+(2, 10, 4, DATE_ADD(CURDATE(), INTERVAL 20 DAY), DATE_ADD(CURDATE(), INTERVAL 25 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 3 DAY)),
+(3, 11, 5, DATE_ADD(CURDATE(), INTERVAL 7 DAY), DATE_ADD(CURDATE(), INTERVAL 9 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+(4, 4, 3, DATE_ADD(CURDATE(), INTERVAL 12 DAY), DATE_ADD(CURDATE(), INTERVAL 14 DAY), 'pending', DATE_SUB(NOW(), INTERVAL 5 DAY));
 
 -- --------------------------------------------------------
 
@@ -270,7 +290,10 @@ INSERT INTO `User` (`IDuser`, `Couriel`, `MDP`, `NOMuser`, `IDrole`, `DATEcreati
 (1, 'admin@geii.fr', 'admin', 'admin', 4, CURDATE()),
 (2, 'tech@geii.fr', 'tech', 'tech', 3, CURDATE()),
 (3, 'eleve@geii.fr', 'eleve', 'eleve', 1, CURDATE()),
-(4, 'prof@geii.fr', 'prof', 'prof', 2, CURDATE());
+(4, 'prof@geii.fr', 'prof', 'prof', 2, CURDATE()),
+(5, 'testtruc@geii.fr', '1234', 'testtruc', 1, DATE_SUB(CURDATE(), INTERVAL 30 DAY)),
+(6, 'julien@geii.fr', 'julien', 'julien', 1, DATE_SUB(CURDATE(), INTERVAL 120 DAY)),
+(7, 'clara@geii.fr', 'clara', 'clara', 2, DATE_SUB(CURDATE(), INTERVAL 90 DAY));
 
 --
 -- Index pour les tables déchargées
@@ -371,37 +394,37 @@ ALTER TABLE `ReservationRequest`
 -- AUTO_INCREMENT pour la table `Categorie`
 --
 ALTER TABLE `Categorie`
-  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `IDcategorie` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT pour la table `Emprunt`
 --
 ALTER TABLE `Emprunt`
-  MODIFY `IDemprunt` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `IDemprunt` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
 
 --
 -- AUTO_INCREMENT pour la table `Prolongation`
 --
 ALTER TABLE `Prolongation`
-  MODIFY `IDprolongation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `IDprolongation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `Materiel`
 --
 ALTER TABLE `Materiel`
-  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `IDmateriel` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
 
 --
 -- AUTO_INCREMENT pour la table `Rendu`
 --
 ALTER TABLE `Rendu`
-  MODIFY `IDrendu` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `IDrendu` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT pour la table `Notification`
 --
 ALTER TABLE `Notification`
-  MODIFY `IDnotification` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `IDnotification` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT pour la table `Role`
@@ -413,19 +436,19 @@ ALTER TABLE `Role`
 -- AUTO_INCREMENT pour la table `User`
 --
 ALTER TABLE `User`
-  MODIFY `IDuser` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `IDuser` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT pour la table `MaintenanceRequest`
 --
 ALTER TABLE `MaintenanceRequest`
-  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `IDmaintenance` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT pour la table `ReservationRequest`
 --
 ALTER TABLE `ReservationRequest`
-  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `IDreservation` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
