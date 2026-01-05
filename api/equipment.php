@@ -240,9 +240,9 @@ function reserve_equipment(PDO $pdo, int $userId): void
         return;
     }
 
-    if (!is_admin() && !is_technician()) {
-        $delayCount = count_user_delays($pdo, $userId);
-        if ($delayCount >= 3) {
+    if (!is_admin() && !is_technician() && !is_professor()) {
+        $degradeCount = count_user_degradations($pdo, $userId);
+        if ($degradeCount >= 3) {
             $requestId = store_pending_reservation_request($pdo, $id, $userId, $start, $end);
             echo json_encode([
                 'status' => 'pending',
@@ -1627,6 +1627,72 @@ function count_user_delays(PDO $pdo, int $userId): int
         }
     }
     return $delays;
+}
+
+// Normalise un libellé d'état de matériel.
+function normalize_condition(string $value): string
+{
+    $value = strtolower(trim($value));
+    $value = transliterate_to_ascii($value);
+    $map = [
+        'neuf' => 'neuf',
+        'bon' => 'bon',
+        'passable' => 'passable',
+        'reparation necessaire' => 'reparation necessaire',
+        'reparation' => 'reparation necessaire',
+    ];
+    return $map[$value] ?? $value;
+}
+
+// Retourne un score numérique pour comparer deux états.
+function condition_rank(string $value): int
+{
+    $value = normalize_condition($value);
+    $order = ['reparation necessaire' => 0, 'passable' => 1, 'bon' => 2, 'neuf' => 3];
+    return $order[$value] ?? 1;
+}
+
+// Détecte si un état de retour traduit une dégradation.
+function is_degradation(string $etatRendu): bool
+{
+    if (str_starts_with((string) $etatRendu, 'degrade:')) {
+        return true;
+    }
+    if (!str_contains((string) $etatRendu, '->')) {
+        return false;
+    }
+    [$before, $after] = array_pad(explode('->', (string) $etatRendu, 2), 2, '');
+    return condition_rank($after) < condition_rank($before);
+}
+
+// Compte les dégradations d'un utilisateur (retours marques comme dégradés).
+function count_user_degradations(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+    $stmt = $pdo->prepare(
+        'SELECT r.ETATrendu, e.ETATemprunt
+         FROM `Emprunt` e
+         INNER JOIN `Rendu` r ON r.IDemprunt = e.IDemprunt
+         WHERE e.IDuser = :uid'
+    );
+    $stmt->execute([':uid' => $userId]);
+    $degrades = 0;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $kind = strtolower((string) ($row['ETATemprunt'] ?? ''));
+        if (str_contains($kind, 'maintenance')) {
+            continue;
+        }
+        $state = (string) ($row['ETATrendu'] ?? '');
+        if ($state === '') {
+            continue;
+        }
+        if (is_degradation($state)) {
+            $degrades += 1;
+        }
+    }
+    return $degrades;
 }
 
 // Retourne la durée max autorisée pour une réservation selon le rôle.
