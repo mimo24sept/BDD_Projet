@@ -455,7 +455,7 @@ main {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--modal-backdrop);
+  background: transparent;
   display: grid;
   align-items: center;
   justify-items: center;
@@ -464,12 +464,17 @@ main {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   z-index: 20;
-  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: background 0.2s ease, visibility 0s linear 0.2s;
 }
 
-.modal-backdrop.show { opacity: 1; pointer-events: auto; }
+.modal-backdrop.show {
+  background: var(--modal-backdrop);
+  visibility: visible;
+  pointer-events: auto;
+  transition: background 0.2s ease;
+}
 
 .modal { width: min(700px, 92vw); max-height: calc(100vh - 48px); max-height: calc(100svh - 48px); overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--surface); border-radius: 16px; padding: 20px; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3); display: grid; gap: 12px; }
 .modal .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -603,12 +608,17 @@ main {
 }
 
 @media (max-width: 560px) {
-  .header-actions { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
-  .header-actions > * { width: auto; }
-  .header-actions .theme-toggle { justify-self: start; }
-  .header-actions .user-chip { justify-self: end; }
+  .header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .header-actions .theme-toggle {
+    --toggle-width: 54px;
+    --toggle-height: 28px;
+    --thumb-size: 20px;
+    padding: 0 6px;
+    flex: 0 0 auto;
+  }
+  .header-actions .user-chip { flex: 1 1 auto; text-align: right; }
   .header-actions .user-menu,
-  .header-actions #logout-btn { grid-column: 1 / -1; width: 100%; }
+  .header-actions #logout-btn { flex: 1 1 100%; width: 100%; }
   .tabs { padding: 4px; }
   .tab { flex: 1 1 100%; }
   .card { padding: 14px; }
