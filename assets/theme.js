@@ -6,14 +6,39 @@
   const storageKey = 'theme-preference';
   const root = document.documentElement;
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  let memoryPreference = null;
   const labels = {
     light: 'Clair',
     dark: 'Sombre',
     system: 'Auto',
   };
 
+  function safeGetPreference() {
+    try {
+      return localStorage.getItem(storageKey);
+    } catch (err) {
+      return memoryPreference;
+    }
+  }
+
+  function safeSetPreference(value) {
+    try {
+      localStorage.setItem(storageKey, value);
+    } catch (err) {
+      memoryPreference = value;
+    }
+  }
+
+  function safeClearPreference() {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (err) {
+      memoryPreference = null;
+    }
+  }
+
   function getPreference() {
-    const stored = localStorage.getItem(storageKey);
+    const stored = safeGetPreference();
     if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
     return 'system';
   }
@@ -48,9 +73,9 @@
 
   function setPreference(preference) {
     if (preference === 'system') {
-      localStorage.removeItem(storageKey);
+      safeClearPreference();
     } else {
-      localStorage.setItem(storageKey, preference);
+      safeSetPreference(preference);
     }
     applyTheme(preference);
   }

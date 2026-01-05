@@ -457,7 +457,12 @@ main {
   inset: 0;
   background: var(--modal-backdrop);
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   z-index: 20;
   opacity: 0;
   pointer-events: none;
@@ -466,7 +471,7 @@ main {
 
 .modal-backdrop.show { opacity: 1; pointer-events: auto; }
 
-.modal { width: min(700px, 92vw); background: var(--surface); border-radius: 16px; padding: 20px; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3); display: grid; gap: 12px; }
+.modal { width: min(700px, 92vw); max-height: calc(100vh - 48px); max-height: calc(100svh - 48px); overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--surface); border-radius: 16px; padding: 20px; box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3); display: grid; gap: 12px; }
 .modal .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 
@@ -583,6 +588,8 @@ main {
   .admin-scroll { max-height: none; overflow: visible; padding-right: 0; }
   .loan-item { flex-direction: column; align-items: flex-start; }
   .admin-actions { width: 100%; justify-content: flex-start; }
+  .modal-backdrop { display: block; padding: 16px; }
+  .modal { max-height: calc(100vh - 32px); max-height: calc(100svh - 32px); margin: 0 auto; }
   .modal { padding: 16px; }
   .modal-actions { flex-direction: column; align-items: stretch; }
   .alert-banner { flex-direction: column; align-items: flex-start; }
@@ -596,8 +603,12 @@ main {
 }
 
 @media (max-width: 560px) {
-  .header-actions { flex-direction: column; align-items: stretch; }
-  .header-actions > * { width: 100%; }
+  .header-actions { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; }
+  .header-actions > * { width: auto; }
+  .header-actions .theme-toggle { justify-self: start; }
+  .header-actions .user-chip { justify-self: end; }
+  .header-actions .user-menu,
+  .header-actions #logout-btn { grid-column: 1 / -1; width: 100%; }
   .tabs { padding: 4px; }
   .tab { flex: 1 1 100%; }
   .card { padding: 14px; }
